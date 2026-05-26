@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "216356501452",
+    "project_id": "sutapp-9d33c",
+    "storage_bucket": "sutapp-9d33c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:216356501452:android:5052e4dc9a563d7fdd4f69",
+        "android_client_info": {
+          "package_name": "com.sutapp.sutapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCSu9hE1TB5TkHUrltsLXZOssPCtN3zEGg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

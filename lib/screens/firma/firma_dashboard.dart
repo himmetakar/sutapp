@@ -1,0 +1,1421 @@
+import 'package:flutter/material.dart';
+import 'package:fl_chart/fl_chart.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
+import '../../providers/auth_provider.dart';
+import '../../config/theme.dart';
+import '../../widgets/common_widgets.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../services/firestore_service.dart';
+import '../../widgets/quick_actions_dialogs.dart';
+
+class FirmaDashboard extends StatefulWidget {
+  const FirmaDashboard({super.key});
+
+  @override
+  State<FirmaDashboard> createState() => _FirmaDashboardState();
+}
+
+class _FirmaDashboardState extends State<FirmaDashboard> {
+  int _selectedTab = 0; // 0: Günlük, 1: Aylık, 2: Tank Durumu, 3: Mali Özet
+
+  final _firestoreService = FirestoreService();
+
+  @override
+  Widget build(BuildContext context) {
+    final todayStr = DateFormat('dd MMMM yyyy Eeee', 'tr_TR').format(DateTime.now());
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final currentFirmaName = auth.user?.displayName ?? '';
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: _firestoreService.getCollectionsStream(firma: currentFirmaName),
+      builder: (context, snapshot) {
+        double totalMilk = 0.0;
+        int collectionCount = 0;
+
+        if (snapshot.hasData) {
+          final docs = snapshot.data!.docs;
+          collectionCount = docs.length;
+          for (var doc in docs) {
+            final m = doc['m'];
+            if (m is num) {
+              totalMilk += m.toDouble();
+            } else if (m is String) {
+              totalMilk += double.tryParse(m) ?? 0.0;
+            }
+          }
+        }
+
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final isDesktop = constraints.maxWidth >= 1024;
+            final isTablet = constraints.maxWidth >= 640 && constraints.maxWidth < 1024;
+
+            return ListView(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+              children: [
+                // Screen Title
+                Text(
+                  'Üretim & Operasyon Özetleri',
+                  style: GoogleFonts.inter(
+                    fontSize: isDesktop ? 22 : 18,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.gray900,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Bugünkü üretim ve operasyon özetinizi aşağıda görebilirsiniz.',
+                  style: GoogleFonts.inter(
+                    fontSize: isDesktop ? 12 : 11,
+                    color: AppColors.gray500,
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // Tab Navigation
+                _buildTabSelector(isDesktop),
+                const SizedBox(height: 20),
+
+                // Quick Actions for Mobile/Tablet
+                if (!isDesktop) ...[
+                  _buildMobileQuickActions(context),
+                  const SizedBox(height: 20),
+                ],
+
+                // Dynamic tab content
+                _buildTabContent(isDesktop, isTablet, totalMilk, collectionCount, currentFirmaName),
+                const SizedBox(height: 80),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // Tab Selector
+  Widget _buildTabSelector(bool isDesktop) {
+    final tabs = ['Günlük İşlemler', 'Aylık İşlemler', 'Tank Durumu', 'Mali Özet'];
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Container(
+          decoration: BoxDecoration(
+            color: AppColors.gray100,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          padding: const EdgeInsets.all(4),
+          child: Row(
+            children: tabs.asMap().entries.map((e) {
+              final idx = e.key;
+              final label = e.value;
+              final isSelected = _selectedTab == idx;
+              return Container(
+                margin: const EdgeInsets.symmetric(horizontal: 2),
+                child: ChoiceChip(
+                  label: Text(
+                    label,
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                      color: isSelected ? AppColors.primary600 : AppColors.gray600,
+                    ),
+                  ),
+                  selected: isSelected,
+                  onSelected: (val) {
+                    if (val) setState(() => _selectedTab = idx);
+                  },
+                  selectedColor: Colors.white,
+                  backgroundColor: Colors.transparent,
+                  checkmarkColor: AppColors.primary600,
+                  showCheckmark: false,
+                  elevation: 0,
+                  pressElevation: 0,
+                  shadowColor: Colors.transparent,
+                  surfaceTintColor: Colors.transparent,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(6),
+                    side: BorderSide(
+                      color: isSelected ? AppColors.primary100 : Colors.transparent,
+                      width: 1,
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Stat Cards
+  Widget _buildStatCards(bool isDesktop, bool isTablet, double totalMilk, int collectionCount) {
+    final formatNumber = NumberFormat('#,##0', 'tr_TR');
+    final cards = [
+      StatCard(
+        icon: Icons.water_drop_rounded,
+        label: 'Toplanan Süt (Litre)',
+        value: formatNumber.format(totalMilk),
+        color: AppColors.primary600,
+        change: '%21,46',
+        subtext: 'İşlem: $collectionCount kayıt',
+        sparklineData: const [10, 11, 9.5, 12, 10.8, 11.5, 12.45],
+        isUp: true,
+      ),
+      StatCard(
+        icon: Icons.payment_rounded,
+        label: 'Süt Bedeli (₺)',
+        value: formatNumber.format(totalMilk * 23.0),
+        color: AppColors.success,
+        change: '%27,87',
+        subtext: 'Fiyat: 23 ₺/LT',
+        sparklineData: const [220, 230, 210, 245, 260, 250, 285.75],
+        isUp: true,
+      ),
+      StatCard(
+        icon: Icons.sell_rounded,
+        label: 'Satış Tutarı (₺)',
+        value: formatNumber.format(totalMilk * 25.2),
+        color: AppColors.warning,
+        change: '%24,50',
+        subtext: 'Fiyat: 25.2 ₺/LT',
+        sparklineData: const [251, 260, 275, 270, 290, 305, 312.5],
+        isUp: true,
+      ),
+      StatCard(
+        icon: Icons.account_balance_wallet_rounded,
+        label: 'Tahsilat (₺)',
+        value: '265.200',
+        color: Colors.purple,
+        change: '%33,67',
+        subtext: 'Dün: 198.400 ₺',
+        sparklineData: const [198, 205, 195, 220, 240, 255, 265.2],
+        isUp: true,
+      ),
+      StatCard(
+        icon: Icons.credit_card_rounded,
+        label: 'Verilen Avanslar (₺)',
+        value: '1.125.300',
+        color: Colors.teal,
+        change: '%3,48',
+        subtext: 'Dün: 1.087.450 ₺',
+        sparklineData: const [1087, 1095, 1100, 1112, 1115, 1120, 1125.3],
+        isUp: true,
+      ),
+    ];
+
+    if (isDesktop) {
+      return Row(
+        children: cards.map((c) => Expanded(child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          child: c,
+        ))).toList(),
+      );
+    } else if (isTablet) {
+      return StatsGrid(
+        crossAxisCount: 3,
+        spacing: 12,
+        children: cards,
+      );
+    } else {
+      return StatsGrid(
+        crossAxisCount: 2,
+        spacing: 10,
+        children: cards,
+      );
+    }
+  }
+
+  // Charts Section
+  Widget _buildChartsSection(bool isDesktop) {
+    final barChartWidget = AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Toplanan Süt Miktarı (Litre)',
+                    style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.gray800),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Text(
+                        'Toplam 87.650 Litre',
+                        style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500, fontWeight: FontWeight.w500),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '+%18,42',
+                        style: GoogleFonts.inter(fontSize: 11, color: AppColors.success, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              DropdownButton<String>(
+                value: '7 Günlük',
+                items: const [
+                  DropdownMenuItem(value: '7 Günlük', child: Text('7 Günlük')),
+                  DropdownMenuItem(value: '30 Günlük', child: Text('30 Günlük')),
+                ],
+                onChanged: (_) {},
+                underline: const SizedBox(),
+                style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.gray600),
+                icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 16),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            height: 180,
+            child: BarChart(
+              BarChartData(
+                gridData: FlGridData(show: false),
+                borderData: FlBorderData(show: false),
+                titlesData: FlTitlesData(
+                  leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      getTitlesWidget: (v, _) {
+                        const d = ['15 May', '16 May', '17 May', '18 May', '19 May', '20 May', '21 May'];
+                        if (v.toInt() >= 0 && v.toInt() < d.length) {
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Text(d[v.toInt()], style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray400)),
+                          );
+                        }
+                        return const SizedBox();
+                      },
+                    ),
+                  ),
+                ),
+                barTouchData: BarTouchData(
+                  touchTooltipData: BarTouchTooltipData(
+                    getTooltipItem: (_, __, rod, ___) => BarTooltipItem(
+                      '${rod.toY.toInt()} LT',
+                      GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white),
+                    ),
+                  ),
+                ),
+                barGroups: [11000, 17800, 13800, 12600, 15000, 13000, 16000].asMap().entries.map((e) =>
+                  BarChartGroupData(
+                    x: e.key,
+                    barRods: [
+                      BarChartRodData(
+                        toY: e.value.toDouble(),
+                        gradient: const LinearGradient(
+                          colors: [AppColors.primary400, AppColors.primary600],
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                        ),
+                        width: 20,
+                        borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
+                        backDrawRodData: BackgroundBarChartRodData(
+                          show: true,
+                          toY: 20000,
+                          color: AppColors.gray50,
+                        ),
+                      ),
+                    ],
+                  ),
+                ).toList(),
+              ),
+              duration: const Duration(milliseconds: 800),
+              curve: Curves.easeOutCubic,
+            ),
+          ),
+        ],
+      ),
+    );
+
+    final donutChartWidget = AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Süt Kalite Dağılımı',
+            style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.gray800),
+          ),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              SizedBox(
+                width: 120,
+                height: 120,
+                child: PieChart(
+                  PieChartData(
+                    sectionsSpace: 2,
+                    centerSpaceRadius: 36,
+                    startDegreeOffset: -90,
+                    sections: [
+                      PieChartSectionData(color: AppColors.primary600, value: 45, showTitle: false, radius: 18),
+                      PieChartSectionData(color: AppColors.success, value: 35, showTitle: false, radius: 18),
+                      PieChartSectionData(color: AppColors.warning, value: 15, showTitle: false, radius: 18),
+                      PieChartSectionData(color: AppColors.danger, value: 5, showTitle: false, radius: 18),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  children: [
+                    _buildDonutLegend('A Kalite', '%45', '5.600 L', AppColors.primary600),
+                    _buildDonutLegend('B Kalite', '%35', '4.350 L', AppColors.success),
+                    _buildDonutLegend('C Kalite', '%15', '1.850 L', AppColors.warning),
+                    _buildDonutLegend('D Kalite', '%5', '650 L', AppColors.danger),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    final quickLookWidget = AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Hızlı Bakış',
+            style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.gray800),
+          ),
+          const SizedBox(height: 14),
+          _buildQuickLookRow('Aktif Müşteri', '1.108', '+%8,8', true),
+          _buildQuickLookRow('Aktif Personel', '54', null, null),
+          _buildQuickLookRow('Aktif Araç', '18', null, null),
+          _buildQuickLookRow('Tank Doluluk Oranı (Ortalama)', '%76', '+%5', true),
+          _buildQuickLookRow('Tahsilat Gecikmiş (₺)', '265.200', '+%12,7', true),
+          _buildQuickLookRow('Gecikmiş Alacak (Müşteri)', '32', null, null),
+        ],
+      ),
+    );
+
+    if (isDesktop) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(flex: 4, child: barChartWidget),
+          const SizedBox(width: 16),
+          Expanded(flex: 3, child: donutChartWidget),
+          const SizedBox(width: 16),
+          Expanded(flex: 3, child: quickLookWidget),
+        ],
+      );
+    }
+
+    return Column(
+      children: [
+        barChartWidget,
+        const SizedBox(height: 16),
+        donutChartWidget,
+        const SizedBox(height: 16),
+        quickLookWidget,
+      ],
+    );
+  }
+
+  Widget _buildDonutLegend(String name, String pct, String value, Color color) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              name,
+              style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w500, color: AppColors.gray700),
+            ),
+          ),
+          Text(
+            pct,
+            style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: color),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            value,
+            style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuickLookRow(String title, String value, String? change, bool? isUp) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              title,
+              style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w500, color: AppColors.gray600),
+            ),
+          ),
+          Text(
+            value,
+            style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.gray800),
+          ),
+          if (change != null) ...[
+            const SizedBox(width: 8),
+            Text(
+              change,
+              style: GoogleFonts.inter(
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                color: isUp == true ? AppColors.success : AppColors.danger,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // Bottom Lists
+  Widget _buildBottomLists(bool isDesktop, bool isTablet) {
+    final listProducersUp = AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Sütü en çok artanlar',
+            style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.gray800),
+          ),
+          const SizedBox(height: 12),
+          ...[
+            {'n': 'Ahmet Yılmaz', 'v': '2.450 L', 'c': '+%38,6'},
+            {'n': 'Mehmet Kaya', 'v': '1.850 L', 'c': '+%27,4'},
+            {'n': 'Hasan Şahin', 'v': '1.650 L', 'c': '+%22,1'},
+            {'n': 'Ramazan Polat', 'v': '1.450 L', 'c': '+%18,7'},
+            {'n': 'Ali Demir', 'v': '1.250 L', 'c': '+%16,2'},
+          ].asMap().entries.map((e) {
+            final idx = e.key + 1;
+            final map = e.value;
+            return _buildListItemRow(idx, map['n']!, map['v']!, map['c']!, AppColors.success);
+          }),
+        ],
+      ),
+    );
+
+    final listProducersDown = AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Sütü en çok azalanlar',
+            style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.gray800),
+          ),
+          const SizedBox(height: 12),
+          ...[
+            {'n': 'Zeynep Tekin', 'v': '35.250 ₺', 'c': '45 gün'},
+            {'n': 'Murat Aksoy', 'v': '28.750 ₺', 'c': '32 gün'},
+            {'n': 'Fatma Çelik', 'v': '22.300 ₺', 'c': '28 gün'},
+            {'n': 'Yusuf Karaca', 'v': '18.600 ₺', 'c': '21 gün'},
+            {'n': 'İsmail Yıldız', 'v': '15.200 ₺', 'c': '18 gün'},
+          ].asMap().entries.map((e) {
+            final idx = e.key + 1;
+            final map = e.value;
+            return _buildListItemRow(idx, map['n']!, map['v']!, map['c']!, AppColors.danger);
+          }),
+        ],
+      ),
+    );
+
+    final listStaffPerformance = AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Personel performansı (topladığı süt ve açık fazla)',
+            style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.gray800),
+          ),
+          const SizedBox(height: 12),
+          ...[
+            {'n': 'Mehmet Taş', 'v': '%92 ↑', 'p': 'M'},
+            {'n': 'Ahmet Demir', 'v': '%87 ↑', 'p': 'A'},
+            {'n': 'Murat Yıldız', 'v': '%75 ↑', 'p': 'M'},
+            {'n': 'Fatih Kılıç', 'v': '%65', 'p': 'F'},
+            {'n': 'Hasan Durmaz', 'v': '%58 ↓', 'p': 'H'},
+          ].asMap().entries.map((e) {
+            final idx = e.key + 1;
+            final map = e.value;
+            final isUp = map['v']!.contains('↑');
+            final isDown = map['v']!.contains('↓');
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(
+                children: [
+                  Text(
+                    '$idx',
+                    style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.gray400),
+                  ),
+                  const SizedBox(width: 12),
+                  CircleAvatar(
+                    radius: 12,
+                    backgroundColor: AppColors.primary100,
+                    child: Text(
+                      map['p']!,
+                      style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.primary600),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      map['n']!,
+                      style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w500, color: AppColors.gray700),
+                    ),
+                  ),
+                  Text(
+                    map['v']!,
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: isUp
+                          ? AppColors.success
+                          : isDown
+                              ? AppColors.danger
+                              : AppColors.gray700,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+
+    final listNotifications = AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Bildirimler',
+                style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.gray800),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(color: AppColors.dangerLight, borderRadius: BorderRadius.circular(4)),
+                child: Text(
+                  '3 Yeni',
+                  style: GoogleFonts.inter(fontSize: 9, fontWeight: FontWeight.bold, color: AppColors.dangerDark),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _buildNotificationItem(
+            'Süt toplama miktarında düşüş',
+            '2 üreticide %25\'ten fazla düşüş var.',
+            '15 dakika önce',
+            AppColors.danger,
+            Icons.trending_down_rounded,
+          ),
+          _buildNotificationItem(
+            'Tahsilat gecikmesi',
+            '5 müşterinin tahsilatı gecikmiş.',
+            '1 saat önce',
+            AppColors.warning,
+            Icons.warning_amber_rounded,
+          ),
+          _buildNotificationItem(
+            'Tank doluluk uyarısı',
+            '2 tank %90 kapasiteye ulaştı.',
+            '2 saat önce',
+            AppColors.primary600,
+            Icons.info_outline_rounded,
+          ),
+          const SizedBox(height: 8),
+          Center(
+            child: TextButton(
+              onPressed: () {},
+              child: Text(
+                'Tüm Bildirimlere Git →',
+                style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.primary600),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (isDesktop) {
+      return GridView.count(
+        crossAxisCount: 4,
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        crossAxisSpacing: 16,
+        mainAxisSpacing: 16,
+        childAspectRatio: 0.95,
+        children: [
+          listProducersUp,
+          listProducersDown,
+          listStaffPerformance,
+          listNotifications,
+        ],
+      );
+    } else if (isTablet) {
+      return GridView.count(
+        crossAxisCount: 2,
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        crossAxisSpacing: 16,
+        mainAxisSpacing: 16,
+        childAspectRatio: 1.15,
+        children: [
+          listProducersUp,
+          listProducersDown,
+          listStaffPerformance,
+          listNotifications,
+        ],
+      );
+    }
+
+    return Column(
+      children: [
+        listProducersUp,
+        const SizedBox(height: 16),
+        listProducersDown,
+        const SizedBox(height: 16),
+        listStaffPerformance,
+        const SizedBox(height: 16),
+        listNotifications,
+      ],
+    );
+  }
+
+  Widget _buildTabContent(bool isDesktop, bool isTablet, double totalMilk, int collectionCount, String currentFirmaName) {
+    switch (_selectedTab) {
+      case 0:
+        return _buildDailyOperationsTab(isDesktop, isTablet, totalMilk, collectionCount);
+      case 1:
+        return _buildMonthlyOperationsTab(isDesktop, isTablet, totalMilk, collectionCount, currentFirmaName);
+      case 2:
+        return _buildTankStatusTab(isDesktop, isTablet, currentFirmaName);
+      case 3:
+        return _buildFinancialSummaryTab(isDesktop, isTablet, totalMilk, currentFirmaName);
+      default:
+        return const SizedBox();
+    }
+  }
+
+  Widget _buildDailyOperationsTab(bool isDesktop, bool isTablet, double totalMilk, int collectionCount) {
+    return Column(
+      children: [
+        _buildStatCards(isDesktop, isTablet, totalMilk, collectionCount),
+        const SizedBox(height: 24),
+        _buildChartsSection(isDesktop),
+        const SizedBox(height: 24),
+        _buildBottomLists(isDesktop, isTablet),
+      ],
+    );
+  }
+
+  Widget _buildMonthlyOperationsTab(bool isDesktop, bool isTablet, double totalMilk, int collectionCount, String currentFirmaName) {
+    final formatNumber = NumberFormat('#,##0', 'tr_TR');
+    final monthlyMilk = totalMilk * 4.2;
+    final cards = [
+      StatCard(
+        icon: Icons.calendar_month_rounded,
+        label: 'Aylık Toplam Süt (LT)',
+        value: formatNumber.format(monthlyMilk),
+        color: AppColors.primary600,
+        change: '+%8,2',
+        subtext: 'Geçen Ay: ${formatNumber.format(monthlyMilk * 0.93)} LT',
+        sparklineData: const [40, 42, 45, 43, 44, 46, 48],
+        isUp: true,
+      ),
+      StatCard(
+        icon: Icons.payments_rounded,
+        label: 'Aylık Süt Bedeli (₺)',
+        value: formatNumber.format(monthlyMilk * 23.0),
+        color: AppColors.success,
+        change: '+%11,5',
+        subtext: 'Birim Fiyat: 23 ₺/LT',
+        sparklineData: const [920, 966, 1035, 989, 1012, 1058, 1104],
+        isUp: true,
+      ),
+      StatCard(
+        icon: Icons.shopping_bag_rounded,
+        label: 'Aylık Satış Tutarı (₺)',
+        value: formatNumber.format(monthlyMilk * 25.2),
+        color: AppColors.warning,
+        change: '+%9,1',
+        subtext: 'Birim Satış: 25.2 ₺/LT',
+        sparklineData: const [1000, 1050, 1130, 1080, 1100, 1150, 1200],
+        isUp: true,
+      ),
+      StatCard(
+        icon: Icons.analytics_rounded,
+        label: 'Aylık Toplama Adedi',
+        value: '${(collectionCount * 4.2).toStringAsFixed(0)}',
+        color: Colors.indigo,
+        change: '+%5,4',
+        subtext: 'Ort. Günlük: ${(collectionCount / 7).toStringAsFixed(1)}',
+        sparklineData: const [25, 27, 28, 26, 29, 31, 32],
+        isUp: true,
+      ),
+    ];
+
+    Widget statsGrid;
+    if (isDesktop) {
+      statsGrid = Row(
+        children: cards.map((c) => Expanded(child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          child: c,
+        ))).toList(),
+      );
+    } else if (isTablet) {
+      statsGrid = StatsGrid(
+        crossAxisCount: 2,
+        spacing: 12,
+        children: cards,
+      );
+    } else {
+      statsGrid = StatsGrid(
+        crossAxisCount: 2,
+        spacing: 10,
+        children: cards,
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        statsGrid,
+        const SizedBox(height: 24),
+        AppCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Aylık Süt Toplama Analizi (Haftalık)',
+                style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.gray800),
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                height: 200,
+                child: BarChart(
+                  BarChartData(
+                    gridData: FlGridData(show: false),
+                    borderData: FlBorderData(show: false),
+                    titlesData: FlTitlesData(
+                      leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                      topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                      rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                      bottomTitles: AxisTitles(
+                        sideTitles: SideTitles(
+                          showTitles: true,
+                          getTitlesWidget: (v, _) {
+                            const weeks = ['1. Hafta', '2. Hafta', '3. Hafta', '4. Hafta'];
+                            if (v.toInt() >= 0 && v.toInt() < weeks.length) {
+                              return Padding(
+                                padding: const EdgeInsets.only(top: 8),
+                                child: Text(weeks[v.toInt()], style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray400)),
+                              );
+                            }
+                            return const SizedBox();
+                          },
+                        ),
+                      ),
+                    ),
+                    barGroups: [
+                      BarChartGroupData(x: 0, barRods: [BarChartRodData(toY: monthlyMilk * 0.22, color: AppColors.primary500, width: 24, borderRadius: BorderRadius.circular(4))]),
+                      BarChartGroupData(x: 1, barRods: [BarChartRodData(toY: monthlyMilk * 0.26, color: AppColors.primary500, width: 24, borderRadius: BorderRadius.circular(4))]),
+                      BarChartGroupData(x: 2, barRods: [BarChartRodData(toY: monthlyMilk * 0.24, color: AppColors.primary500, width: 24, borderRadius: BorderRadius.circular(4))]),
+                      BarChartGroupData(x: 3, barRods: [BarChartRodData(toY: monthlyMilk * 0.28, color: AppColors.primary600, width: 24, borderRadius: BorderRadius.circular(4))]),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+        _buildBottomLists(isDesktop, isTablet),
+      ],
+    );
+  }
+
+  Widget _buildTankStatusTab(bool isDesktop, bool isTablet, String currentFirmaName) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: _firestoreService.getTanksStream(firma: currentFirmaName),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: Padding(
+            padding: EdgeInsets.all(40.0),
+            child: CircularProgressIndicator(),
+          ));
+        }
+
+        final docs = snapshot.data?.docs ?? [];
+        if (docs.isEmpty) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(40.0),
+              child: Text(
+                'Bu firmaya ait tank kaydı bulunamadı.',
+                style: GoogleFonts.inter(color: AppColors.gray500),
+              ),
+            ),
+          );
+        }
+
+        final tankCards = docs.map((doc) {
+          final t = doc.data() as Map<String, dynamic>;
+          final name = t['ad'] ?? '';
+          final type = t['tip'] ?? 'merkez';
+          final vehicle = t['arac'] ?? '';
+          final double stock = (t['stok'] as num?)?.toDouble() ?? 0.0;
+          final double capacity = (t['kap'] as num?)?.toDouble() ?? 2000.0;
+          final pct = (stock / capacity).clamp(0.0, 1.0);
+
+          final isVehicle = type == 'arac';
+
+          return AppCard(
+            shadow: AppShadows.sm,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: isVehicle ? const Color(0xFFE0F2FE) : const Color(0xFFECFDF5),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(
+                        isVehicle ? Icons.local_shipping_rounded : Icons.warehouse_rounded,
+                        color: isVehicle ? const Color(0xFF0369A1) : const Color(0xFF047857),
+                        size: 18,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            name,
+                            style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.gray800),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          Text(
+                            isVehicle ? 'Araç Tankı ($vehicle)' : 'Merkez Depolama Tankı',
+                            style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray400),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      '${stock.toStringAsFixed(0)} / ${capacity.toStringAsFixed(0)} LT',
+                      style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.gray700),
+                    ),
+                    Text(
+                      '%${(pct * 100).toStringAsFixed(0)}',
+                      style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: isVehicle ? const Color(0xFF0284C7) : const Color(0xFF059669)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: pct,
+                    minHeight: 8,
+                    backgroundColor: AppColors.gray100,
+                    valueColor: AlwaysStoppedAnimation<Color>(isVehicle ? const Color(0xFF0284C7) : const Color(0xFF059669)),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }).toList();
+
+        if (isDesktop) {
+          return GridView.count(
+            crossAxisCount: 3,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            crossAxisSpacing: 16,
+            mainAxisSpacing: 16,
+            childAspectRatio: 2.2,
+            children: tankCards,
+          );
+        }
+
+        return StatsGrid(
+          crossAxisCount: isTablet ? 2 : 1,
+          spacing: 12,
+          children: tankCards,
+        );
+      },
+    );
+  }
+
+  Widget _buildFinancialSummaryTab(bool isDesktop, bool isTablet, double totalMilk, String currentFirmaName) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('tahsilatlar')
+          .where('firma', isEqualTo: currentFirmaName)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: Padding(
+            padding: EdgeInsets.all(40.0),
+            child: CircularProgressIndicator(),
+          ));
+        }
+
+        final docs = snapshot.data?.docs ?? [];
+        double totalTahsilat = 0.0;
+        for (var doc in docs) {
+          final tVal = doc['tutar'];
+          if (tVal is num) {
+            totalTahsilat += tVal.toDouble();
+          } else if (tVal is String) {
+            totalTahsilat += double.tryParse(tVal) ?? 0.0;
+          }
+        }
+
+        return StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection('avanslar')
+              .where('firma', isEqualTo: currentFirmaName)
+              .snapshots(),
+          builder: (context, avansSnap) {
+            double totalAvans = 0.0;
+            final aDocs = avansSnap.data?.docs ?? [];
+            for (var doc in aDocs) {
+              final durum = doc['durum'] as String? ?? 'aktif';
+              if (durum == 'iptal') continue;
+              final aVal = doc['tutar'];
+              if (aVal is num) {
+                totalAvans += aVal.toDouble();
+              } else if (aVal is String) {
+                totalAvans += double.tryParse(aVal) ?? 0.0;
+              }
+            }
+
+            return StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('kesintiler')
+                  .where('firma', isEqualTo: currentFirmaName)
+                  .snapshots(),
+              builder: (context, kesintilerSnap) {
+                double totalKesinti = 0.0;
+                final kDocs = kesintilerSnap.data?.docs ?? [];
+                for (var doc in kDocs) {
+                  final durum = doc['durum'] as String? ?? 'aktif';
+                  if (durum == 'iptal') continue;
+                  final kVal = doc['tutar'];
+                  if (kVal is num) {
+                    totalKesinti += kVal.toDouble();
+                  } else if (kVal is String) {
+                    totalKesinti += double.tryParse(kVal) ?? 0.0;
+                  }
+                }
+
+                return StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection('cezalar')
+                      .where('firma', isEqualTo: currentFirmaName)
+                      .snapshots(),
+                  builder: (context, cezalarSnap) {
+                    double totalCeza = 0.0;
+                    final cDocs = cezalarSnap.data?.docs ?? [];
+                    final cost = totalMilk * 23.0;
+
+                    for (var doc in cDocs) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      final durum = data['durum'] as String? ?? 'aktif';
+                      if (durum == 'iptal') continue;
+                      final tip = data['tip'] as String? ?? 'miktarsal';
+                      if (tip == 'oransal') {
+                        final double oran = (data['oran'] as num?)?.toDouble() ?? 0.0;
+                        totalCeza += cost * (oran / 100.0);
+                      } else {
+                        final double tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
+                        totalCeza += tutar;
+                      }
+                    }
+
+                    final formatNumber = NumberFormat('#,##0', 'tr_TR');
+                    final revenue = totalMilk * 25.2;
+                    final profit = revenue - cost;
+                    final debt = (cost - totalTahsilat - totalAvans - totalCeza - totalKesinti).clamp(0.0, double.infinity);
+
+                    final cards = [
+                      StatCard(
+                        icon: Icons.payments_rounded,
+                        label: 'Toplam Alım Bedeli (₺)',
+                        value: formatNumber.format(cost),
+                        color: AppColors.primary600,
+                        change: '+%14,2',
+                        subtext: 'Birim: 23 ₺/LT',
+                        sparklineData: const [120, 140, 160, 180, 200, 220, 240],
+                        isUp: true,
+                      ),
+                      StatCard(
+                        icon: Icons.sell_rounded,
+                        label: 'Satış Hasılatı (₺)',
+                        value: formatNumber.format(revenue),
+                        color: AppColors.success,
+                        change: '+%16,5',
+                        subtext: 'Birim: 25.2 ₺/LT',
+                        sparklineData: const [130, 155, 175, 195, 215, 240, 260],
+                        isUp: true,
+                      ),
+                      StatCard(
+                        icon: Icons.account_balance_wallet_rounded,
+                        label: 'Tahsil Edilen (₺)',
+                        value: formatNumber.format(totalTahsilat),
+                        color: Colors.purple,
+                        change: '+%18,7',
+                        subtext: '${docs.length} adet işlem',
+                        sparklineData: const [80, 100, 120, 140, 160, 180, 200],
+                        isUp: true,
+                      ),
+                      StatCard(
+                        icon: Icons.money_off_rounded,
+                        label: 'Ödenen Avanslar (₺)',
+                        value: formatNumber.format(totalAvans),
+                        color: Colors.orange,
+                        change: '',
+                        subtext: '${aDocs.length} avans kaydı',
+                        sparklineData: const [],
+                        isUp: false,
+                      ),
+                      StatCard(
+                        icon: Icons.gavel_rounded,
+                        label: 'Uygulanan Cezalar (₺)',
+                        value: formatNumber.format(totalCeza),
+                        color: Colors.red,
+                        change: '',
+                        subtext: '${cDocs.length} ceza kaydı',
+                        sparklineData: const [],
+                        isUp: false,
+                      ),
+                      StatCard(
+                        icon: Icons.content_cut_rounded,
+                        label: 'Uygulanan Kesintiler (₺)',
+                        value: formatNumber.format(totalKesinti),
+                        color: Colors.redAccent,
+                        change: '',
+                        subtext: '${kDocs.length} kesinti kaydı',
+                        sparklineData: const [],
+                        isUp: false,
+                      ),
+                      StatCard(
+                        icon: Icons.money_off_rounded,
+                        label: 'Kalan Süt Borcu (₺)',
+                        value: formatNumber.format(debt),
+                        color: AppColors.danger,
+                        change: '-%4,3',
+                        subtext: 'Üreticilere kalan borç',
+                        sparklineData: const [40, 38, 35, 33, 30, 28, 25],
+                        isUp: false,
+                      ),
+                    ];
+
+                    Widget statsGrid;
+                    if (isDesktop) {
+                      statsGrid = Row(
+                        children: cards.map((c) => Expanded(child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 6),
+                          child: c,
+                        ))).toList(),
+                      );
+                    } else {
+                      statsGrid = StatsGrid(
+                        crossAxisCount: isTablet ? 3 : 2,
+                        spacing: 12,
+                        children: cards,
+                      );
+                    }
+
+                final recentCollectionsWidget = AppCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Son Tahsilat Kayıtları', style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600)),
+                      const SizedBox(height: 14),
+                      if (docs.isEmpty)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 24),
+                          child: Center(
+                            child: Text('Henüz tahsilat kaydı bulunmuyor.', style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray500)),
+                          ),
+                        )
+                      else
+                        ListView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: docs.length > 5 ? 5 : docs.length,
+                          itemBuilder: (context, idx) {
+                            final data = docs[idx].data() as Map<String, dynamic>;
+                            final uretici = data['uretici'] ?? '-';
+                            final tutarVal = data['tutar'] ?? 0;
+                            final tutarStr = tutarVal is num ? tutarVal.toStringAsFixed(0) : tutarVal.toString();
+                            final tarih = data['tarih'] ?? '';
+                            final saat = data['saat'] ?? '';
+
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 6),
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                              decoration: BoxDecoration(color: AppColors.gray50, borderRadius: BorderRadius.circular(8)),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 30,
+                                    height: 30,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFE8F5E9),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Center(
+                                      child: Icon(Icons.monetization_on_rounded, color: Colors.green, size: 16),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(uretici, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w500)),
+                                        Text('$tarih • $saat', style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray400)),
+                                      ],
+                                    ),
+                                  ),
+                                  Text(
+                                    '+ $tutarStr ₺',
+                                    style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.green),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                    ],
+                  ),
+                );
+
+                return Column(
+                  children: [
+                    statsGrid,
+                    const SizedBox(height: 24),
+                    recentCollectionsWidget,
+                  ],
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+  },
+);
+  }
+
+  Widget _buildListItemRow(int index, String name, String value, String change, Color trendColor) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Text(
+            '$index',
+            style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.gray400),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              name,
+              style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w500, color: AppColors.gray700),
+            ),
+          ),
+          Text(
+            value,
+            style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray600),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            change,
+            style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: trendColor),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNotificationItem(String title, String body, String time, Color color, IconData icon) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
+            child: Icon(icon, color: color, size: 14),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.gray800),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  body,
+                  style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray500),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  time,
+                  style: GoogleFonts.inter(fontSize: 9, color: AppColors.gray400),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMobileQuickActions(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Hızlı İşlemler',
+          style: GoogleFonts.inter(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: AppColors.gray800,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: _buildQuickActionCard(
+                context,
+                title: 'Süt Girişi',
+                icon: Icons.add_rounded,
+                color: AppColors.primary600,
+                bgColor: AppColors.primary50,
+                onTap: () => QuickActionsDialogs.showSutGirisiDialog(context),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _buildQuickActionCard(
+                context,
+                title: 'Süt Kabul',
+                icon: Icons.input_rounded,
+                color: const Color(0xFF7C3AED),
+                bgColor: const Color(0xFFEDE9FE),
+                onTap: () => QuickActionsDialogs.showSutKabulDialog(context),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _buildQuickActionCard(
+                context,
+                title: 'Tahsilat Yap',
+                icon: Icons.monetization_on_rounded,
+                color: Colors.teal,
+                bgColor: const Color(0xFFE6F4EA),
+                onTap: () => QuickActionsDialogs.showTahsilatDialog(context),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildQuickActionCard(
+    BuildContext context, {
+    required String title,
+    required IconData icon,
+    required Color color,
+    required Color bgColor,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.gray200, width: 1),
+          boxShadow: AppShadows.sm,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: bgColor,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: color, size: 18),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.inter(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: AppColors.gray800,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
