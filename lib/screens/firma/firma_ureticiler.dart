@@ -66,7 +66,7 @@ class FirmaUreticiler extends StatelessWidget {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        title: Text('Müşteri Yönetimi', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
+        title: Text('Üretici Yönetimi', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () => context.go('/firma'),
@@ -84,17 +84,24 @@ class FirmaUreticiler extends StatelessWidget {
           children: [
             _buildMenuCard(
               context: context,
-              title: 'Müşteriler',
+              title: 'Üreticiler',
               icon: Icons.people_rounded,
               color: const Color(0xFF9333EA), // Purple
               route: '/firma/ureticiler/liste',
             ),
             _buildMenuCard(
               context: context,
-              title: 'Müşteri Grupları',
+              title: 'Üretici Grupları',
               icon: Icons.grid_view_rounded,
               color: const Color(0xFF9333EA), // Purple
               route: '/firma/gruplar',
+            ),
+            _buildMenuCard(
+              context: context,
+              title: 'Yeni Üretici Onayları',
+              icon: Icons.how_to_reg_rounded,
+              color: const Color(0xFFF97316), // Orange
+              route: '/firma/ureticiler/onaylar',
             ),
             _buildMenuCard(
               context: context,
@@ -140,7 +147,7 @@ class FirmaUreticiler extends StatelessWidget {
             ),
             _buildMenuCard(
               context: context,
-              title: 'Müşteri Süt Fiyatları',
+              title: 'Üretici Süt Fiyatları',
               icon: Icons.local_offer_rounded,
               color: const Color(0xFFEF4444), // Red
               route: '/firma/finans/sut-fiyatlari',

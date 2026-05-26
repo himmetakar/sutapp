@@ -6,6 +6,7 @@ import '../providers/auth_provider.dart';
 import '../config/theme.dart';
 import '../services/firestore_service.dart';
 import 'common_widgets.dart';
+import 'sut_analiz_dialog.dart';
 
 class QuickActionsDialogs {
   static void showSutGirisiDialog(BuildContext context) {
@@ -15,8 +16,10 @@ class QuickActionsDialogs {
     String? selectedUretici;
     String? selectedTank;
     String? selectedMilkType;
+    String? selectedCustomerType;
     const List<String> milkTypes = ['Soğuk Süt', 'Sıcak Süt', 'C Kalite', 'D Kalite'];
 
+    debugPrint('showSutGirisiDialog: currentFirmaName = "$currentFirmaName"');
     showDialog(
       context: context,
       builder: (ctx) => FutureBuilder<QuerySnapshot>(
@@ -24,10 +27,37 @@ class QuickActionsDialogs {
             .collection('ureticiler')
             .where('firmalar', arrayContains: currentFirmaName)
             .get(),
-        builder: (context, ureticiSnapshot) {
+        builder: (ctx1, ureticiSnapshot) {
+          if (ureticiSnapshot.hasError) {
+            debugPrint('showSutGirisiDialog: uretici query error: ${ureticiSnapshot.error}');
+            return AlertDialog(
+              title: const Text('Hata'),
+              content: Text('Üretici verileri yüklenirken hata oluştu: ${ureticiSnapshot.error}'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Kapat'),
+                ),
+              ],
+            );
+          }
           return FutureBuilder<QuerySnapshot>(
             future: FirebaseFirestore.instance.collection('tanklar').where('firma', isEqualTo: currentFirmaName).get(),
-            builder: (context, tankSnapshot) {
+            builder: (ctx2, tankSnapshot) {
+              if (tankSnapshot.hasError) {
+                debugPrint('showSutGirisiDialog: tank query error: ${tankSnapshot.error}');
+                return AlertDialog(
+                  title: const Text('Hata'),
+                  content: Text('Tank verileri yüklenirken hata oluştu: ${tankSnapshot.error}'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text('Kapat'),
+                    ),
+                  ],
+                );
+              }
+
               if (!ureticiSnapshot.hasData || !tankSnapshot.hasData) {
                 return const AlertDialog(
                   content: SizedBox(
@@ -37,12 +67,44 @@ class QuickActionsDialogs {
                 );
               }
 
-              final producers = ureticiSnapshot.data!.docs.map((doc) => doc['name'] as String).toSet().toList();
-              final tanks = tankSnapshot.data!.docs.map((doc) => doc['ad'] as String).toSet().toList();
+              final producers = ureticiSnapshot.data!.docs
+                  .map((doc) {
+                    try {
+                      final data = doc.data() as Map<String, dynamic>?;
+                      return data?['name']?.toString() ?? '';
+                    } catch (_) {
+                      return '';
+                    }
+                  })
+                  .where((name) => name.isNotEmpty)
+                  .toSet()
+                  .toList();
+
+              final tanks = tankSnapshot.data!.docs
+                  .map((doc) {
+                    try {
+                      final data = doc.data() as Map<String, dynamic>?;
+                      return data?['ad']?.toString() ?? '';
+                    } catch (_) {
+                      return '';
+                    }
+                  })
+                  .where((ad) => ad.isNotEmpty)
+                  .toSet()
+                  .toList();
+
+              debugPrint('showSutGirisiDialog: fetched ${producers.length} producers and ${tanks.length} tanks');
 
               if (producers.isEmpty || tanks.isEmpty) {
-                return const AlertDialog(
-                  content: Text('Sistemde kayıtlı üretici veya tank bulunamadı!'),
+                return AlertDialog(
+                  title: const Text('Bilgi'),
+                  content: Text('Sistemde kayıtlı üretici veya tank bulunamadı! (Firma: $currentFirmaName)'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text('Kapat'),
+                    ),
+                  ],
                 );
               }
 
@@ -52,8 +114,18 @@ class QuickActionsDialogs {
                   final prodDoc = ureticiSnapshot.data!.docs.firstWhere((doc) => doc['name'] == selectedUretici);
                   final docData = prodDoc.data() as Map<String, dynamic>;
                   selectedMilkType = docData['lastMilkType'] ?? 'Soğuk Süt';
+                  selectedCustomerType = docData['customerType'] ?? 'sut';
                 } catch (_) {
                   selectedMilkType = 'Soğuk Süt';
+                  selectedCustomerType = 'sut';
+                }
+              } else if (selectedCustomerType == null) {
+                try {
+                  final prodDoc = ureticiSnapshot.data!.docs.firstWhere((doc) => doc['name'] == selectedUretici);
+                  final docData = prodDoc.data() as Map<String, dynamic>;
+                  selectedCustomerType = docData['customerType'] ?? 'sut';
+                } catch (_) {
+                  selectedCustomerType = 'sut';
                 }
               }
 
@@ -86,8 +158,10 @@ class QuickActionsDialogs {
                                   final prodDoc = ureticiSnapshot.data!.docs.firstWhere((doc) => doc['name'] == selectedUretici);
                                   final docData = prodDoc.data() as Map<String, dynamic>;
                                   selectedMilkType = docData['lastMilkType'] ?? 'Soğuk Süt';
+                                  selectedCustomerType = docData['customerType'] ?? 'sut';
                                 } catch (_) {
                                   selectedMilkType = 'Soğuk Süt';
+                                  selectedCustomerType = 'sut';
                                 }
                                 if (selectedMilkType == null || !milkTypes.contains(selectedMilkType)) {
                                   selectedMilkType = 'Soğuk Süt';
@@ -115,10 +189,55 @@ class QuickActionsDialogs {
                           },
                         ),
                         const SizedBox(height: 12),
+                        DropdownButtonFormField<String>(
+                          value: selectedCustomerType,
+                          decoration: InputDecoration(
+                            labelText: 'Üretici Türü',
+                            fillColor: selectedCustomerType == 'yem' ? Colors.amber[50] : AppColors.gray50,
+                            filled: true,
+                          ),
+                          items: const [
+                            DropdownMenuItem(value: 'sut', child: Text('Süt Üreticisi')),
+                            DropdownMenuItem(value: 'yem', child: Text('Yem Müşterisi')),
+                          ],
+                          onChanged: (val) {
+                            if (val != null) {
+                              setDialogState(() {
+                                selectedCustomerType = val;
+                              });
+                            }
+                          },
+                        ),
+                        const SizedBox(height: 12),
                         TextField(
                           controller: miktarCtrl,
                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
                           decoration: const InputDecoration(labelText: 'Miktar (Litre)', hintText: 'Örn: 250', suffixText: 'LT'),
+                        ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: () {
+                              if (selectedUretici != null) {
+                                SutAnalizDialog.show(
+                                  context,
+                                  targetName: selectedUretici!,
+                                  tip: 'Üretici',
+                                );
+                              }
+                            },
+                            icon: const Icon(Icons.science_rounded, size: 16),
+                            label: Text(
+                              'Analiz Ekle',
+                              style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: AppColors.primary600),
+                              foregroundColor: AppColors.primary600,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                          ),
                         ),
                       ],
                     ),
@@ -135,6 +254,7 @@ class QuickActionsDialogs {
                           tankName: selectedTank!,
                           miktar: miktar,
                           sutTipi: selectedMilkType ?? 'Soğuk Süt',
+                          customerType: selectedCustomerType ?? 'sut',
                         );
 
                         Navigator.pop(ctx);
@@ -170,6 +290,7 @@ class QuickActionsDialogs {
     String? selectedSourceTank;
     String? selectedTargetTank;
 
+    debugPrint('showSutKabulDialog: currentFirmaName = "$currentFirmaName"');
     showDialog(
       context: context,
       builder: (ctx) => FutureBuilder<QuerySnapshot>(
@@ -178,14 +299,41 @@ class QuickActionsDialogs {
             .where('active', isEqualTo: true)
             .where('firma', isEqualTo: currentFirmaName)
             .get(),
-        builder: (context, vehicleSnapshot) {
+        builder: (ctx1, vehicleSnapshot) {
+          if (vehicleSnapshot.hasError) {
+            debugPrint('showSutKabulDialog: vehicle query error: ${vehicleSnapshot.error}');
+            return AlertDialog(
+              title: const Text('Hata'),
+              content: Text('Araç verileri yüklenirken hata oluştu: ${vehicleSnapshot.error}'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Kapat'),
+                ),
+              ],
+            );
+          }
           return FutureBuilder<QuerySnapshot>(
             future: FirebaseFirestore.instance
                 .collection('tanklar')
                 .where('tip', isEqualTo: 'merkez')
                 .where('firma', isEqualTo: currentFirmaName)
                 .get(),
-            builder: (context, targetTankSnapshot) {
+            builder: (ctx2, targetTankSnapshot) {
+              if (targetTankSnapshot.hasError) {
+                debugPrint('showSutKabulDialog: targetTank query error: ${targetTankSnapshot.error}');
+                return AlertDialog(
+                  title: const Text('Hata'),
+                  content: Text('Hedef tank verileri yüklenirken hata oluştu: ${targetTankSnapshot.error}'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text('Kapat'),
+                    ),
+                  ],
+                );
+              }
+
               if (!vehicleSnapshot.hasData || !targetTankSnapshot.hasData) {
                 return const AlertDialog(
                   content: SizedBox(
@@ -196,11 +344,31 @@ class QuickActionsDialogs {
               }
 
               final vehicles = vehicleSnapshot.data!.docs;
-              final targetTanks = targetTankSnapshot.data!.docs.map((doc) => doc['ad'] as String).toSet().toList();
+              final targetTanks = targetTankSnapshot.data!.docs
+                  .map((doc) {
+                    try {
+                      final data = doc.data() as Map<String, dynamic>?;
+                      return data?['ad']?.toString() ?? '';
+                    } catch (_) {
+                      return '';
+                    }
+                  })
+                  .where((ad) => ad.isNotEmpty)
+                  .toSet()
+                  .toList();
+
+              debugPrint('showSutKabulDialog: fetched ${vehicles.length} vehicles and ${targetTanks.length} target tanks');
 
               if (vehicles.isEmpty || targetTanks.isEmpty) {
-                return const AlertDialog(
-                  content: Text('Sistemde aktif araç veya merkez tankı bulunamadı!'),
+                return AlertDialog(
+                  title: const Text('Bilgi'),
+                  content: Text('Sistemde aktif araç veya merkez tankı bulunamadı! (Firma: $currentFirmaName)'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text('Kapat'),
+                    ),
+                  ],
                 );
               }
 

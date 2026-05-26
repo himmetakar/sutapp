@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
@@ -59,7 +60,11 @@ class _FirmaDuyuruGonderScreenState extends State<FirmaDuyuruGonderScreen> {
             backgroundColor: AppColors.success,
           ),
         );
-        Navigator.pop(context);
+        if (Navigator.of(context).canPop()) {
+          Navigator.pop(context);
+        } else {
+          context.go('/firma');
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -286,7 +291,11 @@ class _AdminDuyuruGonderScreenState extends State<AdminDuyuruGonderScreen> {
             backgroundColor: AppColors.success,
           ),
         );
-        Navigator.pop(context);
+        if (Navigator.of(context).canPop()) {
+          Navigator.pop(context);
+        } else {
+          context.go('/admin');
+        }
       }
     } catch (e) {
       if (mounted) {

@@ -260,12 +260,12 @@ class _FirmaPersonelPerformansScreenState extends State<FirmaPersonelPerformansS
                                                 value: '${NumberFormat('#,##0', 'tr_TR').format(totalMilk)} L',
                                                 label: 'Toplam Süt',
                                               ),
-                                              // Müşteri
+                                              // Üretici
                                               _buildMetricCard(
                                                 icon: Icons.people_rounded,
                                                 iconColor: const Color(0xFF10B981),
                                                 value: '${uniqueProducers.length}',
-                                                label: 'Müşteri',
+                                                label: 'Üretici',
                                               ),
                                               // Teslimat
                                               _buildMetricCard(

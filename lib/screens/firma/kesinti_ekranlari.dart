@@ -129,7 +129,7 @@ class _MusteriKesintileriScreenState extends State<MusteriKesintileriScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Müşteri Kesintileri', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
+        title: Text('Üretici Kesintileri', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () => context.go('/firma/finans'),
@@ -243,7 +243,7 @@ class _MusteriKesintileriScreenState extends State<MusteriKesintileriScreen> {
                   controller: _searchCtrl,
                   onChanged: (val) => setState(() => _searchQuery = val),
                   decoration: InputDecoration(
-                    hintText: 'Müşteri adı, kesinti türü veya açıklama ile ar...',
+                    hintText: 'Üretici adı, kesinti türü veya açıklama ile ar...',
                     hintStyle: GoogleFonts.inter(fontSize: 13, color: AppColors.gray400),
                     prefixIcon: const Icon(Icons.search_rounded, color: AppColors.gray400, size: 20),
                     border: InputBorder.none,
@@ -534,12 +534,12 @@ class _KesintiUygulaScreenState extends State<KesintiUygulaScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Üretici / Müşteri Seçimi
+                      // Üretici Seçimi
                       SearchableDropdown(
                         items: producers,
                         value: _selectedUretici,
                         hint: 'Kesinti Yapılacak Üreticiyi Seçin',
-                        label: 'Üretici / Müşteri Seçiniz *',
+                        label: 'Üretici Seçiniz *',
                         validator: (value) => value == null || value.isEmpty ? 'Lütfen bir üretici seçin' : null,
                         onChanged: (val) => setState(() => _selectedUretici = val),
                       ),

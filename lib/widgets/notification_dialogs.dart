@@ -10,11 +10,13 @@ import '../config/theme.dart';
 class NotificationDrawerDialog extends StatelessWidget {
   final String userId;
   final UserRole role;
+  final BuildContext parentContext;
 
   const NotificationDrawerDialog({
     super.key,
     required this.userId,
     required this.role,
+    required this.parentContext,
   });
 
   static void show(BuildContext context, String userId, UserRole role) {
@@ -24,10 +26,10 @@ class NotificationDrawerDialog extends StatelessWidget {
       barrierLabel: 'Bildirimler',
       barrierColor: Colors.black.withOpacity(0.4),
       transitionDuration: const Duration(milliseconds: 250),
-      pageBuilder: (context, anim1, anim2) {
+      pageBuilder: (dialogContext, anim1, anim2) {
         return Align(
           alignment: Alignment.centerRight,
-          child: NotificationDrawerDialog(userId: userId, role: role),
+          child: NotificationDrawerDialog(userId: userId, role: role, parentContext: context),
         );
       },
       transitionBuilder: (context, anim1, anim2, child) {
@@ -92,9 +94,9 @@ class NotificationDrawerDialog extends StatelessWidget {
                         onPressed: () {
                           Navigator.pop(context);
                           if (role == UserRole.admin) {
-                            context.push('/admin/duyuru-gonder');
+                            parentContext.push('/admin/duyuru-gonder');
                           } else {
-                            context.push('/firma/duyuru-gonder');
+                            parentContext.push('/firma/duyuru-gonder');
                           }
                         },
                         tooltip: 'Duyuru Gönder',
@@ -104,7 +106,7 @@ class NotificationDrawerDialog extends StatelessWidget {
                       icon: const Icon(Icons.settings_outlined, color: AppColors.gray500),
                       onPressed: () {
                         Navigator.pop(context);
-                        NotificationSettingsDialog.show(context, userId, role);
+                        NotificationSettingsDialog.show(parentContext, userId, role);
                       },
                       tooltip: 'Bildirim Ayarları',
                     ),
@@ -388,12 +390,14 @@ class _NotificationSettingsDialogState extends State<NotificationSettingsDialog>
         loadedSettings.putIfAbsent(key, () => true);
       }
 
+      if (!mounted) return;
       setState(() {
         _settings = loadedSettings;
         _loading = false;
       });
     } catch (e) {
       print('Bildirim ayarları yüklenemedi: $e');
+      if (!mounted) return;
       setState(() => _loading = false);
     }
   }
@@ -448,9 +452,11 @@ class _NotificationSettingsDialogState extends State<NotificationSettingsDialog>
     try {
       await _firestoreService.updateNotificationSettings(widget.userId, _settings);
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ayarlar kaydedilirken hata oluştu: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ayarlar kaydedilirken hata oluştu: $e')),
+        );
+      }
     }
   }
 

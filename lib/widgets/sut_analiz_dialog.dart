@@ -6,7 +6,7 @@ import '../config/theme.dart';
 
 class SutAnalizDialog extends StatefulWidget {
   final String targetName;
-  final String tip; // 'Müşteri' or 'Tank'
+  final String tip; // 'Üretici' or 'Tank'
 
   const SutAnalizDialog({
     super.key,

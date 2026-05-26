@@ -550,27 +550,36 @@ class _SearchableDropdownState extends State<SearchableDropdown> {
   void initState() {
     super.initState();
     _controller = TextEditingController(text: widget.value);
-    _focusNode.addListener(() {
-      if (!_focusNode.hasFocus) {
-        // If focus is lost and the text does not match any item in the list, reset or match
-        if (!widget.items.contains(_controller.text)) {
-          if (_controller.text.isEmpty) {
-            widget.onChanged(null);
+    _controller.addListener(_handleTextChanged);
+    _focusNode.addListener(_handleFocusChanged);
+  }
+
+  void _handleTextChanged() {
+    if (_controller.text.isEmpty) {
+      widget.onChanged(null);
+    }
+  }
+
+  void _handleFocusChanged() {
+    if (!_focusNode.hasFocus) {
+      // If focus is lost and the text does not match any item in the list, reset or match
+      if (!widget.items.contains(_controller.text)) {
+        if (_controller.text.isEmpty) {
+          widget.onChanged(null);
+        } else {
+          final match = widget.items.firstWhere(
+            (item) => item.toLowerCase() == _controller.text.toLowerCase(),
+            orElse: () => '',
+          );
+          if (match.isNotEmpty) {
+            _controller.text = match;
+            widget.onChanged(match);
           } else {
-            final match = widget.items.firstWhere(
-              (item) => item.toLowerCase() == _controller.text.toLowerCase(),
-              orElse: () => '',
-            );
-            if (match.isNotEmpty) {
-              _controller.text = match;
-              widget.onChanged(match);
-            } else {
-              _controller.text = widget.value ?? '';
-            }
+            _controller.text = widget.value ?? '';
           }
         }
       }
-    });
+    }
   }
 
   @override
@@ -583,7 +592,9 @@ class _SearchableDropdownState extends State<SearchableDropdown> {
 
   @override
   void dispose() {
+    _controller.removeListener(_handleTextChanged);
     _controller.dispose();
+    _focusNode.removeListener(_handleFocusChanged);
     _focusNode.dispose();
     super.dispose();
   }
@@ -611,116 +622,101 @@ class _SearchableDropdownState extends State<SearchableDropdown> {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    return Autocomplete<String>(
-                      optionsBuilder: (TextEditingValue textEditingValue) {
-                        if (textEditingValue.text.isEmpty) {
-                          return widget.items;
-                        }
-                        return widget.items.where((String option) {
-                          return option.toLowerCase().contains(textEditingValue.text.toLowerCase());
-                        });
-                      },
-                      onSelected: (String selection) {
-                        state.didChange(selection);
-                        _controller.text = selection;
-                        widget.onChanged(selection);
-                      },
-                      optionsViewBuilder: (context, onSelected, options) {
-                        return Align(
-                          alignment: Alignment.topLeft,
-                          child: Material(
-                            elevation: 4,
+                RawAutocomplete<String>(
+                  textEditingController: _controller,
+                  focusNode: _focusNode,
+                  optionsBuilder: (TextEditingValue textEditingValue) {
+                    if (textEditingValue.text.isEmpty) {
+                      return widget.items;
+                    }
+                    return widget.items.where((String option) {
+                      return option.toLowerCase().contains(textEditingValue.text.toLowerCase());
+                    });
+                  },
+                  onSelected: (String selection) {
+                    state.didChange(selection);
+                    widget.onChanged(selection);
+                  },
+                  optionsViewBuilder: (context, onSelected, options) {
+                    final screenWidth = MediaQuery.of(context).size.width;
+                    // Standard width calculation to avoid LayoutBuilder constraints
+                    final dropdownWidth = screenWidth > 600 ? 300.0 : screenWidth - 72;
+                    return Align(
+                      alignment: Alignment.topLeft,
+                      child: Material(
+                        elevation: 4,
+                        borderRadius: BorderRadius.circular(10),
+                        color: Colors.white,
+                        child: Container(
+                          width: dropdownWidth,
+                          constraints: const BoxConstraints(maxHeight: 200),
+                          decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(10),
-                            color: Colors.white,
-                            child: Container(
-                              width: constraints.maxWidth,
-                              constraints: const BoxConstraints(maxHeight: 200),
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(color: AppColors.gray200),
-                              ),
-                              child: ListView.builder(
-                                padding: EdgeInsets.zero,
-                                shrinkWrap: true,
-                                itemCount: options.length,
-                                itemBuilder: (BuildContext context, int index) {
-                                  final String option = options.elementAt(index);
-                                  return InkWell(
-                                    onTap: () => onSelected(option),
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                                      decoration: index < options.length - 1
-                                          ? const BoxDecoration(
-                                              border: Border(bottom: BorderSide(color: AppColors.gray100)),
-                                            )
-                                          : null,
-                                      child: Text(
-                                        option,
-                                        style: GoogleFonts.inter(fontSize: 13, color: AppColors.gray800),
-                                      ),
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
+                            border: Border.all(color: AppColors.gray200),
                           ),
-                        );
-                      },
-                      fieldViewBuilder: (context, textEditingController, focusNode, onFieldSubmitted) {
-                        if (textEditingController.text != _controller.text) {
-                          Future.microtask(() {
-                            if (mounted) {
-                              textEditingController.text = _controller.text;
+                          child: ListView.builder(
+                            padding: EdgeInsets.zero,
+                            shrinkWrap: true,
+                            itemCount: options.length,
+                            itemBuilder: (BuildContext context, int index) {
+                              final String option = options.elementAt(index);
+                              return InkWell(
+                                onTap: () => onSelected(option),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                  decoration: index < options.length - 1
+                                      ? const BoxDecoration(
+                                          border: Border(bottom: BorderSide(color: AppColors.gray100)),
+                                        )
+                                      : null,
+                                  child: Text(
+                                    option,
+                                    style: GoogleFonts.inter(fontSize: 13, color: AppColors.gray800),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                  fieldViewBuilder: (context, textEditingController, focusNode, onFieldSubmitted) {
+                    return TextFormField(
+                      controller: textEditingController,
+                      focusNode: focusNode,
+                      style: GoogleFonts.inter(fontSize: 13, color: AppColors.gray800),
+                      decoration: InputDecoration(
+                        hintText: widget.hint,
+                        hintStyle: GoogleFonts.inter(fontSize: 13, color: AppColors.gray400),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        border: const OutlineInputBorder(
+                          borderRadius: BorderRadius.all(Radius.circular(8)),
+                          borderSide: BorderSide(color: AppColors.gray300),
+                        ),
+                        enabledBorder: const OutlineInputBorder(
+                          borderRadius: BorderRadius.all(Radius.circular(8)),
+                          borderSide: BorderSide(color: AppColors.gray300),
+                        ),
+                        focusedBorder: const OutlineInputBorder(
+                          borderRadius: BorderRadius.all(Radius.circular(8)),
+                          borderSide: BorderSide(color: AppColors.primary500, width: 1.5),
+                        ),
+                        errorBorder: const OutlineInputBorder(
+                          borderRadius: BorderRadius.all(Radius.circular(8)),
+                          borderSide: BorderSide(color: Colors.red),
+                        ),
+                        suffixIcon: IconButton(
+                          icon: const Icon(Icons.arrow_drop_down, color: AppColors.gray500),
+                          onPressed: () {
+                            if (focusNode.hasFocus) {
+                              focusNode.unfocus();
+                            } else {
+                              focusNode.requestFocus();
                             }
-                          });
-                        }
-                        textEditingController.addListener(() {
-                          if (textEditingController.text.isEmpty && _controller.text.isNotEmpty) {
-                            _controller.text = '';
-                            state.didChange(null);
-                            widget.onChanged(null);
-                          }
-                        });
-
-                        return TextFormField(
-                          controller: textEditingController,
-                          focusNode: focusNode,
-                          style: GoogleFonts.inter(fontSize: 13, color: AppColors.gray800),
-                          decoration: InputDecoration(
-                            hintText: widget.hint,
-                            hintStyle: GoogleFonts.inter(fontSize: 13, color: AppColors.gray400),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                            border: const OutlineInputBorder(
-                              borderRadius: BorderRadius.all(Radius.circular(8)),
-                              borderSide: BorderSide(color: AppColors.gray300),
-                            ),
-                            enabledBorder: const OutlineInputBorder(
-                              borderRadius: BorderRadius.all(Radius.circular(8)),
-                              borderSide: BorderSide(color: AppColors.gray300),
-                            ),
-                            focusedBorder: const OutlineInputBorder(
-                              borderRadius: BorderRadius.all(Radius.circular(8)),
-                              borderSide: BorderSide(color: AppColors.primary500, width: 1.5),
-                            ),
-                            errorBorder: const OutlineInputBorder(
-                              borderRadius: BorderRadius.all(Radius.circular(8)),
-                              borderSide: BorderSide(color: Colors.red),
-                            ),
-                            suffixIcon: IconButton(
-                              icon: const Icon(Icons.arrow_drop_down, color: AppColors.gray500),
-                              onPressed: () {
-                                if (focusNode.hasFocus) {
-                                  focusNode.unfocus();
-                                } else {
-                                  focusNode.requestFocus();
-                                }
-                              },
-                            ),
-                          ),
-                        );
-                      },
+                          },
+                        ),
+                      ),
                     );
                   },
                 ),

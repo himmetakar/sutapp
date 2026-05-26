@@ -64,7 +64,7 @@ class _FirmaTahsilatScreenState extends State<FirmaTahsilatScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Müşteri (Üretici)', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.gray500)),
+                    Text('Üretici', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.gray500)),
                     const SizedBox(height: 6),
                     DropdownButtonFormField<String>(
                       value: selectedProducer,
@@ -171,7 +171,7 @@ class _FirmaTahsilatScreenState extends State<FirmaTahsilatScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Müşteri Tahsilatları', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
+        title: Text('Üretici Tahsilatları', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () => context.go('/firma/ureticiler'),

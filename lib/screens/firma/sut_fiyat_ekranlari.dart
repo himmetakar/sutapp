@@ -254,7 +254,7 @@ class _MusteriFiyatAyarlariScreenState extends State<MusteriFiyatAyarlariScreen>
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     child: Row(
                       children: [
-                        Expanded(flex: 3, child: Text(_subTabController.index == 0 ? 'Müşteri' : 'Grup', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.gray500))),
+                        Expanded(flex: 3, child: Text(_subTabController.index == 0 ? 'Üretici' : 'Grup', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.gray500))),
                         Expanded(
                           flex: 5,
                           child: Row(
@@ -688,7 +688,7 @@ class _TopluIslemlerScreenState extends State<TopluIslemlerScreen> {
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      '$matchedCount müşteri seçildi',
+                      '$matchedCount üretici seçildi',
                       style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.primary600),
                     ),
                   ],
@@ -802,7 +802,7 @@ class _TopluIslemlerScreenState extends State<TopluIslemlerScreen> {
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text('Toplu fiyat güncellemesi başarıyla uygulandı! ($matchedCount Müşteri)'),
+                        content: Text('Toplu fiyat güncellemesi başarıyla uygulandı! ($matchedCount Üretici)'),
                         backgroundColor: AppColors.success,
                       ),
                     );

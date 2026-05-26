@@ -80,7 +80,7 @@ class _FirmaAylikSutScreenState extends State<FirmaAylikSutScreen> {
             child: TextField(
               controller: _searchCtrl,
               decoration: InputDecoration(
-                hintText: 'Müşteri, toplayıcı veya bölge ara...',
+                hintText: 'Üretici, toplayıcı veya bölge ara...',
                 prefixIcon: const Icon(Icons.search_rounded, color: AppColors.gray400),
                 contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 suffixIcon: _searchQuery.isNotEmpty

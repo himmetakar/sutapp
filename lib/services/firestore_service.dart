@@ -210,6 +210,7 @@ class FirestoreService {
     required double avg,
     required String firma,
     String? lastMilkType,
+    String? customerType,
   }) async {
     // Try to find by phone first, then by name
     QuerySnapshot query = await _producers.where('phone', isEqualTo: phone).limit(1).get();
@@ -227,6 +228,9 @@ class FirestoreService {
       if (lastMilkType != null) {
         updates['lastMilkType'] = lastMilkType;
       }
+      if (customerType != null) {
+        updates['customerType'] = customerType;
+      }
       await doc.reference.update(updates);
     } else {
       final data = <String, dynamic>{
@@ -241,6 +245,7 @@ class FirestoreService {
       if (lastMilkType != null) {
         data['lastMilkType'] = lastMilkType;
       }
+      data['customerType'] = customerType ?? 'sut';
       await _producers.add(data);
     }
   }
@@ -269,6 +274,7 @@ class FirestoreService {
     String? region,
     String? firma,
     String? sutTipi,
+    String? customerType,
   }) async {
     // Resolve company name if not explicitly passed
     String resolvedFirma = firma ?? '';
@@ -292,6 +298,7 @@ class FirestoreService {
       'timestamp': FieldValue.serverTimestamp(),
       'firma': resolvedFirma,
       'tip': sutTipi ?? 'Soğuk Süt',
+      'customerType': customerType ?? 'sut',
     });
 
     // 2. Update tank stock in tanklar collection

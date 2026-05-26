@@ -81,11 +81,11 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
                 physics: const NeverScrollableScrollPhysics(),
                 childAspectRatio: 1.0,
                 children: [
-                  // Müşteri Yönetimi
+                  // Üretici Yönetimi
                   _buildMenuCard(
                     icon: Icons.people_rounded,
-                    title: 'Müşteri Yönetimi',
-                    subtitle: 'Müşteri işlemleri',
+                    title: 'Üretici Yönetimi',
+                    subtitle: 'Üretici işlemleri',
                     iconColor: Colors.white,
                     bgColor: const Color(0xFF2563EB),
                     onTap: () => _onCardTap('/firma/ureticiler'),

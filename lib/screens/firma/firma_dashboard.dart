@@ -396,12 +396,12 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
             style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.gray800),
           ),
           const SizedBox(height: 14),
-          _buildQuickLookRow('Aktif Müşteri', '1.108', '+%8,8', true),
+          _buildQuickLookRow('Aktif Üretici', '1.108', '+%8,8', true),
           _buildQuickLookRow('Aktif Personel', '54', null, null),
           _buildQuickLookRow('Aktif Araç', '18', null, null),
           _buildQuickLookRow('Tank Doluluk Oranı (Ortalama)', '%76', '+%5', true),
           _buildQuickLookRow('Tahsilat Gecikmiş (₺)', '265.200', '+%12,7', true),
-          _buildQuickLookRow('Gecikmiş Alacak (Müşteri)', '32', null, null),
+          _buildQuickLookRow('Gecikmiş Alacak (Üretici)', '32', null, null),
         ],
       ),
     );
@@ -637,7 +637,7 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
           ),
           _buildNotificationItem(
             'Tahsilat gecikmesi',
-            '5 müşterinin tahsilatı gecikmiş.',
+            '5 üreticinin tahsilatı gecikmiş.',
             '1 saat önce',
             AppColors.warning,
             Icons.warning_amber_rounded,

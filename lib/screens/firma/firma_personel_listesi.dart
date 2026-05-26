@@ -81,7 +81,7 @@ class _FirmaPersonelListesiScreenState extends State<FirmaPersonelListesiScreen>
                       onPressed: () => context.push('/firma/atamalar'),
                       icon: const Icon(Icons.sync_alt_rounded, size: 14),
                       label: Text(
-                        'Müşteri Atama',
+                        'Üretici Atama',
                         style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold),
                       ),
                     ),
@@ -318,7 +318,7 @@ class _FirmaPersonelListesiScreenState extends State<FirmaPersonelListesiScreen>
 
                             // Permission Switches
                             _buildPermissionSwitch(
-                              label: 'Müşteri ekleyebilir',
+                              label: 'Üretici ekleyebilir',
                               value: canAddCustomer,
                               icon: Icons.person_add_rounded,
                               activeColor: const Color(0xFF10B981),
@@ -327,7 +327,7 @@ class _FirmaPersonelListesiScreenState extends State<FirmaPersonelListesiScreen>
                               },
                             ),
                             _buildPermissionSwitch(
-                              label: 'Müşteri düzenleyebilir',
+                              label: 'Üretici düzenleyebilir',
                               value: canEditCustomer,
                               icon: Icons.edit_rounded,
                               activeColor: const Color(0xFF10B981),

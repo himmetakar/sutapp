@@ -26,6 +26,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
   final _miktarFormCtrl = TextEditingController();
   String? _selectedUreticiForm;
   String? _selectedMilkTypeForm;
+  String? _selectedCustomerTypeForm;
   final List<String> _milkTypes = const ['Soğuk Süt', 'Sıcak Süt', 'C Kalite', 'D Kalite'];
 
   @override
@@ -45,6 +46,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
         Map<String, dynamic>? selectedDistrict;
         Map<String, dynamic>? selectedNeighborhood;
         bool isSicak = false;
+        bool isYem = false;
         bool loading = false;
 
         final nameCtrl = TextEditingController();
@@ -151,106 +153,115 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
             return AlertDialog(
               title: Text('Yeni Üretici Ekle', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextField(
-                      controller: nameCtrl,
-                      decoration: const InputDecoration(labelText: 'Ad Soyad', hintText: 'Mustafa Yılmaz'),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: phoneCtrl,
-                      keyboardType: TextInputType.phone,
-                      decoration: const InputDecoration(labelText: 'Telefon', hintText: '0532 999 8877'),
-                    ),
-                    const SizedBox(height: 12),
-
-                    if (loading && provinces.isEmpty)
-                      const Center(child: CircularProgressIndicator())
-                    else ...[
-                      DropdownButtonFormField<Map<String, dynamic>>(
-                        value: selectedProvince,
-                        hint: const Text('İl Seçiniz'),
-                        decoration: const InputDecoration(
-                          labelText: 'İl *',
-                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        ),
-                        items: provinces.map((prov) {
-                          return DropdownMenuItem<Map<String, dynamic>>(
-                            value: prov,
-                            child: Text(prov['name']),
-                          );
-                        }).toList(),
-                        onChanged: loading ? null : (prov) {
-                          setState(() {
-                            selectedProvince = prov;
-                          });
-                          if (prov != null) {
-                            loadDistricts(prov['id']);
-                          }
-                        },
+              content: SizedBox(
+                width: 400,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextField(
+                        controller: nameCtrl,
+                        decoration: const InputDecoration(labelText: 'Ad Soyad', hintText: 'Mustafa Yılmaz'),
                       ),
-                      const SizedBox(height: 12),
-
-                      DropdownButtonFormField<Map<String, dynamic>>(
-                        value: selectedDistrict,
-                        hint: const Text('İlçe Seçiniz'),
-                        decoration: const InputDecoration(
-                          labelText: 'İlçe *',
-                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        ),
-                        items: districts.map((dist) {
-                          return DropdownMenuItem<Map<String, dynamic>>(
-                            value: dist,
-                            child: Text(dist['name']),
-                          );
-                        }).toList(),
-                        onChanged: (loading || selectedProvince == null) ? null : (dist) {
-                          setState(() {
-                            selectedDistrict = dist;
-                          });
-                          if (dist != null) {
-                            loadNeighborhoods(dist['id']);
-                          }
-                        },
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: phoneCtrl,
+                        keyboardType: TextInputType.phone,
+                        decoration: const InputDecoration(labelText: 'Telefon', hintText: '0532 999 8877'),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 16),
 
-                      neighborhoods.isNotEmpty
-                          ? DropdownButtonFormField<Map<String, dynamic>>(
-                              value: selectedNeighborhood,
-                              hint: const Text('Mahalle / Köy Seçiniz'),
-                              decoration: const InputDecoration(
-                                labelText: 'Mahalle / Köy *',
-                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      if (loading && provinces.isEmpty)
+                        const Center(child: CircularProgressIndicator())
+                      else ...[
+                        DropdownButtonFormField<Map<String, dynamic>>(
+                          value: selectedProvince,
+                          hint: const Text('İl Seçiniz'),
+                          decoration: const InputDecoration(
+                            labelText: 'İl *',
+                            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          ),
+                          items: provinces.map((prov) {
+                            return DropdownMenuItem<Map<String, dynamic>>(
+                              value: prov,
+                              child: Text(prov['name']),
+                            );
+                          }).toList(),
+                          onChanged: loading ? null : (prov) {
+                            setState(() {
+                              selectedProvince = prov;
+                            });
+                            if (prov != null) {
+                              loadDistricts(prov['id']);
+                            }
+                          },
+                        ),
+                        const SizedBox(height: 16),
+
+                        DropdownButtonFormField<Map<String, dynamic>>(
+                          value: selectedDistrict,
+                          hint: const Text('İlçe Seçiniz'),
+                          decoration: const InputDecoration(
+                            labelText: 'İlçe *',
+                            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          ),
+                          items: districts.map((dist) {
+                            return DropdownMenuItem<Map<String, dynamic>>(
+                              value: dist,
+                              child: Text(dist['name']),
+                            );
+                          }).toList(),
+                          onChanged: (loading || selectedProvince == null) ? null : (dist) {
+                            setState(() {
+                              selectedDistrict = dist;
+                            });
+                            if (dist != null) {
+                              loadNeighborhoods(dist['id']);
+                            }
+                          },
+                        ),
+                        const SizedBox(height: 16),
+
+                        neighborhoods.isNotEmpty
+                            ? DropdownButtonFormField<Map<String, dynamic>>(
+                                value: selectedNeighborhood,
+                                hint: const Text('Mahalle / Köy Seçiniz'),
+                                decoration: const InputDecoration(
+                                  labelText: 'Mahalle / Köy *',
+                                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                ),
+                                items: neighborhoods.map((neigh) {
+                                  return DropdownMenuItem<Map<String, dynamic>>(
+                                    value: neigh,
+                                    child: Text(neigh['name'], overflow: TextOverflow.ellipsis),
+                                  );
+                                }).toList(),
+                                onChanged: (loading || selectedDistrict == null) ? null : (neigh) {
+                                  setState(() {
+                                    selectedNeighborhood = neigh;
+                                  });
+                                },
+                              )
+                            : TextField(
+                                controller: manualMahalleCtrl,
+                                decoration: const InputDecoration(labelText: 'Mahalle / Köy', hintText: 'Akarsu Köyü'),
                               ),
-                              items: neighborhoods.map((neigh) {
-                                return DropdownMenuItem<Map<String, dynamic>>(
-                                  value: neigh,
-                                  child: Text(neigh['name'], overflow: TextOverflow.ellipsis),
-                                );
-                              }).toList(),
-                              onChanged: (loading || selectedDistrict == null) ? null : (neigh) {
-                                setState(() {
-                                  selectedNeighborhood = neigh;
-                                });
-                              },
-                            )
-                          : TextField(
-                              controller: manualMahalleCtrl,
-                              decoration: const InputDecoration(labelText: 'Mahalle / Köy', hintText: 'Akarsu Köyü'),
-                            ),
-                      const SizedBox(height: 20),
-                    ],
+                        const SizedBox(height: 24),
+                      ],
 
-                    // Custom toggle
-                    _buildTempToggle(
-                      isSicak,
-                      (val) => setState(() => isSicak = val),
-                    ),
-                  ],
+                      // Custom toggle
+                      _buildTempToggle(
+                        isSicak,
+                        (val) => setState(() => isSicak = val),
+                        enabled: !isYem,
+                      ),
+                      const SizedBox(height: 16),
+                      _buildCustomerTypeToggle(
+                        isYem,
+                        (val) => setState(() => isYem = val),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               actions: [
@@ -270,7 +281,8 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                       bolge: ilce,
                       avg: 30.0,
                       firma: currentFirmaName,
-                      lastMilkType: isSicak ? 'Sıcak Süt' : 'Soğuk Süt',
+                      lastMilkType: isYem ? 'Yok' : (isSicak ? 'Sıcak Süt' : 'Soğuk Süt'),
+                      customerType: isYem ? 'yem' : 'sut',
                     );
 
                     Navigator.pop(ctx);
@@ -297,6 +309,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
     final miktarCtrl = TextEditingController();
     String? localSelectedUretici;
     String? localSelectedMilkType;
+    String? localSelectedCustomerType;
     const List<String> milkTypes = ['Soğuk Süt', 'Sıcak Süt', 'C Kalite', 'D Kalite'];
 
     showDialog(
@@ -323,8 +336,18 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
               final prodDoc = prodSnapshot.data!.docs.firstWhere((doc) => doc['name'] == localSelectedUretici);
               final docData = prodDoc.data() as Map<String, dynamic>;
               localSelectedMilkType = docData['lastMilkType'] ?? 'Soğuk Süt';
+              localSelectedCustomerType = docData['customerType'] ?? 'sut';
             } catch (_) {
               localSelectedMilkType = 'Soğuk Süt';
+              localSelectedCustomerType = 'sut';
+            }
+          } else if (localSelectedCustomerType == null) {
+            try {
+              final prodDoc = prodSnapshot.data!.docs.firstWhere((doc) => doc['name'] == localSelectedUretici);
+              final docData = prodDoc.data() as Map<String, dynamic>;
+              localSelectedCustomerType = docData['customerType'] ?? 'sut';
+            } catch (_) {
+              localSelectedCustomerType = 'sut';
             }
           }
 
@@ -354,8 +377,10 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                               final prodDoc = prodSnapshot.data!.docs.firstWhere((doc) => doc['name'] == localSelectedUretici);
                               final docData = prodDoc.data() as Map<String, dynamic>;
                               localSelectedMilkType = docData['lastMilkType'] ?? 'Soğuk Süt';
+                              localSelectedCustomerType = docData['customerType'] ?? 'sut';
                             } catch (_) {
                               localSelectedMilkType = 'Soğuk Süt';
+                              localSelectedCustomerType = 'sut';
                             }
                             if (localSelectedMilkType == null || !milkTypes.contains(localSelectedMilkType)) {
                               localSelectedMilkType = 'Soğuk Süt';
@@ -390,6 +415,26 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                       },
                     ),
                     const SizedBox(height: 16),
+                    DropdownButtonFormField<String>(
+                      value: localSelectedCustomerType,
+                      decoration: InputDecoration(
+                        labelText: 'Üretici Türü',
+                        fillColor: localSelectedCustomerType == 'yem' ? Colors.amber[50] : AppColors.gray50,
+                        filled: true,
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'sut', child: Text('Süt Üreticisi')),
+                        DropdownMenuItem(value: 'yem', child: Text('Yem Müşterisi')),
+                      ],
+                      onChanged: (val) {
+                        if (val != null) {
+                          setDialogState(() {
+                            localSelectedCustomerType = val;
+                          });
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 16),
                     TextField(
                       controller: miktarCtrl,
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -408,7 +453,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                             SutAnalizDialog.show(
                               context,
                               targetName: localSelectedUretici!,
-                              tip: 'Müşteri',
+                              tip: 'Üretici',
                             );
                           }
                         },
@@ -459,6 +504,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                       vehiclePlate: plate,
                       region: region,
                       sutTipi: localSelectedMilkType ?? 'Soğuk Süt',
+                      customerType: localSelectedCustomerType ?? 'sut',
                     );
 
                     Navigator.pop(ctx);
@@ -484,7 +530,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
     );
   }
 
-  Widget _buildTempToggle(bool isSicak, ValueChanged<bool> onChanged) {
+  Widget _buildTempToggle(bool isSicak, ValueChanged<bool> onChanged, {bool enabled = true}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -498,8 +544,118 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
         ),
         const SizedBox(height: 8),
         GestureDetector(
-          onTap: () {
+          onTap: enabled ? () {
             onChanged(!isSicak);
+          } : null,
+          child: Opacity(
+            opacity: enabled ? 1.0 : 0.5,
+            child: Container(
+              height: 48,
+              decoration: BoxDecoration(
+                color: Colors.grey[200],
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: Stack(
+                children: [
+                  AnimatedAlign(
+                    duration: const Duration(milliseconds: 250),
+                    curve: Curves.easeInOut,
+                    alignment: isSicak ? Alignment.centerLeft : Alignment.centerRight,
+                    child: FractionallySizedBox(
+                      widthFactor: 0.5,
+                      child: Padding(
+                        padding: const EdgeInsets.all(4.0),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: isSicak ? Colors.red[600] : Colors.blue[600],
+                            borderRadius: BorderRadius.circular(20),
+                            boxShadow: [
+                              BoxShadow(
+                                color: (isSicak ? Colors.red : Colors.blue).withOpacity(0.3),
+                                blurRadius: 6,
+                                offset: const Offset(0, 3),
+                              )
+                            ],
+                          ),
+                          child: Center(
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  isSicak ? Icons.whatshot : Icons.ac_unit,
+                                  color: Colors.white,
+                                  size: 16,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  isSicak ? 'Sıcak Süt' : 'Soğuk Süt',
+                                  style: GoogleFonts.inter(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Center(
+                          child: Text(
+                            'Sıcak Süt',
+                            style: GoogleFonts.inter(
+                              color: isSicak ? Colors.transparent : Colors.grey[600],
+                              fontWeight: FontWeight.w600,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: Center(
+                          child: Text(
+                            'Soğuk Süt',
+                            style: GoogleFonts.inter(
+                              color: !isSicak ? Colors.transparent : Colors.grey[600],
+                              fontWeight: FontWeight.w600,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCustomerTypeToggle(bool isYem, ValueChanged<bool> onChanged) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Üretici Türü',
+          style: GoogleFonts.inter(
+            fontWeight: FontWeight.bold,
+            fontSize: 13,
+            color: Colors.black87,
+          ),
+        ),
+        const SizedBox(height: 8),
+        GestureDetector(
+          onTap: () {
+            onChanged(!isYem);
           },
           child: Container(
             height: 48,
@@ -512,37 +668,38 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                 AnimatedAlign(
                   duration: const Duration(milliseconds: 250),
                   curve: Curves.easeInOut,
-                  alignment: isSicak ? Alignment.centerLeft : Alignment.centerRight,
+                  alignment: isYem ? Alignment.centerRight : Alignment.centerLeft,
                   child: FractionallySizedBox(
                     widthFactor: 0.5,
                     child: Padding(
                       padding: const EdgeInsets.all(4.0),
                       child: Container(
                         decoration: BoxDecoration(
-                          color: isSicak ? Colors.red[600] : Colors.blue[600],
+                          color: isYem ? Colors.amber[600] : Colors.white,
                           borderRadius: BorderRadius.circular(20),
                           boxShadow: [
                             BoxShadow(
-                              color: (isSicak ? Colors.red : Colors.blue).withOpacity(0.3),
+                              color: (isYem ? Colors.amber : Colors.grey).withOpacity(0.3),
                               blurRadius: 6,
                               offset: const Offset(0, 3),
                             )
                           ],
+                          border: isYem ? null : Border.all(color: Colors.grey[300]!, width: 0.5),
                         ),
                         child: Center(
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Icon(
-                                isSicak ? Icons.whatshot : Icons.ac_unit,
-                                color: Colors.white,
+                                isYem ? Icons.grass_rounded : Icons.water_drop_rounded,
+                                color: isYem ? Colors.white : AppColors.primary600,
                                 size: 16,
                               ),
                               const SizedBox(width: 4),
                               Text(
-                                isSicak ? 'Sıcak Süt' : 'Soğuk Süt',
+                                isYem ? 'Yem Müşterisi' : 'Süt Üreticisi',
                                 style: GoogleFonts.inter(
-                                  color: Colors.white,
+                                  color: isYem ? Colors.white : AppColors.primary800,
                                   fontWeight: FontWeight.bold,
                                   fontSize: 12,
                                 ),
@@ -560,9 +717,9 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                     Expanded(
                       child: Center(
                         child: Text(
-                          'Sıcak Süt',
+                          'Süt Üreticisi',
                           style: GoogleFonts.inter(
-                            color: isSicak ? Colors.transparent : Colors.grey[600],
+                            color: !isYem ? Colors.transparent : Colors.grey[600],
                             fontWeight: FontWeight.w600,
                             fontSize: 12,
                           ),
@@ -572,9 +729,9 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                     Expanded(
                       child: Center(
                         child: Text(
-                          'Soğuk Süt',
+                          'Yem Müşterisi',
                           style: GoogleFonts.inter(
-                            color: !isSicak ? Colors.transparent : Colors.grey[600],
+                            color: isYem ? Colors.transparent : Colors.grey[600],
                             fontWeight: FontWeight.w600,
                             fontSize: 12,
                           ),
@@ -685,10 +842,31 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
           backgroundColor: AppColors.gray50,
           floatingActionButton: widget.showSutAlDirectly
               ? null
-              : AppFab(
-                  icon: Icons.add_rounded,
-                  label: 'Süt Al',
-                  onTap: () => _showSutAlDialog(plate, tankName, currentStock, capacity, driverName, currentFirmaName, canAddCustomer),
+              : Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    FloatingActionButton.extended(
+                      onPressed: () => _showAddProducerApprovalDialog(currentFirmaName, driverName),
+                      heroTag: 'yeni_uretici_fab',
+                      backgroundColor: AppColors.primary600,
+                      icon: const Icon(Icons.person_add_alt_1_rounded, color: Colors.white, size: 20),
+                      label: Text(
+                        'Yeni Üretici',
+                        style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    FloatingActionButton.extended(
+                      onPressed: () => _showSutAlDialog(plate, tankName, currentStock, capacity, driverName, currentFirmaName, canAddCustomer),
+                      heroTag: 'sut_al_fab',
+                      backgroundColor: AppColors.primary600,
+                      icon: const Icon(Icons.add_rounded, color: Colors.white, size: 20),
+                      label: Text(
+                        'Süt Al',
+                        style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white),
+                      ),
+                    ),
+                  ],
                 ),
           body: LayoutBuilder(
             builder: (context, constraints) {
@@ -769,8 +947,18 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                 final prodDoc = snapshot.data!.docs.firstWhere((doc) => doc['name'] == _selectedUreticiForm);
                 final docData = prodDoc.data() as Map<String, dynamic>;
                 _selectedMilkTypeForm = docData['lastMilkType'] ?? 'Soğuk Süt';
+                _selectedCustomerTypeForm = docData['customerType'] ?? 'sut';
               } catch (_) {
                 _selectedMilkTypeForm = 'Soğuk Süt';
+                _selectedCustomerTypeForm = 'sut';
+              }
+            } else if (_selectedCustomerTypeForm == null) {
+              try {
+                final prodDoc = snapshot.data!.docs.firstWhere((doc) => doc['name'] == _selectedUreticiForm);
+                final docData = prodDoc.data() as Map<String, dynamic>;
+                _selectedCustomerTypeForm = docData['customerType'] ?? 'sut';
+              } catch (_) {
+                _selectedCustomerTypeForm = 'sut';
               }
             }
 
@@ -798,8 +986,10 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                             final prodDoc = snapshot.data!.docs.firstWhere((doc) => doc['name'] == _selectedUreticiForm);
                             final docData = prodDoc.data() as Map<String, dynamic>;
                             _selectedMilkTypeForm = docData['lastMilkType'] ?? 'Soğuk Süt';
+                            _selectedCustomerTypeForm = docData['customerType'] ?? 'sut';
                           } catch (_) {
                             _selectedMilkTypeForm = 'Soğuk Süt';
+                            _selectedCustomerTypeForm = 'sut';
                           }
                           if (_selectedMilkTypeForm == null || !_milkTypes.contains(_selectedMilkTypeForm)) {
                             _selectedMilkTypeForm = 'Soğuk Süt';
@@ -834,6 +1024,37 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                     },
                   ),
                   const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    decoration: BoxDecoration(
+                      color: _selectedCustomerTypeForm == 'yem' ? Colors.amber[100] : Colors.transparent,
+                      borderRadius: BorderRadius.circular(8),
+                      border: _selectedCustomerTypeForm == 'yem'
+                          ? Border.all(color: Colors.amber[300]!, width: 1)
+                          : Border.all(color: Colors.grey[300]!, width: 1),
+                    ),
+                    child: DropdownButtonFormField<String>(
+                      value: _selectedCustomerTypeForm,
+                      decoration: const InputDecoration(
+                        labelText: 'Üretici Türü',
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'sut', child: Text('Süt Üreticisi')),
+                        DropdownMenuItem(value: 'yem', child: Text('Yem Müşterisi')),
+                      ],
+                      onChanged: (val) {
+                        if (val != null) {
+                          setState(() {
+                            _selectedCustomerTypeForm = val;
+                          });
+                        }
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 16),
                   TextField(
                     controller: _miktarFormCtrl,
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -852,7 +1073,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                           SutAnalizDialog.show(
                             context,
                             targetName: _selectedUreticiForm!,
-                            tip: 'Müşteri',
+                            tip: 'Üretici',
                           );
                         }
                       },
@@ -901,6 +1122,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                           vehiclePlate: plate,
                           region: region,
                           sutTipi: _selectedMilkTypeForm,
+                          customerType: _selectedCustomerTypeForm ?? 'sut',
                         );
 
                         _miktarFormCtrl.clear();
@@ -1164,6 +1386,125 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
           ],
         );
       }
+    );
+  }
+
+
+
+  void _showAddProducerApprovalDialog(String currentFirmaName, String driverName) {
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        final nameCtrl = TextEditingController();
+        final phoneCtrl = TextEditingController();
+        final bolgeCtrl = TextEditingController(text: 'Merkez');
+
+        bool isSicak = false;
+        bool isYem = false;
+
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: Text('Yeni Üretici Kayıt Talebi', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              content: SizedBox(
+                width: 400,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextField(
+                        controller: nameCtrl,
+                        decoration: const InputDecoration(labelText: 'Ad Soyad', hintText: 'Örn: Ahmet Yılmaz'),
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: phoneCtrl,
+                        keyboardType: TextInputType.phone,
+                        decoration: const InputDecoration(labelText: 'Telefon', hintText: 'Örn: 0532 999 8877'),
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: bolgeCtrl,
+                        decoration: const InputDecoration(labelText: 'Bölge / İlçe', hintText: 'Örn: Talas'),
+                      ),
+                      const SizedBox(height: 24),
+                      _buildTempToggle(
+                        isSicak,
+                        (val) => setState(() => isSicak = val),
+                        enabled: !isYem,
+                      ),
+                      const SizedBox(height: 16),
+                      _buildCustomerTypeToggle(
+                        isYem,
+                        (val) => setState(() => isYem = val),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: Text('İptal', style: GoogleFonts.inter(color: AppColors.gray500)),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    final name = nameCtrl.text.trim();
+                    final phone = phoneCtrl.text.trim();
+                    final bolge = bolgeCtrl.text.trim();
+                    final selectedMilkType = isYem ? 'Yok' : (isSicak ? 'Sıcak Süt' : 'Soğuk Süt');
+
+                    if (name.isEmpty || phone.isEmpty || bolge.isEmpty) return;
+
+                    // Add request to uretici_onaylari
+                    await FirebaseFirestore.instance.collection('uretici_onaylari').add({
+                      'name': name,
+                      'phone': phone,
+                      'bolge': bolge,
+                      'lastMilkType': selectedMilkType,
+                      'customerType': isYem ? 'yem' : 'sut',
+                      'toplayici': driverName,
+                      'firma': currentFirmaName,
+                      'status': 'Bekliyor',
+                      'timestamp': FieldValue.serverTimestamp(),
+                    });
+
+                    // Send notification to the producer
+                    await _firestoreService.sendNotification(
+                      recipientName: name,
+                      role: 'uretici',
+                      baslik: 'Üretici Kayıt Talebi',
+                      icerik: '$currentFirmaName firması adına toplayıcı $driverName sizin için yeni üretici kayıt talebi oluşturdu.',
+                      type: 'sistem',
+                    );
+
+                    // Send notification to the company
+                    await _firestoreService.sendNotification(
+                      recipientName: currentFirmaName,
+                      role: 'firma',
+                      baslik: 'Yeni Üretici Onay Talebi',
+                      icerik: '$driverName toplayıcısı yeni bir üretici ekledi: $name. Lütfen onaylayın.',
+                      type: 'sistem',
+                    );
+
+                    Navigator.pop(ctx);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Yeni üretici kayıt talebi gönderildi! Firma onayından sonra listelenecektir.'), backgroundColor: AppColors.success),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary600,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  child: const Text('Talep Gönder'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 }

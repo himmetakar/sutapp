@@ -162,7 +162,7 @@ class _FirmaSuruculerState extends State<FirmaSuruculer> {
                 const SizedBox(height: 10),
 
                 SwitchListTile(
-                  title: Text('Müşteri Ekleyebilir', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w500)),
+                  title: Text('Üretici Ekleyebilir', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w500)),
                   subtitle: Text('Toplayıcı panelinden yeni üretici kaydı oluşturma izni.', style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray400)),
                   value: canAddCustomer,
                   activeColor: AppColors.primary600,
@@ -173,8 +173,8 @@ class _FirmaSuruculerState extends State<FirmaSuruculer> {
                   },
                 ),
                 SwitchListTile(
-                  title: Text('Müşteri Düzenleyebilir', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w500)),
-                  subtitle: Text('Müşteri bilgilerini düzenleme izni.', style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray400)),
+                  title: Text('Üretici Düzenleyebilir', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w500)),
+                  subtitle: Text('Üretici bilgilerini düzenleme izni.', style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray400)),
                   value: canEditCustomer,
                   activeColor: AppColors.primary600,
                   contentPadding: EdgeInsets.zero,

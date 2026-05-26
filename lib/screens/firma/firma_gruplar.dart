@@ -106,7 +106,7 @@ class _FirmaGruplarScreenState extends State<FirmaGruplarScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('Grubu Sil', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
-        content: const Text('Bu grubu silmek istediğinize emin misiniz? Bu gruptaki müşteriler gruptan çıkarılmayacaktır fakat grubun kendisi silinecektir.'),
+        content: const Text('Bu grubu silmek istediğinize emin misiniz? Bu gruptaki üreticiler gruptan çıkarılmayacaktır fakat grubun kendisi silinecektir.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Vazgeç')),
           ElevatedButton(
@@ -132,7 +132,7 @@ class _FirmaGruplarScreenState extends State<FirmaGruplarScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Müşteri Grupları', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
+        title: Text('Üretici Grupları', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () => context.go('/firma/ureticiler'),
@@ -209,7 +209,7 @@ class _FirmaGruplarScreenState extends State<FirmaGruplarScreen> {
                             builder: (context, prodSnap) {
                               final count = prodSnap.data?.docs.length ?? 0;
                               return Text(
-                                '$count Müşteri',
+                                '$count Üretici',
                                 style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500),
                               );
                             },

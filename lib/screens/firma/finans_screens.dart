@@ -59,6 +59,7 @@ class FinansYonetimiScreen extends StatelessWidget {
       {'title': 'Ödeme Geçmişi', 'icon': Icons.history_rounded, 'color': Colors.purple, 'path': '/firma/finans/odeme-gecmisi'},
       {'title': 'Müşteri Cezaları', 'icon': Icons.gavel_rounded, 'color': Colors.red, 'path': '/firma/finans/cezalar'},
       {'title': 'Kesintiler', 'icon': Icons.content_cut_rounded, 'color': Colors.red, 'path': '/firma/finans/kesintiler'},
+      {'title': 'Kesinti Oranları', 'icon': Icons.percent_rounded, 'color': Colors.teal, 'path': '/firma/finans/oranlar'},
     ];
 
     return Scaffold(
@@ -2725,6 +2726,170 @@ class _OdemeGecmisiScreenState extends State<OdemeGecmisiScreen> {
                       ),
               ),
             ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class KesintiOranlariScreen extends StatefulWidget {
+  const KesintiOranlariScreen({super.key});
+
+  @override
+  State<KesintiOranlariScreen> createState() => _KesintiOranlariScreenState();
+}
+
+class _KesintiOranlariScreenState extends State<KesintiOranlariScreen> {
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final _formKey = GlobalKey<FormState>();
+  final _bagkurCtrl = TextEditingController();
+  final _stopajCtrl = TextEditingController();
+  final _borsaCtrl = TextEditingController();
+  bool _loading = false;
+
+  @override
+  void dispose() {
+    _bagkurCtrl.dispose();
+    _stopajCtrl.dispose();
+    _borsaCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final currentFirmaName = auth.user?.displayName ?? '';
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Kesinti Oranları Yönetimi', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded),
+          onPressed: () => context.go('/firma/finans'),
+        ),
+      ),
+      backgroundColor: AppColors.gray50,
+      body: StreamBuilder<DocumentSnapshot>(
+        stream: _db.collection('finans_ayarlari').doc(currentFirmaName).snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          double bagkur = 2.10;
+          double stopaj = 1.00;
+          double borsa = 0.20;
+
+          if (snapshot.hasData && snapshot.data!.exists) {
+            final sData = snapshot.data!.data() as Map<String, dynamic>;
+            bagkur = (sData['bagkurOran'] as num?)?.toDouble() ?? 2.10;
+            stopaj = (sData['stopajOran'] as num?)?.toDouble() ?? 1.00;
+            borsa = (sData['borsaOran'] as num?)?.toDouble() ?? 0.20;
+          }
+
+          // Initialize controllers if they are empty
+          if (_bagkurCtrl.text.isEmpty && !_loading) {
+            _bagkurCtrl.text = bagkur.toStringAsFixed(2);
+            _stopajCtrl.text = stopaj.toStringAsFixed(2);
+            _borsaCtrl.text = borsa.toStringAsFixed(2);
+          }
+
+          return Form(
+            key: _formKey,
+            child: ListView(
+              padding: const EdgeInsets.all(24),
+              children: [
+                Text(
+                  'Yasal Kesinti Yüzdeleri',
+                  style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.gray800),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Üretici süt hak edişlerinden (süt geliri üzerinden) kesilecek yasal oranları ayarlayın. Boş bırakırsanız veya hatalı değer girilirse varsayılan yasal oranlar geçerli olur.',
+                  style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray500),
+                ),
+                const SizedBox(height: 24),
+                
+                TextFormField(
+                  controller: _bagkurCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                    labelText: 'Bağkur Kesinti Oranı (%)',
+                    suffixText: '%',
+                    hintText: 'Örn: 2.10',
+                  ),
+                  validator: (val) {
+                    if (val == null || val.trim().isEmpty) return 'Oran giriniz';
+                    if (double.tryParse(val.replaceAll(',', '.')) == null) return 'Geçerli bir sayı giriniz';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _stopajCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                    labelText: 'Stopaj Kesinti Oranı (%)',
+                    suffixText: '%',
+                    hintText: 'Örn: 1.00',
+                  ),
+                  validator: (val) {
+                    if (val == null || val.trim().isEmpty) return 'Oran giriniz';
+                    if (double.tryParse(val.replaceAll(',', '.')) == null) return 'Geçerli bir sayı giriniz';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _borsaCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                    labelText: 'Borsa Kesinti Oranı (%)',
+                    suffixText: '%',
+                    hintText: 'Örn: 0.20',
+                  ),
+                  validator: (val) {
+                    if (val == null || val.trim().isEmpty) return 'Oran giriniz';
+                    if (double.tryParse(val.replaceAll(',', '.')) == null) return 'Geçerli bir sayı giriniz';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 32),
+                
+                ElevatedButton(
+                  onPressed: _loading ? null : () async {
+                    if (_formKey.currentState!.validate()) {
+                      setState(() => _loading = true);
+                      final bk = double.parse(_bagkurCtrl.text.replaceAll(',', '.'));
+                      final st = double.parse(_stopajCtrl.text.replaceAll(',', '.'));
+                      final bs = double.parse(_borsaCtrl.text.replaceAll(',', '.'));
+
+                      await _db.collection('finans_ayarlari').doc(currentFirmaName).set({
+                        'bagkurOran': bk,
+                        'stopajOran': st,
+                        'borsaOran': bs,
+                        'timestamp': FieldValue.serverTimestamp(),
+                      });
+
+                      setState(() => _loading = false);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Kesinti oranları başarıyla kaydedildi!'), backgroundColor: AppColors.success),
+                      );
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary600,
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size(double.infinity, 48),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  child: _loading 
+                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : const Text('Oranları Kaydet'),
+                ),
+              ],
+            ),
           );
         },
       ),

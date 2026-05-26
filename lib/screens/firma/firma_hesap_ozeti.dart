@@ -4,6 +4,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:printing/printing.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
 import '../../providers/auth_provider.dart';
 import '../../config/theme.dart';
 import '../../widgets/common_widgets.dart';
@@ -18,45 +21,102 @@ class FirmaHesapOzetiScreen extends StatefulWidget {
   State<FirmaHesapOzetiScreen> createState() => _FirmaHesapOzetiScreenState();
 }
 
-class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> with SingleTickerProviderStateMixin {
+class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
-  late TabController _tabController;
   String? _selectedProducer;
+  DateTime _selectedMonth = DateTime(DateTime.now().year, DateTime.now().month);
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this); // Haftalık, Aylık, Tümü
     _selectedProducer = widget.producerName;
   }
 
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
+  void _changeMonth(int delta) {
+    setState(() {
+      _selectedMonth = DateTime(_selectedMonth.year, _selectedMonth.month + delta);
+    });
   }
 
-  DateTimeRange _getDateRangeForPeriod(int tabIndex) {
-    final now = DateTime.now();
-    if (tabIndex == 0) {
-      // Haftalık (last 7 days)
-      return DateTimeRange(
-        start: now.subtract(const Duration(days: 7)),
-        end: now,
-      );
-    } else if (tabIndex == 1) {
-      // Aylık (last 30 days)
-      return DateTimeRange(
-        start: now.subtract(const Duration(days: 30)),
-        end: now,
-      );
-    } else {
-      // Tümü (all times)
-      return DateTimeRange(
-        start: DateTime(2020),
-        end: now.add(const Duration(days: 1)),
-      );
-    }
+  void _showMonthPicker() {
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        int tempYear = _selectedMonth.year;
+        final List<String> monthNames = [
+          'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
+          'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'
+        ];
+
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return AlertDialog(
+              title: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.chevron_left_rounded),
+                    onPressed: () {
+                      setModalState(() {
+                        tempYear--;
+                      });
+                    },
+                  ),
+                  Text('$tempYear', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
+                  IconButton(
+                    icon: const Icon(Icons.chevron_right_rounded),
+                    onPressed: () {
+                      setModalState(() {
+                        tempYear++;
+                      });
+                    },
+                  ),
+                ],
+              ),
+              content: SizedBox(
+                width: 300,
+                height: 200,
+                child: GridView.builder(
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 3,
+                    childAspectRatio: 1.5,
+                    crossAxisSpacing: 8,
+                    mainAxisSpacing: 8,
+                  ),
+                  itemCount: 12,
+                  itemBuilder: (context, index) {
+                    final isCurrent = _selectedMonth.month == (index + 1) && _selectedMonth.year == tempYear;
+                    return InkWell(
+                      onTap: () {
+                        setState(() {
+                          _selectedMonth = DateTime(tempYear, index + 1);
+                        });
+                        Navigator.pop(ctx);
+                      },
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: isCurrent ? AppColors.primary600 : Colors.grey[100],
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          monthNames[index],
+                          style: GoogleFonts.inter(
+                            color: isCurrent ? Colors.white : AppColors.gray800,
+                            fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
@@ -156,98 +216,74 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> with Sing
 
   Widget _buildLedgerDetails(String firmaName, String ureticiName) {
     final formatCurrency = NumberFormat.currency(locale: 'tr_TR', symbol: '₺');
+    final formatNumber = NumberFormat('#,##0.00', 'tr_TR');
+    final String monthStr = DateFormat('MMMM yyyy', 'tr_TR').format(_selectedMonth);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(ureticiName, style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () {
-            if (widget.producerName != null) {
-              // Direct navigation from list -> go back to ureticiler
-              context.go('/firma/ureticiler');
-            } else {
-              // Went through general lists -> reset select state
-              setState(() {
-                _selectedProducer = null;
-              });
-            }
-          },
-        ),
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: AppColors.primary600,
-          labelColor: AppColors.primary600,
-          unselectedLabelColor: AppColors.gray500,
-          tabs: const [
-            Tab(text: 'Haftalık'),
-            Tab(text: 'Aylık'),
-            Tab(text: 'Tümü'),
-          ],
-          onTap: (idx) {
-            setState(() {});
-          },
-        ),
-      ),
-      backgroundColor: AppColors.gray50,
-      body: FutureBuilder<Map<String, dynamic>>(
-        future: _loadProducerLedgerData(firmaName, ureticiName),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError) {
-            return Center(child: Text('Yükleme hatası: ${snapshot.error}'));
-          }
+    // Calculate dates
+    final startOfMonth = DateTime(_selectedMonth.year, _selectedMonth.month, 1);
+    final endOfMonth = DateTime(_selectedMonth.year, _selectedMonth.month + 1, 1).subtract(const Duration(microseconds: 1));
 
-          final data = snapshot.data ?? {};
-          final allCollections = data['collections'] as List<QueryDocumentSnapshot>;
-          final prices = data['prices'] as List<QueryDocumentSnapshot>;
-          final tahsilatlar = data['tahsilatlar'] as List<QueryDocumentSnapshot>;
-          final avanslar = data['avanslar'] as List<QueryDocumentSnapshot>;
-          final kesintiler = data['kesintiler'] as List<QueryDocumentSnapshot>;
-          final cezalar = data['cezalar'] as List<QueryDocumentSnapshot>;
-          final satislar = data['satislar'] as List<QueryDocumentSnapshot>;
-          final producerDoc = data['producerDoc'] as DocumentSnapshot?;
+    return FutureBuilder<Map<String, dynamic>>(
+      future: _loadProducerLedgerData(firmaName, ureticiName),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Scaffold(
+            appBar: AppBar(title: Text(ureticiName, style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16))),
+            body: const Center(child: CircularProgressIndicator()),
+          );
+        }
+        if (snapshot.hasError) {
+          return Scaffold(
+            appBar: AppBar(title: Text(ureticiName, style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16))),
+            body: Center(child: Text('Yükleme hatası: ${snapshot.error}')),
+          );
+        }
 
-          String group = '';
-          String bolge = '';
-          if (producerDoc != null && producerDoc.exists) {
-            final pData = producerDoc.data() as Map<String, dynamic>;
-            group = pData['group'] ?? '';
-            bolge = pData['bolge'] ?? '';
-          }
+        final data = snapshot.data ?? {};
+        final allCollections = data['collections'] as List<QueryDocumentSnapshot>;
+        final prices = data['prices'] as List<QueryDocumentSnapshot>;
+        final tahsilatlar = data['tahsilatlar'] as List<QueryDocumentSnapshot>;
+        final avanslar = data['avanslar'] as List<QueryDocumentSnapshot>;
+        final kesintiler = data['kesintiler'] as List<QueryDocumentSnapshot>;
+        final cezalar = data['cezalar'] as List<QueryDocumentSnapshot>;
+        final satislar = data['satislar'] as List<QueryDocumentSnapshot>;
+        final devirler = data['devirler'] as List<QueryDocumentSnapshot>;
+        final producerDoc = data['producerDoc'] as DocumentSnapshot?;
+        final settingsDoc = data['finansAyarlari'] as DocumentSnapshot?;
 
-          // Calculate overall ledger elements filtered by selected period tab
-          final dateRange = _getDateRangeForPeriod(_tabController.index);
+        double bagkurOran = 2.10;
+        double stopajOran = 1.00;
+        double borsaOran = 0.20;
+        if (settingsDoc != null && settingsDoc.exists) {
+          final sData = settingsDoc.data() as Map<String, dynamic>;
+          bagkurOran = (sData['bagkurOran'] as num?)?.toDouble() ?? 2.10;
+          stopajOran = (sData['stopajOran'] as num?)?.toDouble() ?? 1.00;
+          borsaOran = (sData['borsaOran'] as num?)?.toDouble() ?? 0.20;
+        }
+        double totalDeductionRate = (bagkurOran + stopajOran + borsaOran) / 100.0;
 
-          // Filtering helper
-          bool isInRange(DocumentSnapshot doc) {
-            final data = doc.data() as Map<String, dynamic>?;
-            if (data == null) return false;
-            final ts = data['timestamp'] as Timestamp?;
-            if (ts == null) return false;
-            final date = ts.toDate();
-            return date.isAfter(dateRange.start) && date.isBefore(dateRange.end);
-          }
+        String group = '';
+        String bolge = '';
+        if (producerDoc != null && producerDoc.exists) {
+          final pData = producerDoc.data() as Map<String, dynamic>;
+          group = pData['group'] ?? '';
+          bolge = pData['bolge'] ?? '';
+        }
 
-          final filteredCols = allCollections.where((c) => isInRange(c)).toList();
-          final filteredTah = tahsilatlar.where((t) => isInRange(t)).toList();
-          final filteredAv = avanslar.where((a) => isInRange(a)).toList();
-          final filteredKes = kesintiler.where((k) => isInRange(k)).toList();
-          final filteredCez = cezalar.where((cz) => isInRange(cz)).toList();
-          final filteredSat = satislar.where((s) => isInRange(s)).toList();
+        final priceList = prices.map((d) => d.data() as Map<String, dynamic>).toList();
 
-          // Calculate Gross Milk Receivable
-          double toplamLitre = 0.0;
-          double milkVal = 0.0;
-          final priceList = prices.map((d) => d.data() as Map<String, dynamic>).toList();
+        // 1. Calculate devir (before selected month)
+        double devirSum = 0.0;
 
-          for (var doc in filteredCols) {
-            final data = doc.data() as Map<String, dynamic>;
-            final double m = (data['m'] as num?)?.toDouble() ?? 0.0;
-            toplamLitre += m;
-            final String rawType = data['tip'] ?? 'Soğuk Süt';
+        // Past milk value
+        double pastMilkVal = 0.0;
+        for (var doc in allCollections) {
+          final ts = doc['timestamp'] as Timestamp?;
+          if (ts == null) continue;
+          final date = ts.toDate();
+          if (date.isBefore(startOfMonth)) {
+            final double m = (doc['m'] as num?)?.toDouble() ?? 0.0;
+            final String rawType = doc['tip'] ?? 'Soğuk Süt';
             final String priceKey = FirestoreService().mapMilkTypeToPriceKey(rawType);
             final double price = FirestoreService().resolveMilkPrice(
               prices: priceList,
@@ -256,264 +292,1223 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> with Sing
               group: group,
               type: priceKey,
             );
-            milkVal += m * price;
+            pastMilkVal += m * price;
           }
+        }
+        devirSum += pastMilkVal;
 
-          // Sum others
-          double totalPayments = filteredTah.fold(0.0, (sum, doc) {
-            final data = doc.data() as Map<String, dynamic>;
-            return sum + ((data['tutar'] as num?)?.toDouble() ?? 0.0);
-          });
-          double totalAvans = filteredAv.where((a) {
-            final data = a.data() as Map<String, dynamic>;
-            return data['durum'] == 'aktif';
-          }).fold(0.0, (sum, doc) {
-            final data = doc.data() as Map<String, dynamic>;
-            return sum + ((data['tutar'] as num?)?.toDouble() ?? 0.0);
-          });
-          double totalKesinti = filteredKes.where((k) {
-            final data = k.data() as Map<String, dynamic>;
-            return data['durum'] == 'aktif';
-          }).fold(0.0, (sum, doc) {
-            final data = doc.data() as Map<String, dynamic>;
-            return sum + ((data['tutar'] as num?)?.toDouble() ?? 0.0);
-          });
-          double totalCeza = 0.0;
-          for (var doc in filteredCez) {
-            final data = doc.data() as Map<String, dynamic>;
-            if (data['durum'] == 'aktif') {
-              if (data['tip'] == 'oransal') {
-                final double oran = (data['oran'] as num?)?.toDouble() ?? 0.0;
-                totalCeza += milkVal * (oran / 100.0);
-              } else {
-                totalCeza += (data['tutar'] as num?)?.toDouble() ?? 0.0;
+        // Past tahsilatlar (payments by producer to company)
+        for (var doc in tahsilatlar) {
+          final ts = doc['timestamp'] as Timestamp?;
+          if (ts == null) continue;
+          if (ts.toDate().isBefore(startOfMonth)) {
+            devirSum += (doc['tutar'] as num?)?.toDouble() ?? 0.0;
+          }
+        }
+
+        // Past sales (purchased products by producer)
+        for (var doc in satislar) {
+          final ts = doc['timestamp'] as Timestamp?;
+          if (ts == null) continue;
+          if (ts.toDate().isBefore(startOfMonth)) {
+            devirSum -= (doc['tutar'] as num?)?.toDouble() ?? 0.0;
+          }
+        }
+
+        // Past advances (durum == 'aktif')
+        for (var doc in avanslar) {
+          final ts = doc['timestamp'] as Timestamp?;
+          final state = doc['durum'] ?? 'aktif';
+          if (ts == null || state != 'aktif') continue;
+          if (ts.toDate().isBefore(startOfMonth)) {
+            devirSum -= (doc['tutar'] as num?)?.toDouble() ?? 0.0;
+          }
+        }
+
+        // Past manual kesintiler (durum == 'aktif')
+        for (var doc in kesintiler) {
+          final ts = doc['timestamp'] as Timestamp?;
+          final state = doc['durum'] ?? 'aktif';
+          if (ts == null || state != 'aktif') continue;
+          if (ts.toDate().isBefore(startOfMonth)) {
+            devirSum -= (doc['tutar'] as num?)?.toDouble() ?? 0.0;
+          }
+        }
+
+        // Past dynamic kesintiler (Bağkur, Stopaj, Borsa = totalDeductionRate of past Süt Geliri)
+        devirSum -= pastMilkVal * totalDeductionRate;
+
+        // Past active penalties (durum == 'aktif')
+        for (var doc in cezalar) {
+          final ts = doc['timestamp'] as Timestamp?;
+          final state = doc['durum'] ?? 'aktif';
+          if (ts == null || state != 'aktif') continue;
+          final date = ts.toDate();
+          if (date.isBefore(startOfMonth)) {
+            double tutar = 0.0;
+            if (doc['tip'] == 'oransal') {
+              final double oran = (doc['oran'] as num?)?.toDouble() ?? 0.0;
+              // Milk value for the month of this past penalty
+              double penaltyMonthMilkVal = 0.0;
+              for (var col in allCollections) {
+                final colTs = col['timestamp'] as Timestamp?;
+                if (colTs == null) continue;
+                final colDate = colTs.toDate();
+                if (colDate.year == date.year && colDate.month == date.month) {
+                  final double m = (col['m'] as num?)?.toDouble() ?? 0.0;
+                  final String rawType = col['tip'] ?? 'Soğuk Süt';
+                  final String priceKey = FirestoreService().mapMilkTypeToPriceKey(rawType);
+                  final double price = FirestoreService().resolveMilkPrice(
+                    prices: priceList,
+                    producerName: ureticiName,
+                    bolge: bolge,
+                    group: group,
+                    type: priceKey,
+                  );
+                  penaltyMonthMilkVal += m * price;
+                }
               }
+              tutar = penaltyMonthMilkVal * (oran / 100.0);
+            } else {
+              tutar = (doc['tutar'] as num?)?.toDouble() ?? 0.0;
             }
+            devirSum -= tutar;
           }
-          double totalSales = filteredSat.fold(0.0, (sum, doc) {
-            final data = doc.data() as Map<String, dynamic>;
-            return sum + ((data['tutar'] as num?)?.toDouble() ?? 0.0);
-          });
+        }
 
-          // Net balance
-          final double totalDebts = totalSales + totalAvans + totalKesinti + totalCeza + totalPayments;
-          final double netReceivable = milkVal - totalDebts;
-
-          // Merge all transactions for sorting and display
-          final List<Map<String, dynamic>> txList = [];
-
-          for (var doc in filteredCols) {
-            final data = doc.data() as Map<String, dynamic>;
-            final double m = (data['m'] as num?)?.toDouble() ?? 0.0;
-            final String rawType = data['tip'] ?? 'Soğuk Süt';
-            final String priceKey = FirestoreService().mapMilkTypeToPriceKey(rawType);
-            final double price = FirestoreService().resolveMilkPrice(
-              prices: priceList,
-              producerName: ureticiName,
-              bolge: bolge,
-              group: group,
-              type: priceKey,
-            );
-            final double val = m * price;
-            final Timestamp? ts = data['timestamp'] as Timestamp?;
-            txList.add({
-              'ts': ts?.toDate() ?? DateTime.now(),
-              'title': 'Süt Teslimi ($rawType)',
-              'subtitle': '${m.toStringAsFixed(1)} LT x ${price.toStringAsFixed(2)} ₺',
-              'amount': val,
-              'isPositive': true,
-              'icon': Icons.water_drop_rounded,
-              'color': AppColors.primary600,
-            });
+        // Past devirler/corrections
+        for (var doc in devirler) {
+          final ts = doc['timestamp'] as Timestamp?;
+          if (ts == null) continue;
+          if (ts.toDate().isBefore(startOfMonth)) {
+            devirSum += (doc['tutar'] as num?)?.toDouble() ?? 0.0;
           }
+        }
 
-          for (var doc in filteredTah) {
-            final data = doc.data() as Map<String, dynamic>;
-            final tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
-            final Timestamp? ts = data['timestamp'] as Timestamp?;
-            txList.add({
-              'ts': ts?.toDate() ?? DateTime.now(),
-              'title': 'Ödeme Alındı (${data['odemeYontemi'] ?? 'Nakit'})',
-              'subtitle': data['aciklama'] ?? 'Hesap kapatma ödemesi',
-              'amount': tutar,
-              'isPositive': false,
-              'icon': Icons.payments_rounded,
-              'color': AppColors.success,
-            });
+        // 2. Filter current month transactions
+        bool isInSelectedMonth(DocumentSnapshot doc) {
+          final data = doc.data() as Map<String, dynamic>?;
+          if (data == null) return false;
+          final ts = data['timestamp'] as Timestamp?;
+          if (ts == null) return false;
+          final date = ts.toDate();
+          return date.isAfter(startOfMonth.subtract(const Duration(microseconds: 1))) && date.isBefore(endOfMonth.add(const Duration(microseconds: 1)));
+        }
+
+        final currentCols = allCollections.where((c) => isInSelectedMonth(c)).toList();
+        final currentTah = tahsilatlar.where((t) => isInSelectedMonth(t)).toList();
+        final currentAv = avanslar.where((a) => isInSelectedMonth(a)).toList();
+        final currentKes = kesintiler.where((k) => isInSelectedMonth(k)).toList();
+        final currentCez = cezalar.where((cz) => isInSelectedMonth(cz)).toList();
+        final currentSat = satislar.where((s) => isInSelectedMonth(s)).toList();
+        final currentDev = devirler.where((d) => isInSelectedMonth(d)).toList();
+
+        // 3. Compute Current Month Calculations
+        double toplamLitre = 0.0;
+        double milkVal = 0.0;
+        final Map<String, Map<String, dynamic>> milkGrouped = {};
+
+        for (var doc in currentCols) {
+          final data = doc.data() as Map<String, dynamic>;
+          final double m = (data['m'] as num?)?.toDouble() ?? 0.0;
+          toplamLitre += m;
+
+          final String rawType = data['tip'] ?? 'Soğuk Süt';
+          final String priceKey = FirestoreService().mapMilkTypeToPriceKey(rawType);
+          final double price = FirestoreService().resolveMilkPrice(
+            prices: priceList,
+            producerName: ureticiName,
+            bolge: bolge,
+            group: group,
+            type: priceKey,
+          );
+          milkVal += m * price;
+
+          if (milkGrouped.containsKey(rawType)) {
+            milkGrouped[rawType]!['m'] = (milkGrouped[rawType]!['m'] as double) + m;
+          } else {
+            milkGrouped[rawType] = {
+              'tip': rawType,
+              'price': price,
+              'm': m,
+            };
           }
+        }
 
-          for (var doc in filteredAv) {
-            final data = doc.data() as Map<String, dynamic>;
-            final tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
-            final Timestamp? ts = data['timestamp'] as Timestamp?;
-            final state = data['durum'] ?? 'aktif';
-            txList.add({
-              'ts': ts?.toDate() ?? DateTime.now(),
-              'title': 'Avans Ödemesi ($state)',
-              'subtitle': data['aciklama'] ?? '',
-              'amount': tutar,
-              'isPositive': false,
-              'icon': Icons.monetization_on_rounded,
-              'color': AppColors.warning,
-            });
-          }
+        double totalSales = currentSat.fold(0.0, (sum, doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          return sum + ((data['tutar'] as num?)?.toDouble() ?? 0.0);
+        });
 
-          for (var doc in filteredSat) {
-            final data = doc.data() as Map<String, dynamic>;
-            final tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
-            final Timestamp? ts = data['timestamp'] as Timestamp?;
-            txList.add({
-              'ts': ts?.toDate() ?? DateTime.now(),
-              'title': 'Ürün Satışı (${data['urun'] ?? 'Yem'})',
-              'subtitle': '${data['miktar'] ?? 1} adet/kg',
-              'amount': tutar,
-              'isPositive': false,
-              'icon': Icons.shopping_basket_rounded,
-              'color': AppColors.danger,
-            });
-          }
+        double totalAvans = currentAv.where((a) => (a['durum'] ?? 'aktif') == 'aktif').fold(0.0, (sum, doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          return sum + ((data['tutar'] as num?)?.toDouble() ?? 0.0);
+        });
 
-          for (var doc in filteredKes) {
-            final data = doc.data() as Map<String, dynamic>;
-            final tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
-            final Timestamp? ts = data['timestamp'] as Timestamp?;
-            txList.add({
-              'ts': ts?.toDate() ?? DateTime.now(),
-              'title': 'Kesinti Uygulandı',
-              'subtitle': data['aciklama'] ?? '',
-              'amount': tutar,
-              'isPositive': false,
-              'icon': Icons.content_cut_rounded,
-              'color': AppColors.gray600,
-            });
-          }
+        double totalPayments = currentTah.fold(0.0, (sum, doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          return sum + ((data['tutar'] as num?)?.toDouble() ?? 0.0);
+        });
 
-          for (var doc in filteredCez) {
-            final data = doc.data() as Map<String, dynamic>;
-            double val = 0.0;
+        double totalCeza = 0.0;
+        for (var doc in currentCez) {
+          final data = doc.data() as Map<String, dynamic>;
+          if ((data['durum'] ?? 'aktif') == 'aktif') {
             if (data['tip'] == 'oransal') {
               final double oran = (data['oran'] as num?)?.toDouble() ?? 0.0;
-              val = milkVal * (oran / 100.0);
+              totalCeza += milkVal * (oran / 100.0);
             } else {
-              val = (data['tutar'] as num?)?.toDouble() ?? 0.0;
+              totalCeza += (data['tutar'] as num?)?.toDouble() ?? 0.0;
             }
-            final Timestamp? ts = data['timestamp'] as Timestamp?;
-            txList.add({
-              'ts': ts?.toDate() ?? DateTime.now(),
-              'title': 'Ceza Kesildi',
-              'subtitle': data['aciklama'] ?? '',
-              'amount': val,
-              'isPositive': false,
-              'icon': Icons.gavel_rounded,
-              'color': Colors.red,
-            });
           }
+        }
 
-          // Sort txList by date descending
-          txList.sort((a, b) => b['ts'].compareTo(a['ts']));
+        // Deductions (manual + dynamic: Bağkur, Stopaj, Borsa of Süt Geliri)
+        double totalManualKesinti = currentKes.where((k) => (k['durum'] ?? 'aktif') == 'aktif').fold(0.0, (sum, doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          return sum + ((data['tutar'] as num?)?.toDouble() ?? 0.0);
+        });
 
-          return ListView(
+        double bagkur = milkVal * (bagkurOran / 100.0);
+        double stopaj = milkVal * (stopajOran / 100.0);
+        double borsa = milkVal * (borsaOran / 100.0);
+        double totalDynamicKesinti = bagkur + stopaj + borsa;
+        double totalKesinti = totalManualKesinti + totalDynamicKesinti;
+
+        double totalCorrections = currentDev.fold(0.0, (sum, doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          return sum + ((data['tutar'] as num?)?.toDouble() ?? 0.0);
+        });
+
+        // 4. Net values
+        final double donemSonuBakiye = milkVal + totalPayments - totalSales - totalAvans - totalCeza - totalKesinti + totalCorrections;
+        final double mevcutBakiye = donemSonuBakiye + devirSum;
+        final double netOdenecek = mevcutBakiye;
+
+        // Build list of widgets
+        final List<Widget> sections = [];
+
+        // Month Selector Card
+        sections.add(
+          Container(
+            margin: const EdgeInsets.only(bottom: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              boxShadow: AppShadows.sm,
+              border: Border.all(color: AppColors.gray200),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.chevron_left_rounded, color: AppColors.gray600),
+                  onPressed: () => _changeMonth(-1),
+                ),
+                InkWell(
+                  onTap: _showMonthPicker,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.calendar_month_rounded, color: AppColors.primary600, size: 18),
+                      const SizedBox(width: 8),
+                      Text(
+                        monthStr,
+                        style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.gray800),
+                      ),
+                      const SizedBox(width: 4),
+                      const Icon(Icons.keyboard_arrow_down_rounded, color: AppColors.gray400, size: 18),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.chevron_right_rounded, color: AppColors.gray600),
+                  onPressed: () => _changeMonth(1),
+                ),
+              ],
+            ),
+          ),
+        );
+
+        // Section 1: Süt Üretimi
+        if (toplamLitre > 0) {
+          final List<Widget> rows = [];
+          milkGrouped.forEach((type, item) {
+            final double m = item['m'];
+            final double p = item['price'];
+            rows.add(_buildSectionRow(
+              leftText: '$type: ${p.toStringAsFixed(2)}₺/L',
+              rightText: '${formatNumber.format(m)} L',
+              isBoldRight: true,
+            ));
+          });
+          rows.add(_buildSectionSummaryRow('Toplam Süt Üretimi', '${formatNumber.format(toplamLitre)} L', AppColors.primary600));
+          rows.add(_buildSectionSummaryRow('Toplam Süt Geliri', '+ ${formatCurrency.format(milkVal)}', AppColors.success));
+
+          sections.add(_buildSectionCard(
+            title: 'Süt Üretimi',
+            icon: Icons.water_drop_rounded,
+            children: rows,
+          ));
+        }
+
+        // Section 2: Alınan Ürünler
+        if (currentSat.isNotEmpty) {
+          final List<Widget> rows = [];
+          for (var doc in currentSat) {
+            final data = doc.data() as Map<String, dynamic>;
+            final tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
+            final tarihStr = data['tarih'] ?? '';
+            rows.add(_buildSectionRow(
+              leftText: '${data['urun'] ?? 'Yem'}',
+              leftSubtitle: '${data['miktar'] ?? 1} adet x ${formatNumber.format((data['fiyat'] as num?)?.toDouble() ?? 0.0)} ₺',
+              rightText: '${formatCurrency.format(tutar)}',
+              rightColor: Colors.red[850],
+              rightSubtitle: tarihStr,
+            ));
+          }
+          rows.add(_buildSectionSummaryRow('Toplam Ürün', '+ ${formatCurrency.format(totalSales)}', AppColors.success));
+
+          sections.add(_buildSectionCard(
+            title: 'Alınan Ürünler',
+            icon: Icons.shopping_basket_rounded,
+            children: rows,
+          ));
+        }
+
+        // Section 3: Alınan Avanslar
+        if (currentAv.isNotEmpty) {
+          final List<Widget> rows = [];
+          for (var doc in currentAv) {
+            final data = doc.data() as Map<String, dynamic>;
+            final tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
+            final tarihStr = data['tarih'] ?? '';
+            rows.add(_buildSectionRow(
+              leftText: data['aciklama'] ?? 'Avans',
+              rightText: '${formatCurrency.format(tutar)}',
+              rightColor: Colors.red[850],
+              rightSubtitle: tarihStr,
+            ));
+          }
+          rows.add(_buildSectionSummaryRow('Toplam Alınan Avans', '+ ${formatCurrency.format(totalAvans)}', AppColors.success));
+
+          sections.add(_buildSectionCard(
+            title: 'Alınan Avanslar',
+            icon: Icons.monetization_on_rounded,
+            children: rows,
+          ));
+        }
+
+        // Section 4: Tahsilatlar
+        if (currentTah.isNotEmpty) {
+          final List<Widget> rows = [];
+          for (var doc in currentTah) {
+            final data = doc.data() as Map<String, dynamic>;
+            final tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
+            final tarihStr = data['tarih'] ?? '';
+            rows.add(_buildSectionRow(
+              leftText: data['aciklama'] ?? 'Tahsilat',
+              rightText: '+ ${formatCurrency.format(tutar)}',
+              rightColor: AppColors.success,
+              rightSubtitle: tarihStr,
+            ));
+          }
+          rows.add(_buildSectionSummaryRow('Toplam Tahsilat', '+ ${formatCurrency.format(totalPayments)}', AppColors.success));
+
+          sections.add(_buildSectionCard(
+            title: 'Tahsilatlar',
+            icon: Icons.move_to_inbox_rounded,
+            children: rows,
+          ));
+        }
+
+        // Section 5: Cezalar
+        if (currentCez.isNotEmpty) {
+          final List<Widget> rows = [];
+          for (var doc in currentCez) {
+            final data = doc.data() as Map<String, dynamic>;
+            double tutar = 0.0;
+            String detailStr = '';
+            if (data['tip'] == 'oransal') {
+              final double oran = (data['oran'] as num?)?.toDouble() ?? 0.0;
+              tutar = milkVal * (oran / 100.0);
+              detailStr = 'Süt bedelinin %${oran.toStringAsFixed(2)} oranında';
+            } else {
+              tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
+            }
+            final tarihStr = data['tarih'] ?? '';
+            rows.add(_buildSectionRow(
+              leftText: data['aciklama'] ?? 'Ceza Kesildi',
+              leftSubtitle: detailStr.isNotEmpty ? detailStr : null,
+              rightText: '- ${formatCurrency.format(tutar)}',
+              rightColor: Colors.red[800],
+              rightSubtitle: tarihStr,
+            ));
+          }
+          rows.add(_buildSectionSummaryRow('Toplam Ceza', '- ${formatCurrency.format(totalCeza)}', Colors.red[800]!));
+
+          sections.add(_buildSectionCard(
+            title: 'Cezalar',
+            icon: Icons.gavel_rounded,
+            children: rows,
+          ));
+        }
+
+        // Section 6: Kesintiler
+        if (milkVal > 0 || totalManualKesinti > 0) {
+          final List<Widget> rows = [];
+          if (milkVal > 0) {
+            rows.add(_buildSectionRow(
+              leftText: 'Bağkur',
+              leftSubtitle: '%${bagkurOran.toStringAsFixed(2)} oranında',
+              rightText: '- ${formatCurrency.format(bagkur)}',
+              rightColor: Colors.red[850],
+            ));
+            rows.add(_buildSectionRow(
+              leftText: 'Stopaj',
+              leftSubtitle: '%${stopajOran.toStringAsFixed(2)} oranında',
+              rightText: '- ${formatCurrency.format(stopaj)}',
+              rightColor: Colors.red[850],
+            ));
+            rows.add(_buildSectionRow(
+              leftText: 'Borsa',
+              leftSubtitle: '%${borsaOran.toStringAsFixed(2)} oranında',
+              rightText: '- ${formatCurrency.format(borsa)}',
+              rightColor: Colors.red[850],
+            ));
+          }
+          for (var doc in currentKes) {
+            final data = doc.data() as Map<String, dynamic>;
+            if ((data['durum'] ?? 'aktif') == 'aktif') {
+              final tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
+              final tarihStr = data['tarih'] ?? '';
+              rows.add(_buildSectionRow(
+                leftText: data['aciklama'] ?? 'Kesinti',
+                rightText: '- ${formatCurrency.format(tutar)}',
+                rightColor: Colors.red[850],
+                rightSubtitle: tarihStr,
+              ));
+            }
+          }
+          rows.add(_buildSectionSummaryRow('Toplam Kesinti', '- ${formatCurrency.format(totalKesinti)}', Colors.red[800]!));
+
+          sections.add(_buildSectionCard(
+            title: 'Kesintiler',
+            icon: Icons.bar_chart_rounded,
+            children: rows,
+          ));
+        }
+
+        // Section 7: Net Ödeme Card (at the bottom)
+        sections.add(
+          _buildNetPayableCard(
+            sutGeliri: milkVal,
+            tahsilatlar: totalPayments,
+            alinanUrunler: totalSales,
+            alinanAvanslar: totalAvans,
+            cezalar: totalCeza,
+            kesintiler: totalKesinti,
+            devir: devirSum,
+          ),
+        );
+
+        return Scaffold(
+          appBar: AppBar(
+            title: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(ureticiName, style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
+                Text('Hesap Özeti', style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray400)),
+              ],
+            ),
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back_rounded),
+              onPressed: () {
+                if (widget.producerName != null) {
+                  context.go('/firma/ureticiler');
+                } else {
+                  setState(() {
+                    _selectedProducer = null;
+                  });
+                }
+              },
+            ),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.history_rounded, color: AppColors.primary600),
+                tooltip: 'İşlem Geçmişi',
+                onPressed: () => _showAllTransactionsDialog(
+                  collections: allCollections,
+                  satislar: satislar,
+                  avanslar: avanslar,
+                  tahsilatlar: tahsilatlar,
+                  cezalar: cezalar,
+                  kesintiler: kesintiler,
+                  devirler: devirler,
+                  priceList: priceList,
+                  bolge: bolge,
+                  group: group,
+                  ureticiName: ureticiName,
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.print_rounded, color: AppColors.primary600),
+                tooltip: 'PDF Yazdır / Paylaş',
+                onPressed: () => _exportPdfReport(
+                  ureticiName: ureticiName,
+                  bolge: bolge,
+                  group: group,
+                  collections: currentCols,
+                  sales: currentSat,
+                  advances: currentAv,
+                  tahsilatlar: currentTah,
+                  cezalar: currentCez,
+                  kesintiler: currentKes,
+                  devirler: currentDev,
+                  priceList: priceList,
+                  milkVal: milkVal,
+                  totalLitre: toplamLitre,
+                  totalSales: totalSales,
+                  totalAvans: totalAvans,
+                  totalPayments: totalPayments,
+                  totalCeza: totalCeza,
+                  totalKesinti: totalKesinti,
+                  devir: devirSum,
+                  selectedMonth: _selectedMonth,
+                  currentFirmaName: firmaName,
+                  milkGrouped: milkGrouped,
+                  bagkur: bagkur,
+                  stopaj: stopaj,
+                  borsa: borsa,
+                  bagkurOran: bagkurOran,
+                  stopajOran: stopajOran,
+                  borsaOran: borsaOran,
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: AppColors.gray50,
+          body: ListView(
             padding: const EdgeInsets.all(16),
+            children: sections,
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildSectionCard({
+    required String title,
+    required IconData icon,
+    required List<Widget> children,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: AppShadows.sm,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              // Summary Cards
-              StatsGrid(
-                children: [
-                  StatCard(
-                    icon: Icons.water_drop_rounded,
-                    value: '${toplamLitre.toStringAsFixed(0)} LT',
-                    label: 'Toplam Süt Alımı',
-                    color: AppColors.primary600,
-                  ),
-                  StatCard(
-                    icon: Icons.monetization_on_rounded,
-                    value: formatCurrency.format(milkVal),
-                    label: 'Süt Bedeli (Alacak)',
-                    color: AppColors.success,
-                  ),
-                  StatCard(
-                    icon: Icons.outbox_rounded,
-                    value: formatCurrency.format(totalDebts),
-                    label: 'Borç / Ödemeler',
-                    color: AppColors.danger,
-                  ),
-                  StatCard(
-                    icon: Icons.account_balance_wallet_rounded,
-                    value: formatCurrency.format(netReceivable),
-                    label: 'Net Kalan Bakiye',
-                    color: netReceivable >= 0 ? AppColors.primary600 : AppColors.danger,
+              Icon(icon, size: 20, color: AppColors.primary600),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: GoogleFonts.inter(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                  color: AppColors.gray800,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ...children,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionRow({
+    required String leftText,
+    String? leftSubtitle,
+    required String rightText,
+    bool isBoldRight = false,
+    Color? rightColor,
+    String? rightSubtitle,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  leftText,
+                  style: GoogleFonts.inter(fontSize: 13, color: AppColors.gray700, fontWeight: FontWeight.w500),
+                ),
+                if (leftSubtitle != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    leftSubtitle,
+                    style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray400),
                   ),
                 ],
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                rightText,
+                style: GoogleFonts.inter(
+                  fontSize: 13,
+                  fontWeight: isBoldRight ? FontWeight.bold : FontWeight.normal,
+                  color: rightColor ?? AppColors.gray800,
+                ),
               ),
-              const SizedBox(height: 24),
+              if (rightSubtitle != null) ...[
+                const SizedBox(height: 2),
+                Text(
+                  rightSubtitle,
+                  style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray400),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 
-              SectionTitle(title: 'Hesap Hareketleri'),
+  Widget _buildSectionSummaryRow(String label, String value, Color color) {
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.only(top: 8),
+      decoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: AppColors.gray100, width: 1)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: GoogleFonts.inter(
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+              color: AppColors.gray800,
+            ),
+          ),
+          Text(
+            value,
+            style: GoogleFonts.inter(
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-              if (txList.isEmpty)
-                Center(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 40),
-                    child: Text('Bu dönemde hesap hareketi bulunmuyor.', style: GoogleFonts.inter(color: AppColors.gray500)),
-                  ),
-                )
-              else
-                ListView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: txList.length,
+  Widget _buildNetPayableCard({
+    required double sutGeliri,
+    required double tahsilatlar,
+    required double alinanUrunler,
+    required double alinanAvanslar,
+    required double cezalar,
+    required double kesintiler,
+    required double devir,
+  }) {
+    final double donemSonuBakiye = sutGeliri + tahsilatlar - alinanUrunler - alinanAvanslar - cezalar - kesintiler;
+    final double mevcutBakiye = donemSonuBakiye + devir;
+    final double netOdenecek = mevcutBakiye;
+
+    final formatCurrency = NumberFormat.currency(locale: 'tr_TR', symbol: '₺');
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE8F5E9),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.green[200]!, width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.credit_card_rounded, size: 20, color: Colors.green[800]),
+              const SizedBox(width: 8),
+              Text(
+                'Net Ödeme',
+                style: GoogleFonts.inter(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                  color: Colors.green[800],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          if (sutGeliri > 0)
+            _buildNetRow('Süt Geliri', '+ ${formatCurrency.format(sutGeliri)}', Colors.green[800]!),
+          if (tahsilatlar > 0)
+            _buildNetRow('Tahsilatlar', '+ ${formatCurrency.format(tahsilatlar)}', Colors.green[800]!),
+          if (alinanUrunler > 0)
+            _buildNetRow('Alınan Ürünler', '- ${formatCurrency.format(alinanUrunler)}', Colors.red[800]!),
+          if (alinanAvanslar > 0)
+            _buildNetRow('Alınan Avanslar', '- ${formatCurrency.format(alinanAvanslar)}', Colors.red[800]!),
+          if (cezalar > 0)
+            _buildNetRow('Cezalar', '- ${formatCurrency.format(cezalar)}', Colors.red[800]!),
+          if (kesintiler > 0)
+            _buildNetRow('Kesintiler', '- ${formatCurrency.format(kesintiler)}', Colors.red[800]!),
+
+          const Divider(color: Colors.green, height: 24),
+
+          _buildNetSummaryRow(
+            'Dönem Sonu Bakiye',
+            '${donemSonuBakiye >= 0 ? '+' : ''} ${formatCurrency.format(donemSonuBakiye)}',
+            donemSonuBakiye >= 0 ? Colors.green[800]! : Colors.red[800]!,
+          ),
+          const SizedBox(height: 8),
+          _buildNetRow(
+            'Önceki Aydan Devir',
+            '${devir >= 0 ? '+' : ''} ${formatCurrency.format(devir)}',
+            devir >= 0 ? Colors.green[800]! : Colors.red[800]!,
+          ),
+          const SizedBox(height: 8),
+          _buildNetSummaryRow(
+            'Mevcut Bakiye',
+            '${mevcutBakiye >= 0 ? '+' : ''} ${formatCurrency.format(mevcutBakiye)}',
+            mevcutBakiye >= 0 ? Colors.green[800]! : Colors.red[800]!,
+          ),
+          const SizedBox(height: 8),
+          _buildNetSummaryRow(
+            'Net Ödenecek',
+            '${netOdenecek >= 0 ? '+' : ''} ${formatCurrency.format(netOdenecek)}',
+            netOdenecek >= 0 ? Colors.green[800]! : Colors.red[800]!,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNetRow(String label, String value, Color color) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: GoogleFonts.inter(fontSize: 13, color: Colors.green[900], fontWeight: FontWeight.w500),
+          ),
+          Text(
+            value,
+            style: GoogleFonts.inter(fontSize: 13, color: color, fontWeight: FontWeight.w600),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNetSummaryRow(String label, String value, Color color) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: GoogleFonts.inter(fontSize: 13, color: Colors.green[900], fontWeight: FontWeight.bold),
+        ),
+        Text(
+          value,
+          style: GoogleFonts.inter(fontSize: 13, color: color, fontWeight: FontWeight.bold),
+        ),
+      ],
+    );
+  }
+
+  void _showAllTransactionsDialog({
+    required List<QueryDocumentSnapshot> collections,
+    required List<QueryDocumentSnapshot> satislar,
+    required List<QueryDocumentSnapshot> avanslar,
+    required List<QueryDocumentSnapshot> tahsilatlar,
+    required List<QueryDocumentSnapshot> cezalar,
+    required List<QueryDocumentSnapshot> kesintiler,
+    required List<QueryDocumentSnapshot> devirler,
+    required List<Map<String, dynamic>> priceList,
+    required String bolge,
+    required String group,
+    required String ureticiName,
+  }) {
+    final formatCurrency = NumberFormat.currency(locale: 'tr_TR', symbol: '₺');
+    final List<Map<String, dynamic>> allTx = [];
+
+    // Compile everything
+    for (var doc in collections) {
+      final data = doc.data() as Map<String, dynamic>;
+      final double m = (data['m'] as num?)?.toDouble() ?? 0.0;
+      final String rawType = data['tip'] ?? 'Soğuk Süt';
+      final String priceKey = FirestoreService().mapMilkTypeToPriceKey(rawType);
+      final double price = FirestoreService().resolveMilkPrice(
+        prices: priceList,
+        producerName: ureticiName,
+        bolge: bolge,
+        group: group,
+        type: priceKey,
+      );
+      final ts = data['timestamp'] as Timestamp?;
+      allTx.add({
+        'ts': ts?.toDate() ?? DateTime.now(),
+        'title': 'Süt Teslimi ($rawType)',
+        'subtitle': '${m.toStringAsFixed(1)} LT x ${price.toStringAsFixed(2)} ₺',
+        'amount': m * price,
+        'isPositive': true,
+        'icon': Icons.water_drop_rounded,
+        'color': AppColors.primary600,
+      });
+    }
+
+    for (var doc in tahsilatlar) {
+      final data = doc.data() as Map<String, dynamic>;
+      final tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
+      final ts = data['timestamp'] as Timestamp?;
+      allTx.add({
+        'ts': ts?.toDate() ?? DateTime.now(),
+        'title': 'Ödeme Alındı (${data['odemeYontemi'] ?? 'Nakit'})',
+        'subtitle': data['aciklama'] ?? '',
+        'amount': tutar,
+        'isPositive': true,
+        'icon': Icons.move_to_inbox_rounded,
+        'color': AppColors.success,
+      });
+    }
+
+    for (var doc in satislar) {
+      final data = doc.data() as Map<String, dynamic>;
+      final tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
+      final ts = data['timestamp'] as Timestamp?;
+      allTx.add({
+        'ts': ts?.toDate() ?? DateTime.now(),
+        'title': 'Ürün Alımı (${data['urun']})',
+        'subtitle': '${data['miktar']} adet x ${(data['fiyat'] as num?)?.toDouble() ?? 0.0} ₺',
+        'amount': tutar,
+        'isPositive': false,
+        'icon': Icons.shopping_basket_rounded,
+        'color': Colors.red,
+      });
+    }
+
+    for (var doc in avanslar) {
+      final data = doc.data() as Map<String, dynamic>;
+      if ((data['durum'] ?? 'aktif') == 'aktif') {
+        final tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
+        final ts = data['timestamp'] as Timestamp?;
+        allTx.add({
+          'ts': ts?.toDate() ?? DateTime.now(),
+          'title': 'Avans Ödemesi',
+          'subtitle': data['aciklama'] ?? '',
+          'amount': tutar,
+          'isPositive': false,
+          'icon': Icons.monetization_on_rounded,
+          'color': Colors.red,
+        });
+      }
+    }
+
+    for (var doc in cezalar) {
+      final data = doc.data() as Map<String, dynamic>;
+      if ((data['durum'] ?? 'aktif') == 'aktif') {
+        double tutar = 0.0;
+        if (data['tip'] == 'oransal') {
+          tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
+        } else {
+          tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
+        }
+        final ts = data['timestamp'] as Timestamp?;
+        allTx.add({
+          'ts': ts?.toDate() ?? DateTime.now(),
+          'title': 'Ceza Kesildi',
+          'subtitle': data['aciklama'] ?? '',
+          'amount': tutar,
+          'isPositive': false,
+          'icon': Icons.gavel_rounded,
+          'color': Colors.red,
+        });
+      }
+    }
+
+    for (var doc in kesintiler) {
+      final data = doc.data() as Map<String, dynamic>;
+      if ((data['durum'] ?? 'aktif') == 'aktif') {
+        final tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
+        final ts = data['timestamp'] as Timestamp?;
+        allTx.add({
+          'ts': ts?.toDate() ?? DateTime.now(),
+          'title': 'Kesinti',
+          'subtitle': data['aciklama'] ?? '',
+          'amount': tutar,
+          'isPositive': false,
+          'icon': Icons.bar_chart_rounded,
+          'color': Colors.red,
+        });
+      }
+    }
+
+    for (var doc in devirler) {
+      final data = doc.data() as Map<String, dynamic>;
+      final tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
+      final ts = data['timestamp'] as Timestamp?;
+      allTx.add({
+        'ts': ts?.toDate() ?? DateTime.now(),
+        'title': 'Devir / Düzeltme',
+        'subtitle': data['aciklama'] ?? '',
+        'amount': tutar.abs(),
+        'isPositive': tutar >= 0,
+        'icon': Icons.sync_alt_rounded,
+        'color': tutar >= 0 ? AppColors.success : Colors.red,
+      });
+    }
+
+    allTx.sort((a, b) => b['ts'].compareTo(a['ts']));
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('İşlem Geçmişi (Tümü)', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        content: SizedBox(
+          width: 450,
+          height: 400,
+          child: allTx.isEmpty
+              ? Center(child: Text('Kayıtlı işlem bulunamadı.', style: GoogleFonts.inter(color: AppColors.gray500)))
+              : ListView.builder(
+                  itemCount: allTx.length,
                   itemBuilder: (context, index) {
-                    final tx = txList[index];
+                    final tx = allTx[index];
                     final dateStr = DateFormat('dd.MM.yyyy HH:mm').format(tx['ts']);
 
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 10),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: AppShadows.sm,
-                      ),
-                      child: Row(
+                    return ListTile(
+                      leading: Icon(tx['icon'], color: tx['color']),
+                      title: Text(tx['title'], style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold)),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Container(
-                            width: 38,
-                            height: 38,
-                            decoration: BoxDecoration(
-                              color: tx['color'].withValues(alpha: 0.1),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(tx['icon'], color: tx['color'], size: 18),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(tx['title'], style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600)),
-                                if (tx['subtitle'].toString().isNotEmpty) ...[
-                                  const SizedBox(height: 2),
-                                  Text(tx['subtitle'], style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500)),
-                                ],
-                                const SizedBox(height: 2),
-                                Text(dateStr, style: GoogleFonts.inter(fontSize: 9, color: AppColors.gray400)),
-                              ],
-                            ),
-                          ),
-                          Text(
-                            '${tx['isPositive'] ? '+' : '-'}${formatCurrency.format(tx['amount'])}',
-                            style: GoogleFonts.inter(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                              color: tx['isPositive'] ? AppColors.success : AppColors.danger,
-                            ),
-                          ),
+                          if (tx['subtitle'].toString().isNotEmpty)
+                            Text(tx['subtitle'], style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500)),
+                          Text(dateStr, style: GoogleFonts.inter(fontSize: 9, color: AppColors.gray400)),
                         ],
+                      ),
+                      trailing: Text(
+                        '${tx['isPositive'] ? '+' : '-'}${formatCurrency.format(tx['amount'])}',
+                        style: GoogleFonts.inter(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: tx['isPositive'] ? AppColors.success : Colors.red[800],
+                        ),
                       ),
                     );
                   },
                 ),
-            ],
-          );
-        },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Kapat'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _exportPdfReport({
+    required String ureticiName,
+    required String bolge,
+    required String group,
+    required List<QueryDocumentSnapshot> collections,
+    required List<QueryDocumentSnapshot> sales,
+    required List<QueryDocumentSnapshot> advances,
+    required List<QueryDocumentSnapshot> tahsilatlar,
+    required List<QueryDocumentSnapshot> cezalar,
+    required List<QueryDocumentSnapshot> kesintiler,
+    required List<QueryDocumentSnapshot> devirler,
+    required List<Map<String, dynamic>> priceList,
+    required double milkVal,
+    required double totalLitre,
+    required double totalSales,
+    required double totalAvans,
+    required double totalPayments,
+    required double totalCeza,
+    required double totalKesinti,
+    required double devir,
+    required DateTime selectedMonth,
+    required String currentFirmaName,
+    required Map<String, Map<String, dynamic>> milkGrouped,
+    required double bagkur,
+    required double stopaj,
+    required double borsa,
+    required double bagkurOran,
+    required double stopajOran,
+    required double borsaOran,
+  }) async {
+    try {
+      final pdf = pw.Document();
+      pw.Font fontRegular;
+      pw.Font fontBold;
+      bool useSanitized = false;
+
+      try {
+        fontRegular = await PdfGoogleFonts.robotoRegular();
+        fontBold = await PdfGoogleFonts.robotoBold();
+      } catch (e) {
+        fontRegular = pw.Font.helvetica();
+        fontBold = pw.Font.helveticaBold();
+        useSanitized = true;
+      }
+
+      String sanitize(String text) {
+        if (!useSanitized) return text;
+        final translation = {
+          'ı': 'i', 'İ': 'I', 'ğ': 'g', 'Ğ': 'G',
+          'ü': 'u', 'Ü': 'U', 'ş': 's', 'Ş': 'S',
+          'ö': 'o', 'Ö': 'O', 'ç': 'c', 'Ç': 'C',
+        };
+        String res = text;
+        translation.forEach((k, v) => res = res.replaceAll(k, v));
+        return res;
+      }
+
+      double totalManualKesinti = kesintiler.where((k) => (k.data() as Map<String, dynamic>)['durum'] == 'aktif').fold(0.0, (sum, doc) {
+        final data = doc.data() as Map<String, dynamic>;
+        return sum + ((data['tutar'] as num?)?.toDouble() ?? 0.0);
+      });
+
+      final double donemSonuBakiye = milkVal + totalPayments - totalSales - totalAvans - totalCeza - totalKesinti;
+      final double mevcutBakiye = donemSonuBakiye + devir;
+      final double netOdenecek = mevcutBakiye;
+
+      final formatCurrency = NumberFormat.currency(locale: 'tr_TR', symbol: ' TL');
+      final formatNumber = NumberFormat('#,##0.00', 'tr_TR');
+      final monthName = DateFormat('MMMM yyyy', 'tr_TR').format(selectedMonth);
+
+      pdf.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4,
+          build: (pw.Context context) {
+            return [
+              // Header
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text(sanitize(currentFirmaName.toUpperCase()), style: pw.TextStyle(font: fontBold, fontSize: 16, color: PdfColors.teal)),
+                      pw.Text(sanitize('HESAP ONDENI RAPORU'), style: pw.TextStyle(font: fontBold, fontSize: 11, color: PdfColors.grey700)),
+                      pw.Text(sanitize('Uretici: $ureticiName'), style: pw.TextStyle(font: fontRegular, fontSize: 11)),
+                    ],
+                  ),
+                  pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.end,
+                    children: [
+                      pw.Text(sanitize('Donem: $monthName'), style: pw.TextStyle(font: fontBold, fontSize: 11)),
+                      pw.Text(sanitize('Tarih: ${DateFormat('dd.MM.yyyy').format(DateTime.now())}'), style: pw.TextStyle(font: fontRegular, fontSize: 9)),
+                    ],
+                  ),
+                ],
+              ),
+              pw.SizedBox(height: 10),
+              pw.Divider(thickness: 1.5, color: PdfColors.teal),
+              pw.SizedBox(height: 15),
+
+              // Süt Üretimi Table
+              if (totalLitre > 0) ...[
+                pw.Text(sanitize('SUT URETIMI'), style: pw.TextStyle(font: fontBold, fontSize: 12, color: PdfColors.teal800)),
+                pw.SizedBox(height: 5),
+                pw.TableHelper.fromTextArray(
+                  headers: [sanitize('Sut Turu'), sanitize('Fiyat'), sanitize('Miktar'), sanitize('Toplam Gelir')],
+                  data: milkGrouped.values.map((v) {
+                    final double m = v['m'];
+                    final double p = v['price'];
+                    return [
+                      sanitize(v['tip']),
+                      '${formatNumber.format(p)} TL',
+                      '${formatNumber.format(m)} L',
+                      formatCurrency.format(m * p)
+                    ];
+                  }).toList(),
+                  border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+                  headerStyle: pw.TextStyle(font: fontBold, fontSize: 10, color: PdfColors.white),
+                  headerDecoration: const pw.BoxDecoration(color: PdfColors.teal),
+                  cellStyle: pw.TextStyle(font: fontRegular, fontSize: 9),
+                ),
+                pw.SizedBox(height: 15),
+              ],
+
+              // Alınan Ürünler Table
+              if (sales.isNotEmpty) ...[
+                pw.Text(sanitize('ALINAN URUNLER'), style: pw.TextStyle(font: fontBold, fontSize: 12, color: PdfColors.teal800)),
+                pw.SizedBox(height: 5),
+                pw.TableHelper.fromTextArray(
+                  headers: [sanitize('Urun Adi'), sanitize('Tarih'), sanitize('Miktar x Fiyat'), sanitize('Tutar')],
+                  data: sales.map((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    final tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
+                    return [
+                      sanitize(data['urun'] ?? 'Yem'),
+                      sanitize(data['tarih'] ?? ''),
+                      '${data['miktar']} adet x ${formatNumber.format((data['fiyat'] as num?)?.toDouble() ?? 0.0)} TL',
+                      formatCurrency.format(tutar)
+                    ];
+                  }).toList(),
+                  border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+                  headerStyle: pw.TextStyle(font: fontBold, fontSize: 10, color: PdfColors.white),
+                  headerDecoration: const pw.BoxDecoration(color: PdfColors.teal),
+                  cellStyle: pw.TextStyle(font: fontRegular, fontSize: 9),
+                ),
+                pw.SizedBox(height: 15),
+              ],
+
+              // Cezalar Table
+              if (cezalar.isNotEmpty) ...[
+                pw.Text(sanitize('CEZALAR'), style: pw.TextStyle(font: fontBold, fontSize: 12, color: PdfColors.red800)),
+                pw.SizedBox(height: 5),
+                pw.TableHelper.fromTextArray(
+                  headers: [sanitize('Aciklama'), sanitize('Tarih'), sanitize('Detay'), sanitize('Tutar')],
+                  data: cezalar.map((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    double tutar = 0.0;
+                    String detailStr = '';
+                    if (data['tip'] == 'oransal') {
+                      final double oran = (data['oran'] as num?)?.toDouble() ?? 0.0;
+                      tutar = milkVal * (oran / 100.0);
+                      detailStr = '%${oran.toStringAsFixed(2)} oraninda';
+                    } else {
+                      tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
+                    }
+                    return [
+                      sanitize(data['aciklama'] ?? 'Ceza'),
+                      sanitize(data['tarih'] ?? ''),
+                      sanitize(detailStr),
+                      '- ${formatCurrency.format(tutar)}'
+                    ];
+                  }).toList(),
+                  border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+                  headerStyle: pw.TextStyle(font: fontBold, fontSize: 10, color: PdfColors.white),
+                  headerDecoration: const pw.BoxDecoration(color: PdfColors.red),
+                  cellStyle: pw.TextStyle(font: fontRegular, fontSize: 9),
+                ),
+                pw.SizedBox(height: 15),
+              ],
+
+              // Kesintiler Table
+              if (milkVal > 0 || totalManualKesinti > 0) ...[
+                pw.Text(sanitize('KESINTILER'), style: pw.TextStyle(font: fontBold, fontSize: 12, color: PdfColors.red800)),
+                pw.SizedBox(height: 5),
+                pw.TableHelper.fromTextArray(
+                  headers: [sanitize('Kesinti Turu'), sanitize('Aciklama / Oran'), sanitize('Tutar')],
+                  data: [
+                    if (milkVal > 0) ...[
+                      ['Bagkur', '%${bagkurOran.toStringAsFixed(2)} oraninda', '- ${formatCurrency.format(bagkur)}'],
+                      ['Stopaj', '%${stopajOran.toStringAsFixed(2)} oraninda', '- ${formatCurrency.format(stopaj)}'],
+                      ['Borsa', '%${borsaOran.toStringAsFixed(2)} oraninda', '- ${formatCurrency.format(borsa)}'],
+                    ],
+                    ...kesintiler.map((doc) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      final tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
+                      return [
+                        sanitize(data['aciklama'] ?? 'Diger'),
+                        sanitize(data['tarih'] ?? ''),
+                        '- ${formatCurrency.format(tutar)}'
+                      ];
+                    })
+                  ],
+                  border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+                  headerStyle: pw.TextStyle(font: fontBold, fontSize: 10, color: PdfColors.white),
+                  headerDecoration: const pw.BoxDecoration(color: PdfColors.grey700),
+                  cellStyle: pw.TextStyle(font: fontRegular, fontSize: 9),
+                ),
+                pw.SizedBox(height: 15),
+              ],
+
+              // Net Ödeme summary
+              pw.Container(
+                padding: const pw.EdgeInsets.all(12),
+                decoration: pw.BoxDecoration(
+                  color: PdfColors.grey100,
+                  borderRadius: pw.BorderRadius.circular(8),
+                  border: pw.Border.all(color: PdfColors.grey300, width: 1),
+                ),
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(sanitize('NET ODEME HESAP TABLOSU'), style: pw.TextStyle(font: fontBold, fontSize: 11, color: PdfColors.teal800)),
+                    pw.SizedBox(height: 6),
+                    _buildPdfNetRow('Sut Geliri:', '+ ${formatCurrency.format(milkVal)}', fontRegular),
+                    if (totalPayments > 0)
+                      _buildPdfNetRow('Tahsilatlar:', '+ ${formatCurrency.format(totalPayments)}', fontRegular),
+                    if (totalSales > 0)
+                      _buildPdfNetRow('Alinan Urunler:', '- ${formatCurrency.format(totalSales)}', fontRegular),
+                    if (totalAvans > 0)
+                      _buildPdfNetRow('Alinan Avanslar:', '- ${formatCurrency.format(totalAvans)}', fontRegular),
+                    if (totalCeza > 0)
+                      _buildPdfNetRow('Cezalar:', '- ${formatCurrency.format(totalCeza)}', fontRegular),
+                    if (totalKesinti > 0)
+                      _buildPdfNetRow('Kesintiler:', '- ${formatCurrency.format(totalKesinti)}', fontRegular),
+
+                    pw.Divider(thickness: 1, color: PdfColors.grey400),
+
+                    _buildPdfNetRow('Donem Sonu Bakiye:', '${donemSonuBakiye >= 0 ? '+' : ''} ${formatCurrency.format(donemSonuBakiye)}', fontBold),
+                    _buildPdfNetRow('Onceki Aydan Devir:', '${devir >= 0 ? '+' : ''} ${formatCurrency.format(devir)}', fontRegular),
+
+                    pw.Divider(thickness: 1.5, color: PdfColors.teal),
+
+                    _buildPdfNetRow('Mevcut Bakiye:', '${mevcutBakiye >= 0 ? '+' : ''} ${formatCurrency.format(mevcutBakiye)}', fontBold, size: 12),
+                    _buildPdfNetRow('Net Odenecek:', '${netOdenecek >= 0 ? '+' : ''} ${formatCurrency.format(netOdenecek)}', fontBold, size: 12),
+                  ],
+                ),
+              ),
+            ];
+          },
+        ),
+      );
+
+      await Printing.layoutPdf(
+        onLayout: (PdfPageFormat format) async => pdf.save(),
+        name: 'hesap_ozeti_${sanitize(ureticiName)}_${DateFormat('yyyyMM').format(selectedMonth)}.pdf',
+      );
+    } catch (e, stackTrace) {
+      debugPrint('PDF layout error: $e\n$stackTrace');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('PDF oluşturulurken hata oluştu: $e'), backgroundColor: AppColors.danger),
+      );
+    }
+  }
+
+  pw.Widget _buildPdfNetRow(String label, String value, pw.Font font, {double size = 10}) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(vertical: 2),
+      child: pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        children: [
+          pw.Text(label, style: pw.TextStyle(font: font, fontSize: size)),
+          pw.Text(value, style: pw.TextStyle(font: font, fontSize: size)),
+        ],
       ),
     );
   }
@@ -528,17 +1523,32 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> with Sing
       _db.collection('cezalar').where('firma', isEqualTo: firmaName).where('uretici', isEqualTo: ureticiName).get(),
       _db.collection('satislar').where('firma', isEqualTo: firmaName).where('uretici', isEqualTo: ureticiName).get(),
       _db.collection('ureticiler').where('firmalar', arrayContains: firmaName).where('name', isEqualTo: ureticiName).limit(1).get(),
+      _db.collection('devirler').where('firma', isEqualTo: firmaName).where('uretici', isEqualTo: ureticiName).get(),
+      _db.collection('finans_ayarlari').doc(firmaName).get(),
     ]);
 
+    final QuerySnapshot collections = futures[0] as QuerySnapshot;
+    final QuerySnapshot prices = futures[1] as QuerySnapshot;
+    final QuerySnapshot tahsilatlar = futures[2] as QuerySnapshot;
+    final QuerySnapshot avanslar = futures[3] as QuerySnapshot;
+    final QuerySnapshot kesintiler = futures[4] as QuerySnapshot;
+    final QuerySnapshot cezalar = futures[5] as QuerySnapshot;
+    final QuerySnapshot satislar = futures[6] as QuerySnapshot;
+    final QuerySnapshot ureticiler = futures[7] as QuerySnapshot;
+    final QuerySnapshot devirler = futures[8] as QuerySnapshot;
+    final DocumentSnapshot settings = futures[9] as DocumentSnapshot;
+
     return {
-      'collections': futures[0].docs,
-      'prices': futures[1].docs,
-      'tahsilatlar': futures[2].docs,
-      'avanslar': futures[3].docs,
-      'kesintiler': futures[4].docs,
-      'cezalar': futures[5].docs,
-      'satislar': futures[6].docs,
-      'producerDoc': futures[7].docs.isNotEmpty ? futures[7].docs.first : null,
+      'collections': collections.docs,
+      'prices': prices.docs,
+      'tahsilatlar': tahsilatlar.docs,
+      'avanslar': avanslar.docs,
+      'kesintiler': kesintiler.docs,
+      'cezalar': cezalar.docs,
+      'satislar': satislar.docs,
+      'producerDoc': ureticiler.docs.isNotEmpty ? ureticiler.docs.first : null,
+      'devirler': devirler.docs,
+      'finansAyarlari': settings,
     };
   }
 }

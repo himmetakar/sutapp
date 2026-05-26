@@ -32,9 +32,8 @@ class _SutAnalizScreenState extends State<SutAnalizScreen> with SingleTickerProv
     final db = FirebaseFirestore.instance;
     final snap = await db.collection('sut_analiz').limit(1).get();
     if (snap.docs.isEmpty) {
-      // Seed mock data for Süt Analiz (Müşteri ve Tank)
       await db.collection('sut_analiz').add({
-        'tip': 'Müşteri',
+        'tip': 'Üretici',
         'hedef': 'Ahmet Yılmaz (Üretici)',
         'tarih': '26 May 2026 09:30',
         'yag': 3.6,
@@ -46,7 +45,7 @@ class _SutAnalizScreenState extends State<SutAnalizScreen> with SingleTickerProv
         'timestamp': FieldValue.serverTimestamp(),
       });
       await db.collection('sut_analiz').add({
-        'tip': 'Müşteri',
+        'tip': 'Üretici',
         'hedef': 'Ayşe Demir (Üretici)',
         'tarih': '26 May 2026 08:15',
         'yag': 2.9, // Low fat warning!
@@ -135,7 +134,7 @@ class _SutAnalizScreenState extends State<SutAnalizScreen> with SingleTickerProv
           labelStyle: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 13),
           unselectedLabelStyle: GoogleFonts.inter(fontWeight: FontWeight.w500, fontSize: 13),
           tabs: const [
-            Tab(text: 'Müşteri Analizleri'),
+            Tab(text: 'Üretici Analizleri'),
             Tab(text: 'Tank Analizleri'),
           ],
         ),
@@ -155,7 +154,7 @@ class _SutAnalizScreenState extends State<SutAnalizScreen> with SingleTickerProv
           return TabBarView(
             controller: _tabController,
             children: [
-              _buildAnalizList(docs, 'Müşteri'),
+              _buildAnalizList(docs, 'Üretici'),
               _buildAnalizList(docs, 'Tank'),
             ],
           );
@@ -167,7 +166,11 @@ class _SutAnalizScreenState extends State<SutAnalizScreen> with SingleTickerProv
   Widget _buildAnalizList(List<QueryDocumentSnapshot> docs, String tipFilter) {
     final filtered = docs.where((doc) {
       final data = doc.data() as Map<String, dynamic>;
-      return (data['tip'] ?? '') == tipFilter;
+      final String tipVal = data['tip'] ?? '';
+      if (tipFilter == 'Üretici') {
+        return tipVal == 'Üretici' || tipVal == 'Müşteri';
+      }
+      return tipVal == tipFilter;
     }).toList();
 
     if (filtered.isEmpty) {
