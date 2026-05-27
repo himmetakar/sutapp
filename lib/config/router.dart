@@ -45,7 +45,6 @@ import '../screens/firma/firma_birlikler.dart';
 import '../screens/firma/firma_atamalar.dart';
 import '../screens/firma/firma_satislar.dart';
 import '../screens/firma/firma_hesap_ozeti.dart';
-import '../screens/firma/firma_uretici_onaylari.dart';
 import '../screens/firma/firma_aylik_sut.dart';
 import '../screens/firma/firma_ureticiler_list.dart';
 import '../screens/firma/firma_tahsilat.dart';
@@ -114,7 +113,6 @@ GoRouter createRouter(AuthProvider auth) {
           GoRoute(path: '/firma/profil', builder: (_, __) => const FirmaProfilScreen()),
           GoRoute(path: '/firma/ureticiler', builder: (_, __) => const FirmaUreticiler()),
           GoRoute(path: '/firma/ureticiler/liste', builder: (_, __) => const FirmaUreticiListesiScreen()),
-          GoRoute(path: '/firma/ureticiler/onaylar', builder: (_, __) => const FirmaUreticiOnaylariScreen()),
           GoRoute(path: '/firma/tahsilat', builder: (_, __) => const FirmaTahsilatScreen()),
           GoRoute(path: '/firma/gruplar', builder: (_, __) => const FirmaGruplarScreen()),
           GoRoute(path: '/firma/birlikler', builder: (_, __) => const FirmaBirliklerScreen()),

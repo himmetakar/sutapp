@@ -275,6 +275,8 @@ class FirestoreService {
     String? firma,
     String? sutTipi,
     String? customerType,
+    String? vakit,
+    String? kalite,
   }) async {
     // Resolve company name if not explicitly passed
     String resolvedFirma = firma ?? '';
@@ -295,10 +297,13 @@ class FirestoreService {
       'sr': driverName ?? 'Yönetici',
       'km': vehiclePlate ?? '-',
       'b': region ?? 'Merkez',
+      'tank': tankName,
       'timestamp': FieldValue.serverTimestamp(),
       'firma': resolvedFirma,
       'tip': sutTipi ?? 'Soğuk Süt',
       'customerType': customerType ?? 'sut',
+      if (vakit != null) 'vakit': vakit,
+      if (kalite != null) 'kalite': kalite,
     });
 
     // 2. Update tank stock in tanklar collection
@@ -306,8 +311,7 @@ class FirestoreService {
     if (tankQuery.docs.isNotEmpty) {
       final tankDoc = tankQuery.docs.first;
       final currentStock = (tankDoc['stok'] as num).toDouble();
-      final capacity = (tankDoc['kap'] as num).toDouble();
-      final newStock = (currentStock + miktar).clamp(0.0, capacity);
+      final newStock = (currentStock + miktar).clamp(0.0, double.infinity);
       await tankDoc.reference.update({'stok': newStock});
 
       // 3. If it's a vehicle tank, update in the vehicle document as well
@@ -358,6 +362,62 @@ class FirestoreService {
     }
   }
 
+  /// Delete a milk collection record and reverse stock changes
+  Future<void> deleteMilkCollection(String docId) async {
+    final docRef = _collections.doc(docId);
+    final docSnap = await docRef.get();
+    if (!docSnap.exists) return;
+
+    final data = docSnap.data() as Map<String, dynamic>;
+    final double miktar = (data['m'] as num?)?.toDouble() ?? 0.0;
+    final String tankName = data['tank'] ?? '';
+    final String producerName = data['u'] ?? '';
+    final String vehiclePlate = data['km'] ?? '';
+
+    // 1. Subtract from tank stock
+    if (tankName.isNotEmpty) {
+      final tankQuery = await _tanks.where('ad', isEqualTo: tankName).limit(1).get();
+      if (tankQuery.docs.isNotEmpty) {
+        final tankDoc = tankQuery.docs.first;
+        final currentStock = (tankDoc['stok'] as num).toDouble();
+        final newStock = (currentStock - miktar).clamp(0.0, double.infinity);
+        await tankDoc.reference.update({'stok': newStock});
+
+        // Update in vehicle document as well
+        if (tankDoc['tip'] == 'arac' && vehiclePlate.isNotEmpty) {
+          final vehicleQuery = await _vehicles.where('plaka', isEqualTo: vehiclePlate).limit(1).get();
+          if (vehicleQuery.docs.isNotEmpty) {
+            final vehicleDoc = vehicleQuery.docs.first;
+            final List<dynamic> vehicleTanks = (vehicleDoc['tanklar'] as List? ?? [])
+                .map((t) => Map<String, dynamic>.from(t as Map))
+                .toList();
+            for (int i = 0; i < vehicleTanks.length; i++) {
+              if (vehicleTanks[i]['ad'] == tankName) {
+                vehicleTanks[i]['stok'] = newStock;
+                break;
+              }
+            }
+            await vehicleDoc.reference.update({'tanklar': vehicleTanks});
+          }
+        }
+      }
+    }
+
+    // 2. Update producer total
+    if (producerName.isNotEmpty) {
+      final prodQuery = await _producers.where('name', isEqualTo: producerName).limit(1).get();
+      if (prodQuery.docs.isNotEmpty) {
+        final prodDoc = prodQuery.docs.first;
+        final currentTotal = (prodDoc['total'] as num).toDouble();
+        final newTotal = (currentTotal - miktar).clamp(0.0, double.infinity);
+        await prodDoc.reference.update({'total': newTotal});
+      }
+    }
+
+    // 3. Delete the collection document
+    await docRef.delete();
+  }
+
   Future<void> recordMilkTransfer({
     required String vehiclePlate,
     required String sourceTankName,
@@ -396,8 +456,7 @@ class FirestoreService {
       final targetDoc = targetQuery.docs.first;
       targetFirma = targetDoc['firma'] ?? '';
       final currentTargetStock = (targetDoc['stok'] as num).toDouble();
-      final targetCapacity = (targetDoc['kap'] as num).toDouble();
-      final newTargetStock = (currentTargetStock + miktar).clamp(0.0, targetCapacity);
+      final newTargetStock = (currentTargetStock + miktar).clamp(0.0, double.infinity);
       await targetDoc.reference.update({'stok': newTargetStock});
     }
 

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:fl_chart/fl_chart.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
@@ -8,296 +7,523 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../services/firestore_service.dart';
 import '../../config/theme.dart';
 import '../../widgets/common_widgets.dart';
+import 'package:go_router/go_router.dart';
 
-class FirmaRaporlar extends StatelessWidget {
+class FirmaRaporlar extends StatefulWidget {
   const FirmaRaporlar({super.key});
+
+  @override
+  State<FirmaRaporlar> createState() => _FirmaRaporlarState();
+}
+
+class _FirmaRaporlarState extends State<FirmaRaporlar> {
+  String _selectedFilter = 'Günlük'; // 'Günlük', 'Aylık', 'Yıllık'
+  DateTime _selectedDate = DateTime.now();
 
   @override
   Widget build(BuildContext context) {
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final currentFirmaName = auth.user?.displayName ?? '';
 
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirestoreService().getCollectionsStream(firma: currentFirmaName),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        final docs = snapshot.data?.docs ?? [];
-        
-        final List<String> regions;
-        final List<double> regionValues;
-        final List<String> months = ['Oca', 'Şub', 'Mar', 'Nis', 'May'];
-        final List<double> monthlyValues;
-        final List<Map<String, dynamic>> topProducers;
-
-        String cleanRegionName(String b) {
-          final lower = b.toLowerCase();
-          if (lower.contains('yayla')) return 'Yayla';
-          if (lower.contains('kızıltepe')) return 'Kızıltepe';
-          if (lower.contains('dağyolu')) return 'Dağyolu';
-          if (lower.contains('akarsu')) return 'Akarsu';
-          return 'Merkez';
-        }
-
-        if (docs.isEmpty) {
-          if (currentFirmaName == 'Kayseri Çiftlik') {
-            regions = ['Yayla', 'Kızıltepe', 'Dağyolu', 'Akarsu', 'Merkez'];
-            regionValues = [4850.0, 3200.0, 5600.0, 2800.0, 1950.0];
-            monthlyValues = [12000.0, 15000.0, 18000.0, 22000.0, 28920.0];
-            topProducers = [
-              {'ad': 'Hatice Yıldız', 'miktar': 18200.0, 'ort': 60.0},
-              {'ad': 'Ayşe Şahin', 'miktar': 15600.0, 'ort': 55.0},
-              {'ad': 'Mehmet Yılmaz', 'miktar': 12500.0, 'ort': 42.0},
-              {'ad': 'Hüseyin Kaya', 'miktar': 11200.0, 'ort': 40.0},
-              {'ad': 'İbrahim Arslan', 'miktar': 10500.0, 'ort': 38.0},
-            ];
-          } else {
-            regions = ['Yayla', 'Kızıltepe', 'Dağyolu', 'Akarsu', 'Merkez'];
-            regionValues = [850.0, 1200.0, 1600.0, 3800.0, 4950.0];
-            monthlyValues = [8000.0, 9000.0, 11000.0, 14000.0, 17500.0];
-            topProducers = [
-              {'ad': 'Ayşe Şahin', 'miktar': 15600.0, 'ort': 55.0},
-              {'ad': 'Hüseyin Kaya', 'miktar': 11200.0, 'ort': 40.0},
-              {'ad': 'Fatma Korkmaz', 'miktar': 7200.0, 'ort': 25.0},
-              {'ad': 'Mehmet Yılmaz', 'miktar': 4200.0, 'ort': 15.0},
-              {'ad': 'Ali Özdemir', 'miktar': 3100.0, 'ort': 10.0},
-            ];
+    return Scaffold(
+      backgroundColor: AppColors.gray50,
+      appBar: AppBar(
+        leading: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: () => context.pop(),
+              child: Row(
+                children: [
+                  const Icon(Icons.arrow_back_ios_new_rounded, size: 14, color: AppColors.primary600),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Geri',
+                    style: GoogleFonts.inter(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.primary600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        title: Text(
+          'Süt Toplama Raporu',
+          style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16),
+        ),
+      ),
+      body: StreamBuilder<QuerySnapshot>(
+        stream: FirestoreService().getCollectionsStream(firma: currentFirmaName),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
           }
-        } else {
-          final Map<String, double> rMap = {
-            'Yayla': 0.0,
-            'Kızıltepe': 0.0,
-            'Dağyolu': 0.0,
-            'Akarsu': 0.0,
-            'Merkez': 0.0,
-          };
-          final Map<String, double> pMap = {};
 
-          double totalDocMilk = 0.0;
-          for (var doc in docs) {
+          final allDocs = snapshot.data?.docs ?? [];
+
+          // Filter documents based on selected period
+          final filteredDocs = allDocs.where((doc) {
             final data = doc.data() as Map<String, dynamic>;
-            final u = data['u'] as String? ?? '';
-            final b = data['b'] as String? ?? 'Merkez';
-            final mVal = data['m'] ?? 0.0;
-            final double m = mVal is num ? mVal.toDouble() : double.tryParse(mVal.toString()) ?? 0.0;
+            final ts = data['timestamp'] as Timestamp?;
+            if (ts == null) return false;
+            final date = ts.toDate();
 
-            totalDocMilk += m;
-            final mappedRegion = cleanRegionName(b);
-            rMap[mappedRegion] = (rMap[mappedRegion] ?? 0.0) + m;
-            pMap[u] = (pMap[u] ?? 0.0) + m;
+            switch (_selectedFilter) {
+              case 'Günlük':
+                return date.year == _selectedDate.year &&
+                    date.month == _selectedDate.month &&
+                    date.day == _selectedDate.day;
+              case 'Aylık':
+                return date.year == _selectedDate.year &&
+                    date.month == _selectedDate.month;
+              case 'Yıllık':
+                return date.year == _selectedDate.year;
+              default:
+                return true;
+            }
+          }).toList();
+
+          // Calculate total milk
+          double totalMilk = 0.0;
+          final Map<String, double> producerTotals = {};
+
+          for (var doc in filteredDocs) {
+            final data = doc.data() as Map<String, dynamic>;
+            final mVal = data['m'] ?? 0;
+            final double m = mVal is num ? mVal.toDouble() : (double.tryParse(mVal.toString()) ?? 0.0);
+            totalMilk += m;
+
+            final producer = data['u'] as String? ?? 'Bilinmiyor';
+            producerTotals[producer] = (producerTotals[producer] ?? 0.0) + m;
           }
 
-          regions = rMap.keys.toList();
-          regionValues = rMap.values.toList();
-
-          monthlyValues = [
-            totalDocMilk * 0.15,
-            totalDocMilk * 0.18,
-            totalDocMilk * 0.20,
-            totalDocMilk * 0.22,
-            totalDocMilk * 0.25,
-          ];
-
-          final sortedProducers = pMap.entries.toList()
+          // Sort producers by total descending
+          final sortedProducers = producerTotals.entries.toList()
             ..sort((a, b) => b.value.compareTo(a.value));
 
-          topProducers = sortedProducers.map((e) {
-            return {
-              'ad': e.key,
-              'miktar': e.value,
-              'ort': e.value / 30.0,
-            };
-          }).toList();
-        }
+          // Format period label
+          String periodLabel;
+          switch (_selectedFilter) {
+            case 'Günlük':
+              periodLabel = DateFormat('d MMMM yyyy', 'tr_TR').format(_selectedDate);
+              break;
+            case 'Aylık':
+              periodLabel = DateFormat('MMMM yyyy', 'tr_TR').format(_selectedDate);
+              break;
+            case 'Yıllık':
+              periodLabel = _selectedDate.year.toString();
+              break;
+            default:
+              periodLabel = '';
+          }
 
-        final double totalLitersForUnit = monthlyValues.reduce((a, b) => a + b);
-        final bool useTons = totalLitersForUnit >= 10000.0;
-        final String unit = useTons ? 'Ton' : 'LT';
-        final double scale = useTons ? 1000.0 : 1.0;
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              // Filter Selector
+              _buildFilterSelector(),
+              const SizedBox(height: 12),
 
-        double maxRegionVal = regionValues.isNotEmpty 
-            ? regionValues.reduce((a, b) => a > b ? a : b) 
-            : 6000.0;
-        if (maxRegionVal <= 0) maxRegionVal = 6000.0;
+              // Period navigation
+              _buildPeriodNavigation(periodLabel),
+              const SizedBox(height: 16),
 
-        double maxMonthlyVal = monthlyValues.isNotEmpty 
-            ? monthlyValues.reduce((a, b) => a > b ? a : b) 
-            : 60000.0;
-        if (maxMonthlyVal <= 0) maxMonthlyVal = 60000.0;
+              // Total milk summary card
+              _buildTotalSummaryCard(totalMilk, filteredDocs.length),
+              const SizedBox(height: 16),
 
-        return ListView(padding: const EdgeInsets.all(16), children: [
-          // Bölge Karşılaştırma
-          AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            SectionTitle(title: 'Bölge Karşılaştırma (${useTons ? "Ton" : "Litre"})'),
-            const SizedBox(height: 16),
-            SizedBox(height: 200, child: BarChart(BarChartData(
-              gridData: FlGridData(
-                show: true,
-                drawVerticalLine: false,
-                horizontalInterval: maxRegionVal / 4,
-                getDrawingHorizontalLine: (value) => FlLine(color: AppColors.gray100, strokeWidth: 1),
-              ),
-              borderData: FlBorderData(show: false),
-              titlesData: FlTitlesData(
-                leftTitles: AxisTitles(sideTitles: SideTitles(
-                  showTitles: true,
-                  reservedSize: 45,
-                  getTitlesWidget: (v, _) {
-                    final double scaledVal = v / scale;
-                    return Text(
-                      '${scaledVal.toStringAsFixed(useTons ? 1 : 0)}',
-                      style: GoogleFonts.inter(fontSize: 9, color: AppColors.gray400),
-                    );
-                  },
-                )),
-                topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                bottomTitles: AxisTitles(sideTitles: SideTitles(
-                  showTitles: true,
-                  interval: 1,
-                  getTitlesWidget: (v, _) {
-                    return Padding(padding: const EdgeInsets.only(top: 6),
-                      child: Text(v.toInt() < regions.length ? regions[v.toInt()] : '', style: GoogleFonts.inter(fontSize: 9, color: AppColors.gray400)));
-                  },
-                )),
-              ),
-              barTouchData: BarTouchData(
-                touchTooltipData: BarTouchTooltipData(
-                  getTooltipItem: (_, __, rod, ___) {
-                    final double val = rod.toY;
-                    final formattedVal = (val / scale).toStringAsFixed(useTons ? 2 : 0);
-                    return BarTooltipItem('$formattedVal $unit', GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white));
-                  },
+              // Top producers
+              _buildTopProducersCard(sortedProducers),
+              const SizedBox(height: 80),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildFilterSelector() {
+    final filters = ['Günlük', 'Aylık', 'Yıllık'];
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: AppColors.gray100,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: filters.map((filter) {
+          final isSelected = _selectedFilter == filter;
+          return Expanded(
+            child: GestureDetector(
+              onTap: () {
+                setState(() {
+                  _selectedFilter = filter;
+                });
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: isSelected ? Colors.white : Colors.transparent,
+                  borderRadius: BorderRadius.circular(10),
+                  boxShadow: isSelected
+                      ? [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.06),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
+                          )
+                        ]
+                      : [],
                 ),
-              ),
-              barGroups: regionValues.asMap().entries.map((e) => BarChartGroupData(x: e.key, barRods: [
-                BarChartRodData(
-                  toY: e.value,
-                  gradient: const LinearGradient(colors: [AppColors.primary400, AppColors.primary600], begin: Alignment.topCenter, end: Alignment.bottomCenter),
-                  width: 24, borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
-                  backDrawRodData: BackgroundBarChartRodData(show: true, toY: maxRegionVal * 1.1, color: AppColors.gray50),
-                ),
-              ])).toList(),
-            ), duration: const Duration(milliseconds: 800), curve: Curves.easeOutCubic)),
-          ])),
-          const SizedBox(height: 16),
-
-          // Aylık Trend
-          AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            SectionTitle(title: 'Aylık Trend (${useTons ? "Ton" : "Litre"})'),
-            const SizedBox(height: 16),
-            SizedBox(height: 180, child: LineChart(LineChartData(
-              gridData: FlGridData(
-                show: true, 
-                drawVerticalLine: false, 
-                horizontalInterval: maxMonthlyVal / 4,
-                getDrawingHorizontalLine: (_) => FlLine(color: AppColors.gray100, strokeWidth: 1),
-              ),
-              borderData: FlBorderData(show: false),
-              titlesData: FlTitlesData(
-                leftTitles: AxisTitles(sideTitles: SideTitles(
-                  showTitles: true,
-                  reservedSize: 45,
-                  getTitlesWidget: (v, _) {
-                    final double scaledVal = v / scale;
-                    return Text(
-                      '${scaledVal.toStringAsFixed(useTons ? 1 : 0)}',
-                      style: GoogleFonts.inter(fontSize: 9, color: AppColors.gray400),
-                    );
-                  },
-                )),
-                topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                bottomTitles: AxisTitles(sideTitles: SideTitles(
-                  showTitles: true,
-                  interval: 1,
-                  getTitlesWidget: (v, _) {
-                    return Padding(padding: const EdgeInsets.only(top: 6),
-                      child: Text(v.toInt() < months.length ? months[v.toInt()] : '', style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray400)));
-                  },
-                )),
-              ),
-              lineTouchData: LineTouchData(
-                touchTooltipData: LineTouchTooltipData(
-                  getTooltipItems: (spots) => spots.map((s) {
-                    final formattedVal = (s.y / scale).toStringAsFixed(useTons ? 2 : 0);
-                    return LineTooltipItem('$formattedVal $unit', GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white));
-                  }).toList(),
-                ),
-              ),
-              lineBarsData: [LineChartBarData(
-                spots: monthlyValues.asMap().entries.map((e) => FlSpot(e.key.toDouble(), e.value)).toList(),
-                isCurved: true, curveSmoothness: 0.3, color: AppColors.primary600, barWidth: 2.5,
-                belowBarData: BarAreaData(show: true, gradient: LinearGradient(
-                  colors: [AppColors.primary400.withValues(alpha: 0.3), AppColors.primary400.withValues(alpha: 0.0)],
-                  begin: Alignment.topCenter, end: Alignment.bottomCenter,
-                )),
-                dotData: FlDotData(show: true, getDotPainter: (_, __, ___, ____) =>
-                  FlDotCirclePainter(radius: 3.5, color: AppColors.primary600, strokeWidth: 2, strokeColor: Colors.white)),
-              )],
-            ), duration: const Duration(milliseconds: 800), curve: Curves.easeOutCubic)),
-          ])),
-          const SizedBox(height: 16),
-
-          // Top Üreticiler
-          AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const SectionTitle(title: 'En Çok Süt Veren Üreticiler'),
-            const SizedBox(height: 12),
-            if (topProducers.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 24),
                 child: Center(
-                  child: Text('Henüz üretici kaydı bulunmuyor.', style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray500)),
-                ),
-              )
-            else
-              ...topProducers.asMap().entries.map((entry) {
-                final idx = entry.key;
-                final u = entry.value;
-                final rank = idx + 1;
-                final double miktar = u['miktar'] as double;
-                final double ort = u['ort'] as double;
-                
-                final medalColor = rank == 1 ? const Color(0xFFFFD700) : rank == 2 ? const Color(0xFFC0C0C0) : rank == 3 ? const Color(0xFFCD7F32) : AppColors.gray300;
-                
-                final formattedMiktar = (miktar / scale).toStringAsFixed(useTons ? 2 : 0);
-                
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 6),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: rank <= 3 ? medalColor.withValues(alpha: 0.06) : AppColors.gray50,
-                    borderRadius: BorderRadius.circular(8),
-                    border: rank <= 3 ? Border.all(color: medalColor.withValues(alpha: 0.15)) : null,
+                  child: Text(
+                    filter,
+                    style: GoogleFonts.inter(
+                      fontSize: 13,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                      color: isSelected ? AppColors.primary600 : AppColors.gray500,
+                    ),
                   ),
-                  child: Row(children: [
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildPeriodNavigation(String label) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        IconButton(
+          onPressed: () {
+            setState(() {
+              switch (_selectedFilter) {
+                case 'Günlük':
+                  _selectedDate = _selectedDate.subtract(const Duration(days: 1));
+                  break;
+                case 'Aylık':
+                  _selectedDate = DateTime(_selectedDate.year, _selectedDate.month - 1, 1);
+                  break;
+                case 'Yıllık':
+                  _selectedDate = DateTime(_selectedDate.year - 1, 1, 1);
+                  break;
+              }
+            });
+          },
+          icon: const Icon(Icons.chevron_left_rounded),
+          style: IconButton.styleFrom(
+            backgroundColor: Colors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        ),
+        GestureDetector(
+          onTap: () async {
+            if (_selectedFilter == 'Günlük') {
+              final picked = await showDatePicker(
+                context: context,
+                initialDate: _selectedDate,
+                firstDate: DateTime(2020),
+                lastDate: DateTime(2030),
+              );
+              if (picked != null) {
+                setState(() => _selectedDate = picked);
+              }
+            }
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppColors.gray200),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.calendar_today_rounded, size: 14, color: AppColors.primary600),
+                const SizedBox(width: 8),
+                Text(
+                  label,
+                  style: GoogleFonts.inter(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.gray800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        IconButton(
+          onPressed: () {
+            setState(() {
+              switch (_selectedFilter) {
+                case 'Günlük':
+                  _selectedDate = _selectedDate.add(const Duration(days: 1));
+                  break;
+                case 'Aylık':
+                  _selectedDate = DateTime(_selectedDate.year, _selectedDate.month + 1, 1);
+                  break;
+                case 'Yıllık':
+                  _selectedDate = DateTime(_selectedDate.year + 1, 1, 1);
+                  break;
+              }
+            });
+          },
+          icon: const Icon(Icons.chevron_right_rounded),
+          style: IconButton.styleFrom(
+            backgroundColor: Colors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTotalSummaryCard(double totalMilk, int entryCount) {
+    final bool useTons = totalMilk >= 10000;
+    final String displayValue = useTons
+        ? (totalMilk / 1000).toStringAsFixed(2)
+        : totalMilk.toStringAsFixed(0);
+    final String unit = useTons ? 'Ton' : 'Litre';
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF0369A1), Color(0xFF0284C7)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0369A1).withOpacity(0.3),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Toplanan Süt',
+                style: GoogleFonts.inter(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white.withOpacity(0.85),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  _selectedFilter,
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                displayValue,
+                style: GoogleFonts.inter(
+                  fontSize: 36,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Text(
+                  unit,
+                  style: GoogleFonts.inter(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white.withOpacity(0.7),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.receipt_long_rounded, size: 14, color: Colors.white70),
+                const SizedBox(width: 6),
+                Text(
+                  '$entryCount kayıt',
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white.withOpacity(0.85),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTopProducersCard(List<MapEntry<String, double>> sortedProducers) {
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.emoji_events_rounded, color: Color(0xFFD97706), size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'En Çok Süt Veren Üreticiler',
+                style: GoogleFonts.inter(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.gray800,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '$_selectedFilter bazında sıralama',
+            style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray400),
+          ),
+          const SizedBox(height: 16),
+          if (sortedProducers.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: Center(
+                child: Column(
+                  children: [
+                    Icon(Icons.water_drop_outlined, size: 40, color: AppColors.gray300),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Bu dönemde süt toplama kaydı bulunmuyor.',
+                      style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray500),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            ...sortedProducers.take(10).toList().asMap().entries.map((entry) {
+              final idx = entry.key;
+              final e = entry.value;
+              final rank = idx + 1;
+              final double miktar = e.value;
+
+              final bool useTons = miktar >= 10000;
+              final String formattedMiktar = useTons
+                  ? '${(miktar / 1000).toStringAsFixed(2)} Ton'
+                  : '${miktar.toStringAsFixed(0)} LT';
+
+              final medalColor = rank == 1
+                  ? const Color(0xFFFFD700)
+                  : rank == 2
+                      ? const Color(0xFFC0C0C0)
+                      : rank == 3
+                          ? const Color(0xFFCD7F32)
+                          : AppColors.gray300;
+
+              return Container(
+                margin: const EdgeInsets.only(bottom: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: rank <= 3 ? medalColor.withOpacity(0.06) : AppColors.gray50,
+                  borderRadius: BorderRadius.circular(10),
+                  border: rank <= 3 ? Border.all(color: medalColor.withOpacity(0.15)) : null,
+                ),
+                child: Row(
+                  children: [
                     Container(
-                      width: 28, height: 28,
+                      width: 30,
+                      height: 30,
                       decoration: BoxDecoration(
-                        color: rank <= 3 ? medalColor.withValues(alpha: 0.2) : AppColors.gray100,
+                        color: rank <= 3 ? medalColor.withOpacity(0.2) : AppColors.gray100,
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Center(child: Text('$rank', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: rank <= 3 ? medalColor : AppColors.gray500))),
+                      child: Center(
+                        child: rank <= 3
+                            ? Icon(
+                                Icons.emoji_events_rounded,
+                                size: 16,
+                                color: medalColor,
+                              )
+                            : Text(
+                                '$rank',
+                                style: GoogleFonts.inter(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.gray500,
+                                ),
+                              ),
+                      ),
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(u['ad'] as String, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w500)),
-                      Text('${ort.toStringAsFixed(0)} LT/gün', style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray500)),
-                    ])),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        e.key,
+                        style: GoogleFonts.inter(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.gray800,
+                        ),
+                      ),
+                    ),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(color: AppColors.primary50, borderRadius: BorderRadius.circular(6)),
-                      child: Text('$formattedMiktar $unit', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.primary600)),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary50,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        formattedMiktar,
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.primary600,
+                        ),
+                      ),
                     ),
-                  ]),
-                );
-              }),
-          ])),
-          const SizedBox(height: 80),
-        ]);
-      },
+                  ],
+                ),
+              );
+            }),
+        ],
+      ),
     );
   }
 }

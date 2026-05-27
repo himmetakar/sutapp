@@ -157,8 +157,18 @@ class AppCard extends StatelessWidget {
   final EdgeInsets? padding;
   final List<BoxShadow>? shadow;
   final Color? color;
+  final Color? borderColor;
+  final double? borderWidth;
 
-  const AppCard({super.key, required this.child, this.padding, this.shadow, this.color});
+  const AppCard({
+    super.key,
+    required this.child,
+    this.padding,
+    this.shadow,
+    this.color,
+    this.borderColor,
+    this.borderWidth,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -168,6 +178,9 @@ class AppCard extends StatelessWidget {
         color: color ?? Colors.white,
         borderRadius: BorderRadius.circular(14),
         boxShadow: shadow ?? AppShadows.sm,
+        border: borderColor != null
+            ? Border.all(color: borderColor!, width: borderWidth ?? 1.0)
+            : null,
       ),
       child: child,
     );

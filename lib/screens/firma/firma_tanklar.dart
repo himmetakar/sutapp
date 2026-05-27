@@ -348,7 +348,8 @@ class _FirmaTanklarState extends State<FirmaTanklar> {
           final String arac = data['arac'] ?? '';
 
           Color gaugeColor = const Color(0xFF3B82F6);
-          if (fillPercent >= 0.8) {
+          final bool isOverflow = stok > kap;
+          if (isOverflow || fillPercent >= 0.8) {
             gaugeColor = const Color(0xFFEF4444);
           } else if (fillPercent >= 0.5) {
             gaugeColor = const Color(0xFFF59E0B);
@@ -361,7 +362,7 @@ class _FirmaTanklarState extends State<FirmaTanklar> {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: AppColors.gray200),
+              border: Border.all(color: isOverflow ? Colors.red : AppColors.gray200, width: isOverflow ? 2.0 : 1.0),
               boxShadow: AppShadows.sm,
             ),
             child: Column(
@@ -386,7 +387,7 @@ class _FirmaTanklarState extends State<FirmaTanklar> {
                       style: GoogleFonts.inter(
                         fontSize: 12,
                         fontWeight: FontWeight.bold,
-                        color: AppColors.gray800,
+                        color: isOverflow ? Colors.red : AppColors.gray800,
                       ),
                     ),
                   ],
@@ -421,7 +422,7 @@ class _FirmaTanklarState extends State<FirmaTanklar> {
                   style: GoogleFonts.inter(
                     fontSize: 10.5,
                     fontWeight: FontWeight.bold,
-                    color: AppColors.gray600,
+                    color: isOverflow ? Colors.red : AppColors.gray600,
                   ),
                 ),
                 const SizedBox(height: 6),

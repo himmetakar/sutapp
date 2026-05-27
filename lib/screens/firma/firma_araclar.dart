@@ -24,6 +24,7 @@ class _FirmaAraclarState extends State<FirmaAraclar> {
     
     final selectedDrivers = <String>{};
     final selectedTanks = <String>{};
+    final tankDrivers = <String, Set<String>>{};
 
     showDialog(
       context: context,
@@ -74,6 +75,9 @@ class _FirmaAraclarState extends State<FirmaAraclar> {
                                     selectedDrivers.add(d);
                                   } else {
                                     selectedDrivers.remove(d);
+                                    for (var tankSet in tankDrivers.values) {
+                                      tankSet.remove(d);
+                                    }
                                   }
                                 });
                               },
@@ -89,20 +93,62 @@ class _FirmaAraclarState extends State<FirmaAraclar> {
                             final name = t['ad'] as String;
                             final cap = t['kap'] as double;
                             final isChecked = selectedTanks.contains(name);
-                            return CheckboxListTile(
-                              title: Text('$name (${cap.toStringAsFixed(0)} LT)', style: GoogleFonts.inter(fontSize: 13)),
-                              value: isChecked,
-                              dense: true,
-                              contentPadding: EdgeInsets.zero,
-                              onChanged: (val) {
-                                setDialogState(() {
-                                  if (val == true) {
-                                    selectedTanks.add(name);
-                                  } else {
-                                    selectedTanks.remove(name);
-                                  }
-                                });
-                              },
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                CheckboxListTile(
+                                  title: Text('$name (${cap.toStringAsFixed(0)} LT)', style: GoogleFonts.inter(fontSize: 13)),
+                                  value: isChecked,
+                                  dense: true,
+                                  contentPadding: EdgeInsets.zero,
+                                  onChanged: (val) {
+                                    setDialogState(() {
+                                      if (val == true) {
+                                        selectedTanks.add(name);
+                                      } else {
+                                        selectedTanks.remove(name);
+                                      }
+                                    });
+                                  },
+                                ),
+                                if (isChecked)
+                                  Padding(
+                                    padding: const EdgeInsets.only(left: 16, bottom: 8),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text('Bu Tankı Kullanacak Toplayıcılar:', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.gray600)),
+                                        const SizedBox(height: 4),
+                                        if (selectedDrivers.isEmpty)
+                                          Text('Önce araç toplayıcısı seçiniz.', style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray400))
+                                        else
+                                          Wrap(
+                                            spacing: 6,
+                                            runSpacing: 4,
+                                            children: selectedDrivers.map((d) {
+                                              final isTankDriver = tankDrivers[name]?.contains(d) ?? false;
+                                              return FilterChip(
+                                                label: Text(d, style: GoogleFonts.inter(fontSize: 11)),
+                                                selected: isTankDriver,
+                                                selectedColor: AppColors.primary50,
+                                                checkmarkColor: AppColors.primary600,
+                                                onSelected: (selected) {
+                                                  setDialogState(() {
+                                                    final set = tankDrivers.putIfAbsent(name, () => <String>{});
+                                                    if (selected) {
+                                                      set.add(d);
+                                                    } else {
+                                                      set.remove(d);
+                                                    }
+                                                  });
+                                                },
+                                              );
+                                            }).toList(),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                              ],
                             );
                           }),
                       ],
@@ -130,15 +176,20 @@ class _FirmaAraclarState extends State<FirmaAraclar> {
                         for (var t in tanks) {
                           final name = t['ad'] as String;
                           if (selectedTanks.contains(name)) {
+                            final tDrivers = tankDrivers[name]?.toList() ?? [];
                             tanklar.add({
                               'ad': name,
                               'stok': 0.0,
                               'kap': t['kap'] as double,
+                              'suruculer': tDrivers,
                             });
 
                             final tankQuery = await FirebaseFirestore.instance.collection('tanklar').where('ad', isEqualTo: name).limit(1).get();
                             if (tankQuery.docs.isNotEmpty) {
-                              await tankQuery.docs.first.reference.update({'arac': plate});
+                              await tankQuery.docs.first.reference.update({
+                                'arac': plate,
+                                'suruculer': tDrivers,
+                              });
                             }
                           }
                         }
@@ -183,6 +234,14 @@ class _FirmaAraclarState extends State<FirmaAraclar> {
 
     final selectedDrivers = Set<String>.from(currentDriversList);
     final selectedTanks = Set<String>.from(currentTanksList);
+    final tankDrivers = <String, Set<String>>{};
+
+    for (var t in (vehicleData['tanklar'] as List? ?? [])) {
+      final tankMap = t as Map;
+      final name = tankMap['ad'] as String;
+      final tDrivers = List<String>.from(tankMap['suruculer'] as List? ?? []);
+      tankDrivers[name] = Set<String>.from(tDrivers);
+    }
 
     showDialog(
       context: context,
@@ -233,6 +292,9 @@ class _FirmaAraclarState extends State<FirmaAraclar> {
                                     selectedDrivers.add(d);
                                   } else {
                                     selectedDrivers.remove(d);
+                                    for (var tankSet in tankDrivers.values) {
+                                      tankSet.remove(d);
+                                    }
                                   }
                                 });
                               },
@@ -248,20 +310,62 @@ class _FirmaAraclarState extends State<FirmaAraclar> {
                             final name = t['ad'] as String;
                             final cap = t['kap'] as double;
                             final isChecked = selectedTanks.contains(name);
-                            return CheckboxListTile(
-                              title: Text('$name (${cap.toStringAsFixed(0)} LT)', style: GoogleFonts.inter(fontSize: 13)),
-                              value: isChecked,
-                              dense: true,
-                              contentPadding: EdgeInsets.zero,
-                              onChanged: (val) {
-                                setDialogState(() {
-                                  if (val == true) {
-                                    selectedTanks.add(name);
-                                  } else {
-                                    selectedTanks.remove(name);
-                                  }
-                                });
-                              },
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                CheckboxListTile(
+                                  title: Text('$name (${cap.toStringAsFixed(0)} LT)', style: GoogleFonts.inter(fontSize: 13)),
+                                  value: isChecked,
+                                  dense: true,
+                                  contentPadding: EdgeInsets.zero,
+                                  onChanged: (val) {
+                                    setDialogState(() {
+                                      if (val == true) {
+                                        selectedTanks.add(name);
+                                      } else {
+                                        selectedTanks.remove(name);
+                                      }
+                                    });
+                                  },
+                                ),
+                                if (isChecked)
+                                  Padding(
+                                    padding: const EdgeInsets.only(left: 16, bottom: 8),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text('Bu Tankı Kullanacak Toplayıcılar:', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.gray600)),
+                                        const SizedBox(height: 4),
+                                        if (selectedDrivers.isEmpty)
+                                          Text('Önce araç toplayıcısı seçiniz.', style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray400))
+                                        else
+                                          Wrap(
+                                            spacing: 6,
+                                            runSpacing: 4,
+                                            children: selectedDrivers.map((d) {
+                                              final isTankDriver = tankDrivers[name]?.contains(d) ?? false;
+                                              return FilterChip(
+                                                label: Text(d, style: GoogleFonts.inter(fontSize: 11)),
+                                                selected: isTankDriver,
+                                                selectedColor: AppColors.primary50,
+                                                checkmarkColor: AppColors.primary600,
+                                                onSelected: (selected) {
+                                                  setDialogState(() {
+                                                    final set = tankDrivers.putIfAbsent(name, () => <String>{});
+                                                    if (selected) {
+                                                      set.add(d);
+                                                    } else {
+                                                      set.remove(d);
+                                                    }
+                                                  });
+                                                },
+                                              );
+                                            }).toList(),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                              ],
                             );
                           }),
                       ],
@@ -296,15 +400,20 @@ class _FirmaAraclarState extends State<FirmaAraclar> {
                               orElse: () => null,
                             );
                             final double stock = currentTankMap != null ? (currentTankMap['stok'] as num).toDouble() : 0.0;
+                            final tDrivers = tankDrivers[name]?.toList() ?? [];
                             tanklar.add({
                               'ad': name,
                               'stok': stock,
                               'kap': t['kap'] as double,
+                              'suruculer': tDrivers,
                             });
 
                             final tankQuery = await FirebaseFirestore.instance.collection('tanklar').where('ad', isEqualTo: name).limit(1).get();
                             if (tankQuery.docs.isNotEmpty) {
-                              await tankQuery.docs.first.reference.update({'arac': plate});
+                              await tankQuery.docs.first.reference.update({
+                                'arac': plate,
+                                'suruculer': tDrivers,
+                              });
                             }
                           } else {
                             final currentTankMap = (vehicleData['tanklar'] as List? ?? []).firstWhere(
@@ -314,7 +423,10 @@ class _FirmaAraclarState extends State<FirmaAraclar> {
                             if (currentTankMap != null) {
                               final tankQuery = await FirebaseFirestore.instance.collection('tanklar').where('ad', isEqualTo: name).limit(1).get();
                               if (tankQuery.docs.isNotEmpty) {
-                                await tankQuery.docs.first.reference.update({'arac': ''});
+                                await tankQuery.docs.first.reference.update({
+                                  'arac': '',
+                                  'suruculer': [],
+                                });
                               }
                             }
                           }
@@ -476,12 +588,33 @@ class _FirmaAraclarState extends State<FirmaAraclar> {
                         final tank = t as Map;
                         final stok = (tank['stok'] as num?)?.toDouble() ?? 0.0;
                         final kap = (tank['kap'] as num?)?.toDouble() ?? 2000.0;
+                        final tDrivers = List<String>.from(tank['suruculer'] as List? ?? []);
                         return Container(
                           margin: const EdgeInsets.only(bottom: 6),
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(color: AppColors.gray50, borderRadius: BorderRadius.circular(8)),
                           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Text(tank['ad'] as String, style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.gray700)),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(tank['ad'] as String, style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.gray700)),
+                                if (tDrivers.isNotEmpty)
+                                  Wrap(
+                                    spacing: 4,
+                                    children: tDrivers.map((d) {
+                                      final initials = d.split(' ').map((p) => p.isNotEmpty ? p[0] : '').join();
+                                      return Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(color: AppColors.primary50, borderRadius: BorderRadius.circular(4)),
+                                        child: Text(
+                                          initials,
+                                          style: GoogleFonts.inter(fontSize: 9, fontWeight: FontWeight.bold, color: AppColors.primary600),
+                                        ),
+                                      );
+                                    }).toList(),
+                                  ),
+                              ],
+                            ),
                             const SizedBox(height: 4),
                             StockGauge(current: stok, capacity: kap),
                           ]),

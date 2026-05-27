@@ -895,9 +895,15 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
           final pct = (stock / capacity).clamp(0.0, 1.0);
 
           final isVehicle = type == 'arac';
+          final bool isOverflow = stock > capacity;
+          final Color themeColor = isOverflow 
+              ? Colors.red 
+              : (isVehicle ? const Color(0xFF0284C7) : const Color(0xFF059669));
 
           return AppCard(
             shadow: AppShadows.sm,
+            borderColor: isOverflow ? Colors.red : null,
+            borderWidth: isOverflow ? 2.0 : null,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -942,11 +948,15 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
                   children: [
                     Text(
                       '${stock.toStringAsFixed(0)} / ${capacity.toStringAsFixed(0)} LT',
-                      style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.gray700),
+                      style: GoogleFonts.inter(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: isOverflow ? Colors.red : AppColors.gray700,
+                      ),
                     ),
                     Text(
-                      '%${(pct * 100).toStringAsFixed(0)}',
-                      style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: isVehicle ? const Color(0xFF0284C7) : const Color(0xFF059669)),
+                      '%${((stock / capacity) * 100).toStringAsFixed(0)}',
+                      style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: themeColor),
                     ),
                   ],
                 ),
@@ -957,7 +967,7 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
                     value: pct,
                     minHeight: 8,
                     backgroundColor: AppColors.gray100,
-                    valueColor: AlwaysStoppedAnimation<Color>(isVehicle ? const Color(0xFF0284C7) : const Color(0xFF059669)),
+                    valueColor: AlwaysStoppedAnimation<Color>(themeColor),
                   ),
                 ),
               ],

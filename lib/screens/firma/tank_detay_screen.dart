@@ -143,7 +143,7 @@ class _TankDetayScreenState extends State<TankDetayScreen> {
                 int totalGiris = dateFiltered.length;
                 double totalSut = 0.0;
                 
-                // Group entries by vehicle/driver
+                // Group entries by tank name
                 final Map<String, List<QueryDocumentSnapshot>> groups = {};
                 for (var doc in dateFiltered) {
                   final data = doc.data() as Map<String, dynamic>;
@@ -151,15 +151,19 @@ class _TankDetayScreenState extends State<TankDetayScreen> {
                   final double m = mVal is num ? mVal.toDouble() : (double.tryParse(mVal.toString()) ?? 0.0);
                   totalSut += m;
 
-                  // Group Key: vehicle/driver
+                  // Group Key: tank name (fall back to vehicle if no tank info)
                   final vehicle = data['km'] ?? 'Araçsız';
                   final driver = data['sr'] ?? 'Yönetici';
-                  final groupKey = '$vehicle|$driver';
+                  // Try to get the tank name from the collection record
+                  // Tank name might be stored in 'tank' field or we derive from vehicle
+                  final tankName = data['tank'] ?? data['tankAd'] ?? vehicle;
+                  final groupKey = '$tankName|$vehicle|$driver';
                   if (!groups.containsKey(groupKey)) {
                     groups[groupKey] = [];
                   }
                   groups[groupKey]!.add(doc);
                 }
+
 
                 int totalTanks = groups.keys.length;
 
@@ -223,8 +227,9 @@ class _TankDetayScreenState extends State<TankDetayScreen> {
                                 final key = groups.keys.elementAt(index);
                                 final list = groups[key]!;
                                 final parts = key.split('|');
-                                final vehicle = parts[0];
-                                final driver = parts[1];
+                                final tankName = parts[0];
+                                final vehicle = parts.length > 1 ? parts[1] : '';
+                                final driver = parts.length > 2 ? parts[2] : '';
 
                                 // Group metrics
                                 double groupTotal = 0.0;
@@ -269,11 +274,11 @@ class _TankDetayScreenState extends State<TankDetayScreen> {
                                                 width: 38,
                                                 height: 38,
                                                 decoration: const BoxDecoration(
-                                                  color: Color(0xFF8B5CF6),
+                                                  color: Color(0xFF0284C7),
                                                   shape: BoxShape.circle,
                                                 ),
                                                 child: const Icon(
-                                                  Icons.local_shipping_outlined,
+                                                  Icons.propane_tank_rounded,
                                                   color: Colors.white,
                                                   size: 20,
                                                 ),
@@ -284,7 +289,7 @@ class _TankDetayScreenState extends State<TankDetayScreen> {
                                                   crossAxisAlignment: CrossAxisAlignment.start,
                                                   children: [
                                                     Text(
-                                                      vehicle,
+                                                      tankName,
                                                       style: GoogleFonts.inter(
                                                         fontWeight: FontWeight.bold,
                                                         fontSize: 14.5,
@@ -292,12 +297,18 @@ class _TankDetayScreenState extends State<TankDetayScreen> {
                                                       ),
                                                     ),
                                                     const SizedBox(height: 2),
-                                                    Text(
-                                                      driver,
-                                                      style: GoogleFonts.inter(
-                                                        fontSize: 12,
-                                                        color: AppColors.gray400,
-                                                      ),
+                                                    Row(
+                                                      children: [
+                                                        const Icon(Icons.local_shipping_outlined, size: 12, color: AppColors.gray400),
+                                                        const SizedBox(width: 4),
+                                                        Text(
+                                                          '$vehicle • $driver',
+                                                          style: GoogleFonts.inter(
+                                                            fontSize: 12,
+                                                            color: AppColors.gray400,
+                                                          ),
+                                                        ),
+                                                      ],
                                                     ),
                                                   ],
                                                 ),

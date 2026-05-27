@@ -196,7 +196,7 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
                   ),
                   _buildSubmenuCard(
                     icon: Icons.water_drop_rounded,
-                    title: 'Tank Süt Girişleri',
+                    title: 'Tank İçerik Detay',
                     color: const Color(0xFF0369A1),
                     onTap: () => context.push('/firma/tanklar/detay'),
                   ),
@@ -208,7 +208,7 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
                   ),
                   _buildSubmenuCard(
                     icon: Icons.bar_chart_rounded,
-                    title: 'Süt Rapor Sayfası',
+                    title: 'Süt Toplama Raporu',
                     color: const Color(0xFF0F766E),
                     onTap: () => context.push('/firma/raporlar'),
                   ),

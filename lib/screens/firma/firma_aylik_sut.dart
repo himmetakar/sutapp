@@ -18,14 +18,6 @@ class FirmaAylikSutScreen extends StatefulWidget {
 class _FirmaAylikSutScreenState extends State<FirmaAylikSutScreen> {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   DateTime _selectedMonth = DateTime.now();
-  String _searchQuery = '';
-  final _searchCtrl = TextEditingController();
-
-  @override
-  void dispose() {
-    _searchCtrl.dispose();
-    super.dispose();
-  }
 
   void _changeMonth(int delta) {
     setState(() {
@@ -33,19 +25,51 @@ class _FirmaAylikSutScreenState extends State<FirmaAylikSutScreen> {
     });
   }
 
+  int _daysInMonth(DateTime date) {
+    return DateTime(date.year, date.month + 1, 0).day;
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final currentFirmaName = auth.user?.displayName ?? '';
     final monthStr = DateFormat('MMMM yyyy', 'tr_TR').format(_selectedMonth);
+    final daysCount = _daysInMonth(_selectedMonth);
 
     return Scaffold(
       appBar: AppBar(
         title: Text('Aylık Süt Kayıtları', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.go('/firma/ureticiler'),
+          onPressed: () => context.pop(),
         ),
+        actions: [
+          // Print / Export button (placeholder)
+          IconButton(
+            icon: const Icon(Icons.print_rounded, color: Color(0xFF0F8B5A)),
+            onPressed: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('PDF dışa aktarma özelliği yakında eklenecek.')),
+              );
+            },
+          ),
+          // Add new entry button
+          IconButton(
+            icon: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0F8B5A),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: const Icon(Icons.add_rounded, color: Colors.white, size: 18),
+            ),
+            onPressed: () {
+              // Navigate to süt kabul or show add dialog
+              context.push('/firma/sut-kabul');
+            },
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
       backgroundColor: AppColors.gray50,
       body: Column(
@@ -53,18 +77,20 @@ class _FirmaAylikSutScreenState extends State<FirmaAylikSutScreen> {
           // Month Selector
           Container(
             color: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 IconButton(
                   icon: const Icon(Icons.chevron_left_rounded, color: AppColors.primary600),
                   onPressed: () => _changeMonth(-1),
                 ),
+                const SizedBox(width: 8),
                 Text(
-                  monthStr.toUpperCase(),
-                  style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.gray800),
+                  monthStr[0].toUpperCase() + monthStr.substring(1),
+                  style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.gray800),
                 ),
+                const SizedBox(width: 8),
                 IconButton(
                   icon: const Icon(Icons.chevron_right_rounded, color: AppColors.primary600),
                   onPressed: () => _changeMonth(1),
@@ -72,38 +98,9 @@ class _FirmaAylikSutScreenState extends State<FirmaAylikSutScreen> {
               ],
             ),
           ),
-          const Divider(),
+          const Divider(height: 1),
 
-          // Search Field
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: TextField(
-              controller: _searchCtrl,
-              decoration: InputDecoration(
-                hintText: 'Üretici, toplayıcı veya bölge ara...',
-                prefixIcon: const Icon(Icons.search_rounded, color: AppColors.gray400),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear_rounded, size: 18),
-                        onPressed: () {
-                          _searchCtrl.clear();
-                          setState(() {
-                            _searchQuery = '';
-                          });
-                        },
-                      )
-                    : null,
-              ),
-              onChanged: (val) {
-                setState(() {
-                  _searchQuery = val.trim();
-                });
-              },
-            ),
-          ),
-
-          // Flat list
+          // Table
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: _db
@@ -111,168 +108,496 @@ class _FirmaAylikSutScreenState extends State<FirmaAylikSutScreen> {
                   .where('firma', isEqualTo: currentFirmaName)
                   .snapshots(),
               builder: (context, snapshot) {
-                if (snapshot.hasError) {
-                  return Center(child: Text('Hata: ${snapshot.error}'));
-                }
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
-                final rawDocs = snapshot.data?.docs ?? [];
-                
-                // Sort in memory to avoid index requirements
-                final docs = List<QueryDocumentSnapshot>.from(rawDocs);
-                docs.sort((a, b) {
-                  final aData = a.data() as Map<String, dynamic>;
-                  final bData = b.data() as Map<String, dynamic>;
-                  final aTime = aData['timestamp'] as Timestamp?;
-                  final bTime = bData['timestamp'] as Timestamp?;
-                  if (aTime == null && bTime == null) return 0;
-                  if (aTime == null) return 1;
-                  if (bTime == null) return -1;
-                  return bTime.compareTo(aTime);
-                });
 
-                // Filter by month and search query
-                final filteredDocs = docs.where((doc) {
+                final rawDocs = snapshot.data?.docs ?? [];
+
+                // Filter by selected month
+                final monthDocs = rawDocs.where((doc) {
                   final data = doc.data() as Map<String, dynamic>;
-                  final Timestamp? ts = data['timestamp'] as Timestamp?;
+                  final ts = data['timestamp'] as Timestamp?;
                   if (ts == null) return false;
                   final date = ts.toDate();
-
-                  final monthMatches = date.year == _selectedMonth.year && date.month == _selectedMonth.month;
-                  if (!monthMatches) return false;
-
-                  if (_searchQuery.isEmpty) return true;
-
-                  final u = (data['u'] as String? ?? '').toLowerCase();
-                  final sr = (data['sr'] as String? ?? '').toLowerCase();
-                  final b = (data['b'] as String? ?? '').toLowerCase();
-
-                  return u.contains(_searchQuery.toLowerCase()) ||
-                      sr.contains(_searchQuery.toLowerCase()) ||
-                      b.contains(_searchQuery.toLowerCase());
+                  return date.year == _selectedMonth.year && date.month == _selectedMonth.month;
                 }).toList();
 
-                if (filteredDocs.isEmpty) {
+                // Build producer data map
+                // Key: producerName, Value: Map<int day, Map<String vakit, double amount>>
+                final Map<String, Map<int, Map<String, double>>> producerData = {};
+                // Also track milk type (hot/cold) per producer
+                final Map<String, String> producerType = {};
+
+                for (var doc in monthDocs) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  final producer = data['u'] as String? ?? '';
+                  if (producer.isEmpty) continue;
+
+                  final ts = data['timestamp'] as Timestamp?;
+                  if (ts == null) continue;
+                  final date = ts.toDate();
+                  final day = date.day;
+
+                  final mVal = data['m'] ?? 0;
+                  final double m = mVal is num ? mVal.toDouble() : (double.tryParse(mVal.toString()) ?? 0.0);
+
+                  // Determine vakit (S: Sabah, A: Akşam)
+                  String vakit = data['vakit'] ?? '';
+                  if (vakit.isEmpty) {
+                    // Guess from timestamp hour
+                    vakit = date.hour < 14 ? 'S' : 'A';
+                  } else {
+                    vakit = vakit.toLowerCase().contains('sabah') ? 'S' : 'A';
+                  }
+
+                  // Determine milk type
+                  final tip = data['tip'] as String? ?? 'Soğuk Süt';
+                  producerType[producer] = tip;
+
+                  if (!producerData.containsKey(producer)) {
+                    producerData[producer] = {};
+                  }
+                  if (!producerData[producer]!.containsKey(day)) {
+                    producerData[producer]![day] = {'S': 0.0, 'A': 0.0};
+                  }
+                  producerData[producer]![day]![vakit] = (producerData[producer]![day]![vakit] ?? 0.0) + m;
+                }
+
+                // Sort producers alphabetically
+                final sortedProducers = producerData.keys.toList()..sort();
+
+                if (sortedProducers.isEmpty) {
                   return Center(
-                    child: Text(
-                      'Bu dönemde süt alım kaydı bulunamadı.',
-                      style: GoogleFonts.inter(color: AppColors.gray500),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.table_chart_outlined, size: 48, color: AppColors.gray300),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Bu ay için süt alım kaydı bulunamadı.',
+                          style: GoogleFonts.inter(color: AppColors.gray500),
+                        ),
+                      ],
                     ),
                   );
                 }
 
-                // Sum of filtered milk
-                double totalMilk = filteredDocs.fold(0.0, (sum, doc) {
-                  final data = doc.data() as Map<String, dynamic>;
-                  final mVal = data['m'] ?? 0.0;
-                  final m = mVal is num ? mVal.toDouble() : (double.tryParse(mVal.toString()) ?? 0.0);
-                  return sum + m;
-                });
+                // Calculate total per producer
+                final Map<String, double> producerTotals = {};
+                for (var producer in sortedProducers) {
+                  double total = 0;
+                  producerData[producer]!.forEach((day, vakitMap) {
+                    total += (vakitMap['S'] ?? 0) + (vakitMap['A'] ?? 0);
+                  });
+                  producerTotals[producer] = total;
+                }
 
-                return Column(
-                  children: [
-                    // Summary indicator
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                      color: AppColors.primary50,
-                      width: double.infinity,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            'Kayıt Sayısı: ${filteredDocs.length}',
-                            style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.primary800),
-                          ),
-                          Text(
-                            'Toplam Süt: ${totalMilk.toStringAsFixed(1)} LT',
-                            style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.primary800),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      child: ListView.builder(
-                        padding: const EdgeInsets.all(12),
-                        itemCount: filteredDocs.length,
-                        itemBuilder: (context, index) {
-                          final doc = filteredDocs[index];
-                          final data = doc.data() as Map<String, dynamic>;
-                          final u = data['u'] ?? '';
-                          final mVal = data['m'] ?? 0.0;
-                          final double m = mVal is num ? mVal.toDouble() : (double.tryParse(mVal.toString()) ?? 0.0);
-                          final Timestamp? ts = data['timestamp'] as Timestamp?;
-                          final date = ts?.toDate() ?? DateTime.now();
-                          final dateStr = DateFormat('dd.MM.yyyy - HH:mm').format(date);
-                          final type = data['tip'] ?? 'Soğuk Süt';
-                          final collector = data['sr'] ?? 'Toplayıcı';
-                          final region = data['b'] ?? '';
-
-                          return Container(
-                            margin: const EdgeInsets.only(bottom: 8),
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(12),
-                              boxShadow: AppShadows.sm,
-                            ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 38,
-                                  height: 38,
-                                  decoration: BoxDecoration(
-                                    color: AppColors.primary50,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Center(
-                                    child: Icon(Icons.water_drop_rounded, color: AppColors.primary600, size: 18),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(u, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600)),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        'Toplayıcı: $collector | Bölge: $region',
-                                        style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray500),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        '$dateStr • $type',
-                                        style: GoogleFonts.inter(fontSize: 9, color: AppColors.gray400),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.primary50,
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Text(
-                                    '${m.toStringAsFixed(1)} LT',
-                                    style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.primary700),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
+                // Build the table
+                return _buildMilkTable(
+                  sortedProducers,
+                  producerData,
+                  producerType,
+                  producerTotals,
+                  daysCount,
                 );
               },
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildMilkTable(
+    List<String> producers,
+    Map<String, Map<int, Map<String, double>>> producerData,
+    Map<String, String> producerType,
+    Map<String, double> producerTotals,
+    int daysCount,
+  ) {
+    // Fixed column width for days
+    const double dayColWidth = 42.0;
+    const double noColWidth = 32.0;
+    const double nameColWidth = 100.0;
+    const double vakitColWidth = 28.0;
+    const double totalColWidth = 52.0;
+    const double rowHeight = 28.0;
+
+    final headerStyle = GoogleFonts.inter(
+      fontSize: 10,
+      fontWeight: FontWeight.bold,
+      color: Colors.white,
+    );
+    final cellStyle = GoogleFonts.inter(
+      fontSize: 10,
+      fontWeight: FontWeight.w500,
+      color: AppColors.gray700,
+    );
+    final emptyStyle = GoogleFonts.inter(
+      fontSize: 10,
+      color: AppColors.gray300,
+    );
+
+    return SingleChildScrollView(
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header row
+            Container(
+              decoration: const BoxDecoration(
+                color: Color(0xFF0284C7),
+              ),
+              child: Row(
+                children: [
+                  // No column
+                  Container(
+                    width: noColWidth,
+                    height: 36,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.white.withOpacity(0.2), width: 0.5),
+                    ),
+                    child: Text('No', style: headerStyle),
+                  ),
+                  // Name column
+                  Container(
+                    width: nameColWidth,
+                    height: 36,
+                    alignment: Alignment.centerLeft,
+                    padding: const EdgeInsets.only(left: 6),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.white.withOpacity(0.2), width: 0.5),
+                    ),
+                    child: Text('Müşteri Adı', style: headerStyle),
+                  ),
+                  // S/A column
+                  Container(
+                    width: vakitColWidth,
+                    height: 36,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.white.withOpacity(0.2), width: 0.5),
+                    ),
+                    child: Text('S/A', style: headerStyle),
+                  ),
+                  // Day columns
+                  ...List.generate(daysCount, (i) {
+                    final day = i + 1;
+                    return Container(
+                      width: dayColWidth,
+                      height: 36,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.white.withOpacity(0.2), width: 0.5),
+                      ),
+                      child: Text('$day', style: headerStyle),
+                    );
+                  }),
+                  // Total column
+                  Container(
+                    width: totalColWidth,
+                    height: 36,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.white.withOpacity(0.2), width: 0.5),
+                      color: const Color(0xFF0369A1),
+                    ),
+                    child: Text('Top.', style: headerStyle),
+                  ),
+                ],
+              ),
+            ),
+
+            // Producer rows
+            ...producers.asMap().entries.map((entry) {
+              final idx = entry.key;
+              final producer = entry.value;
+              final data = producerData[producer]!;
+              final type = producerType[producer] ?? 'Soğuk Süt';
+              final isHot = type.toLowerCase().contains('sıcak');
+              final bgColor = idx % 2 == 0 ? Colors.white : AppColors.gray50;
+              final total = producerTotals[producer] ?? 0.0;
+
+              // Calculate S and A totals
+              double sTotal = 0, aTotal = 0;
+              data.forEach((day, vakitMap) {
+                sTotal += vakitMap['S'] ?? 0;
+                aTotal += vakitMap['A'] ?? 0;
+              });
+
+              return Column(
+                children: [
+                  // Sabah row
+                  Container(
+                    color: bgColor,
+                    child: Row(
+                      children: [
+                        // No - merged over 2 rows visually by showing only on S row
+                        Container(
+                          width: noColWidth,
+                          height: rowHeight,
+                          alignment: Alignment.center,
+                          decoration: const BoxDecoration(
+                            border: Border(
+                              right: BorderSide(color: AppColors.gray200, width: 0.5),
+                              bottom: BorderSide(color: Colors.transparent, width: 0.5),
+                            ),
+                          ),
+                          child: Text(
+                            '${idx + 1}',
+                            style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.gray600),
+                          ),
+                        ),
+                        // Name - merged
+                        Container(
+                          width: nameColWidth,
+                          height: rowHeight,
+                          alignment: Alignment.centerLeft,
+                          padding: const EdgeInsets.only(left: 6),
+                          decoration: const BoxDecoration(
+                            border: Border(
+                              right: BorderSide(color: AppColors.gray200, width: 0.5),
+                              bottom: BorderSide(color: Colors.transparent, width: 0.5),
+                            ),
+                          ),
+                          child: Text(
+                            producer,
+                            style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.gray800),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        // S indicator
+                        Container(
+                          width: vakitColWidth,
+                          height: rowHeight,
+                          alignment: Alignment.center,
+                          decoration: const BoxDecoration(
+                            border: Border(
+                              right: BorderSide(color: AppColors.gray200, width: 0.5),
+                              bottom: BorderSide(color: AppColors.gray200, width: 0.5),
+                            ),
+                          ),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: isHot ? const Color(0xFFFEE2E2) : const Color(0xFFDBEAFE),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              'S',
+                              style: GoogleFonts.inter(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: isHot ? const Color(0xFFDC2626) : const Color(0xFF2563EB),
+                              ),
+                            ),
+                          ),
+                        ),
+                        // Day values for Sabah
+                        ...List.generate(daysCount, (i) {
+                          final day = i + 1;
+                          final val = data[day]?['S'] ?? 0.0;
+                          final hasValue = val > 0;
+                          return Container(
+                            width: dayColWidth,
+                            height: rowHeight,
+                            alignment: Alignment.center,
+                            decoration: const BoxDecoration(
+                              border: Border(
+                                right: BorderSide(color: AppColors.gray100, width: 0.5),
+                                bottom: BorderSide(color: AppColors.gray200, width: 0.5),
+                              ),
+                            ),
+                            child: Text(
+                              hasValue ? val.toStringAsFixed(0) : '-',
+                              style: hasValue ? cellStyle : emptyStyle,
+                            ),
+                          );
+                        }),
+                        // S total
+                        Container(
+                          width: totalColWidth,
+                          height: rowHeight,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEFF6FF),
+                            border: Border.all(color: AppColors.gray200, width: 0.5),
+                          ),
+                          child: Text(
+                            sTotal > 0 ? sTotal.toStringAsFixed(0) : '-',
+                            style: GoogleFonts.inter(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: sTotal > 0 ? const Color(0xFF1D4ED8) : AppColors.gray300,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Akşam row
+                  Container(
+                    color: bgColor,
+                    child: Row(
+                      children: [
+                        // No - empty for merged look
+                        Container(
+                          width: noColWidth,
+                          height: rowHeight,
+                          decoration: const BoxDecoration(
+                            border: Border(
+                              right: BorderSide(color: AppColors.gray200, width: 0.5),
+                              bottom: BorderSide(color: AppColors.gray300, width: 1),
+                            ),
+                          ),
+                        ),
+                        // Name - empty for merged look
+                        Container(
+                          width: nameColWidth,
+                          height: rowHeight,
+                          decoration: const BoxDecoration(
+                            border: Border(
+                              right: BorderSide(color: AppColors.gray200, width: 0.5),
+                              bottom: BorderSide(color: AppColors.gray300, width: 1),
+                            ),
+                          ),
+                        ),
+                        // A indicator
+                        Container(
+                          width: vakitColWidth,
+                          height: rowHeight,
+                          alignment: Alignment.center,
+                          decoration: const BoxDecoration(
+                            border: Border(
+                              right: BorderSide(color: AppColors.gray200, width: 0.5),
+                              bottom: BorderSide(color: AppColors.gray300, width: 1),
+                            ),
+                          ),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF3F4F6),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              'A',
+                              style: GoogleFonts.inter(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.gray500,
+                              ),
+                            ),
+                          ),
+                        ),
+                        // Day values for Akşam
+                        ...List.generate(daysCount, (i) {
+                          final day = i + 1;
+                          final val = data[day]?['A'] ?? 0.0;
+                          final hasValue = val > 0;
+                          return Container(
+                            width: dayColWidth,
+                            height: rowHeight,
+                            alignment: Alignment.center,
+                            decoration: const BoxDecoration(
+                              border: Border(
+                                right: BorderSide(color: AppColors.gray100, width: 0.5),
+                                bottom: BorderSide(color: AppColors.gray300, width: 1),
+                              ),
+                            ),
+                            child: Text(
+                              hasValue ? val.toStringAsFixed(0) : '-',
+                              style: hasValue ? cellStyle : emptyStyle,
+                            ),
+                          );
+                        }),
+                        // A total
+                        Container(
+                          width: totalColWidth,
+                          height: rowHeight,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEFF6FF),
+                            border: Border.all(color: AppColors.gray200, width: 0.5),
+                          ),
+                          child: Text(
+                            aTotal > 0 ? aTotal.toStringAsFixed(0) : '-',
+                            style: GoogleFonts.inter(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: aTotal > 0 ? const Color(0xFF1D4ED8) : AppColors.gray300,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            }),
+
+            // Grand total row
+            Container(
+              decoration: const BoxDecoration(
+                color: Color(0xFF0284C7),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: noColWidth + nameColWidth + vakitColWidth,
+                    height: 32,
+                    alignment: Alignment.centerRight,
+                    padding: const EdgeInsets.only(right: 8),
+                    child: Text(
+                      'GENEL TOPLAM',
+                      style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
+                    ),
+                  ),
+                  ...List.generate(daysCount, (i) {
+                    final day = i + 1;
+                    double dayTotal = 0;
+                    for (var producer in producers) {
+                      dayTotal += (producerData[producer]![day]?['S'] ?? 0);
+                      dayTotal += (producerData[producer]![day]?['A'] ?? 0);
+                    }
+                    return Container(
+                      width: dayColWidth,
+                      height: 32,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.white.withOpacity(0.2), width: 0.5),
+                      ),
+                      child: Text(
+                        dayTotal > 0 ? dayTotal.toStringAsFixed(0) : '-',
+                        style: GoogleFonts.inter(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: dayTotal > 0 ? Colors.white : Colors.white54,
+                        ),
+                      ),
+                    );
+                  }),
+                  Container(
+                    width: totalColWidth,
+                    height: 32,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0369A1),
+                      border: Border.all(color: Colors.white.withOpacity(0.2), width: 0.5),
+                    ),
+                    child: Text(
+                      producerTotals.values.fold(0.0, (sum, v) => sum + v).toStringAsFixed(0),
+                      style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

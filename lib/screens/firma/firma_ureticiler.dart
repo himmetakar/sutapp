@@ -98,13 +98,6 @@ class FirmaUreticiler extends StatelessWidget {
             ),
             _buildMenuCard(
               context: context,
-              title: 'Yeni Üretici Onayları',
-              icon: Icons.how_to_reg_rounded,
-              color: const Color(0xFFF97316), // Orange
-              route: '/firma/ureticiler/onaylar',
-            ),
-            _buildMenuCard(
-              context: context,
               title: 'Atama İşlemleri',
               icon: Icons.person_add_alt_1_rounded,
               color: const Color(0xFFEF4444), // Red

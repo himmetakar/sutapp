@@ -249,6 +249,16 @@ class QuickActionsDialogs {
                         final double? miktar = double.tryParse(miktarCtrl.text);
                         if (miktar == null || miktar <= 0) return;
 
+                        double targetCapacity = 2000.0;
+                        double targetCurrentStock = 0.0;
+                        try {
+                          final tankDoc = tankSnapshot.data!.docs.firstWhere((doc) => doc['ad'] == selectedTank);
+                          targetCapacity = (tankDoc['kap'] as num?)?.toDouble() ?? 2000.0;
+                          targetCurrentStock = (tankDoc['stok'] as num?)?.toDouble() ?? 0.0;
+                        } catch (_) {}
+
+                        final bool isOverflow = (targetCurrentStock + miktar > targetCapacity);
+
                         await FirestoreService().recordMilkCollection(
                           producerName: selectedUretici!,
                           tankName: selectedTank!,
@@ -258,12 +268,16 @@ class QuickActionsDialogs {
                         );
 
                         Navigator.pop(ctx);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('$selectedUretici üreticisinden $selectedTank tankına ${miktar.toStringAsFixed(0)} LT süt girişi kaydedildi!'),
-                            backgroundColor: AppColors.success,
-                          ),
-                        );
+                        if (isOverflow) {
+                          _showLimitExceededDialog(context, selectedTank!);
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('$selectedUretici üreticisinden $selectedTank tankına ${miktar.toStringAsFixed(0)} LT süt girişi kaydedildi!'),
+                              backgroundColor: AppColors.success,
+                            ),
+                          );
+                        }
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.primary600,
@@ -484,15 +498,7 @@ class QuickActionsDialogs {
                           final double targetCurrentStock = (targetTankDoc['stok'] as num?)?.toDouble() ?? 0.0;
                           final double targetCapacity = (targetTankDoc['kap'] as num?)?.toDouble() ?? 2000.0;
 
-                          if (targetCurrentStock + miktar > targetCapacity) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Hata: Hedef merkez tankı kapasitesi aşılıyor! Mevcut boş alan: ${(targetCapacity - targetCurrentStock).toStringAsFixed(0)} LT.'),
-                                backgroundColor: AppColors.danger,
-                              ),
-                            );
-                            return;
-                          }
+                          final bool isOverflow = (targetCurrentStock + miktar > targetCapacity);
 
                           await FirestoreService().recordMilkTransfer(
                             vehiclePlate: selectedSourceVehicle!,
@@ -502,12 +508,16 @@ class QuickActionsDialogs {
                           );
 
                           Navigator.pop(ctx);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('$selectedSourceVehicle tankından $selectedTargetTank merkez tankına ${miktar.toStringAsFixed(0)} LT süt kabul edildi!'),
-                              backgroundColor: AppColors.success,
-                            ),
-                          );
+                          if (isOverflow) {
+                            _showLimitExceededDialog(context, selectedTargetTank!);
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('$selectedSourceVehicle tankından $selectedTargetTank merkez tankına ${miktar.toStringAsFixed(0)} LT süt kabul edildi!'),
+                                backgroundColor: AppColors.success,
+                              ),
+                            );
+                          }
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppColors.primary600,
@@ -539,6 +549,38 @@ class QuickActionsDialogs {
       pageBuilder: (context, anim1, anim2) {
         return _TahsilatEkleScreen(currentFirmaName: currentFirmaName);
       },
+    );
+  }
+
+  static void _showLimitExceededDialog(BuildContext context, String tankName, {VoidCallback? onDismiss}) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 28),
+            const SizedBox(width: 10),
+            Text('Limit Aşıldı', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
+          ],
+        ),
+        content: Text('Tank limiti aşıldı! ($tankName)', style: GoogleFonts.inter(fontSize: 14)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        actions: [
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              if (onDismiss != null) onDismiss();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: const Text('Tamam'),
+          ),
+        ],
+      ),
     );
   }
 }
