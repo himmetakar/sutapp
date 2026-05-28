@@ -179,7 +179,7 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
               _buildCenteredSubmenuHeader('Süt ve Tank Yönetimi'),
               const SizedBox(height: 24),
 
-              // Submenu Grid (3 columns for 9 cards)
+              // Submenu Grid (3 columns for 10 cards)
               GridView.count(
                 crossAxisCount: 3,
                 crossAxisSpacing: 10,
@@ -188,6 +188,12 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
                 physics: const NeverScrollableScrollPhysics(),
                 childAspectRatio: 0.85,
                 children: [
+                  _buildSubmenuCard(
+                    icon: Icons.calendar_month_rounded,
+                    title: 'Aylık Süt Kayıtları',
+                    color: const Color(0xFF2563EB),
+                    onTap: () => context.push('/firma/aylik-sut'),
+                  ),
                   _buildSubmenuCard(
                     icon: Icons.speed_rounded,
                     title: 'Tank Durumu',
@@ -222,7 +228,7 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
                     icon: Icons.assignment_ind_rounded,
                     title: 'Tank Atama',
                     color: const Color(0xFF4F46E5),
-                    onTap: () => context.push('/firma/araclar/atama'),
+                    onTap: () => context.push('/firma/tanklar/atama'),
                   ),
                   _buildSubmenuCard(
                     icon: Icons.analytics_rounded,

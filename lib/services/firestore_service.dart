@@ -149,6 +149,23 @@ class FirestoreService {
           await companiesRef.add(c);
         }
       }
+
+      // 9. Cari Firmalar (Partner Companies)
+      final CollectionReference cariFirmalarRef = _db.collection('cari_firmalar');
+      final cariFirmaSna = await cariFirmalarRef.limit(1).get();
+      if (cariFirmaSna.docs.isEmpty) {
+        final List<Map<String, dynamic>> mockCariFirmalar = [
+          {'ad': 'Sütaş A.Ş.', 'tip': 'alici', 'tel': '0850 200 0788', 'eposta': 'iletisim@sutas.com.tr', 'adres': 'Karacabey / Bursa', 'firma': 'Kayseri Çiftlik'},
+          {'ad': 'Pınar Süt', 'tip': 'alici', 'tel': '0850 210 0724', 'eposta': 'info@pinar.com.tr', 'adres': 'Kemalpaşa / İzmir', 'firma': 'Kayseri Çiftlik'},
+          {'ad': 'Karakaya Yem Sanayi', 'tip': 'tedarikci', 'tel': '0352 222 1100', 'eposta': 'iletisim@karakayayem.com', 'adres': 'Kocasinan / Kayseri', 'firma': 'Kayseri Çiftlik'},
+          {'ad': 'Sütaş A.Ş.', 'tip': 'alici', 'tel': '0850 200 0788', 'eposta': 'iletisim@sutas.com.tr', 'adres': 'Karacabey / Bursa', 'firma': 'Sivas Süt A.Ş.'},
+          {'ad': 'Karakaya Yem Sanayi', 'tip': 'tedarikci', 'tel': '0352 222 1100', 'eposta': 'iletisim@karakayayem.com', 'adres': 'Kocasinan / Kayseri', 'firma': 'Sivas Süt A.Ş.'},
+        ];
+        for (var cf in mockCariFirmalar) {
+          cf['timestamp'] = FieldValue.serverTimestamp();
+          await cariFirmalarRef.add(cf);
+        }
+      }
     } catch (e) {
       print('Mock initialization error: $e');
     }
@@ -277,6 +294,8 @@ class FirestoreService {
     String? customerType,
     String? vakit,
     String? kalite,
+    DateTime? customDate,
+    bool notifyProducer = true,
   }) async {
     // Resolve company name if not explicitly passed
     String resolvedFirma = firma ?? '';
@@ -287,8 +306,10 @@ class FirestoreService {
       }
     }
 
+    final targetDate = customDate ?? DateTime.now();
+
     // 1. Add collection record
-    final timeStr = DateFormat('HH:mm').format(DateTime.now());
+    final timeStr = DateFormat('HH:mm').format(targetDate);
     await _collections.add({
       'u': producerName,
       'm': miktar,
@@ -298,11 +319,13 @@ class FirestoreService {
       'km': vehiclePlate ?? '-',
       'b': region ?? 'Merkez',
       'tank': tankName,
-      'timestamp': FieldValue.serverTimestamp(),
+      'timestamp': customDate != null ? Timestamp.fromDate(customDate) : FieldValue.serverTimestamp(),
       'firma': resolvedFirma,
-      'tip': sutTipi ?? 'Soğuk Süt',
+      'tip': sutTipi ?? 'Soğuk süt',
       'customerType': customerType ?? 'sut',
-      if (vakit != null) 'vakit': vakit,
+      'vakit': (vakit != null && vakit.isNotEmpty)
+          ? vakit
+          : ((targetDate.hour >= 2 && targetDate.hour < 14) ? 'Sabah' : 'Akşam'),
       if (kalite != null) 'kalite': kalite,
     });
 
@@ -344,21 +367,25 @@ class FirestoreService {
       final newTotal = currentTotal + miktar;
       await prodDoc.reference.update({
         'total': newTotal,
-        'lastMilkType': sutTipi ?? 'Soğuk Süt',
+        'lastMilkType': sutTipi ?? 'Soğuk süt',
       });
     }
 
     // 5. Send notification to the producer
-    try {
-      await sendNotification(
-        recipientName: producerName,
-        role: 'uretici',
-        baslik: 'Süt Alımı Gerçekleşti',
-        icerik: '$miktar lt sütünüz $driverName ($vehiclePlate) tarafından teslim alınmıştır.',
-        type: 'sut_alim',
-      );
-    } catch (e) {
-      print('Süt alım bildirimi gönderilemedi: $e');
+    if (notifyProducer) {
+      try {
+        final String resolvedDriver = driverName ?? 'Yönetici';
+        final String resolvedPlate = vehiclePlate != null && vehiclePlate.isNotEmpty ? ' ($vehiclePlate)' : '';
+        await sendNotification(
+          recipientName: producerName,
+          role: 'uretici',
+          baslik: 'Süt Alımı Gerçekleşti',
+          icerik: '$miktar lt sütünüz $resolvedDriver$resolvedPlate tarafından teslim alınmıştır.',
+          type: 'sut_alim',
+        );
+      } catch (e) {
+        print('Süt alım bildirimi gönderilemedi: $e');
+      }
     }
   }
 
@@ -416,6 +443,65 @@ class FirestoreService {
 
     // 3. Delete the collection document
     await docRef.delete();
+  }
+
+  /// Update a milk collection record and adjust stock changes
+  Future<void> updateMilkCollection(String docId, double newMiktar) async {
+    final docRef = _collections.doc(docId);
+    final docSnap = await docRef.get();
+    if (!docSnap.exists) return;
+
+    final data = docSnap.data() as Map<String, dynamic>;
+    final double oldMiktar = (data['m'] as num?)?.toDouble() ?? 0.0;
+    final String tankName = data['tank'] ?? '';
+    final String producerName = data['u'] ?? '';
+    final String vehiclePlate = data['km'] ?? '';
+
+    final diff = newMiktar - oldMiktar;
+    if (diff == 0) return;
+
+    // 1. Update document
+    await docRef.update({'m': newMiktar});
+
+    // 2. Adjust tank stock
+    if (tankName.isNotEmpty) {
+      final tankQuery = await _tanks.where('ad', isEqualTo: tankName).limit(1).get();
+      if (tankQuery.docs.isNotEmpty) {
+        final tankDoc = tankQuery.docs.first;
+        final currentStock = (tankDoc['stok'] as num).toDouble();
+        final newStock = (currentStock + diff).clamp(0.0, double.infinity);
+        await tankDoc.reference.update({'stok': newStock});
+
+        // Update in vehicle document as well
+        if (tankDoc['tip'] == 'arac' && vehiclePlate.isNotEmpty) {
+          final vehicleQuery = await _vehicles.where('plaka', isEqualTo: vehiclePlate).limit(1).get();
+          if (vehicleQuery.docs.isNotEmpty) {
+            final vehicleDoc = vehicleQuery.docs.first;
+            final List<dynamic> vehicleTanks = (vehicleDoc['tanklar'] as List? ?? [])
+                .map((t) => Map<String, dynamic>.from(t as Map))
+                .toList();
+            for (int i = 0; i < vehicleTanks.length; i++) {
+              if (vehicleTanks[i]['ad'] == tankName) {
+                vehicleTanks[i]['stok'] = newStock;
+                break;
+              }
+            }
+            await vehicleDoc.reference.update({'tanklar': vehicleTanks});
+          }
+        }
+      }
+    }
+
+    // 3. Adjust producer total
+    if (producerName.isNotEmpty) {
+      final prodQuery = await _producers.where('name', isEqualTo: producerName).limit(1).get();
+      if (prodQuery.docs.isNotEmpty) {
+        final prodDoc = prodQuery.docs.first;
+        final currentTotal = (prodDoc['total'] as num).toDouble();
+        final newTotal = (currentTotal + diff).clamp(0.0, double.infinity);
+        await prodDoc.reference.update({'total': newTotal});
+      }
+    }
   }
 
   Future<void> recordMilkTransfer({
@@ -797,6 +883,20 @@ class FirestoreService {
     required bool isGlobal,
     List<String>? targetRoles,
   }) async {
+    if (!isGlobal) {
+      final now = DateTime.now();
+      final startOfToday = DateTime(now.year, now.month, now.day);
+      
+      final todayAnnouncements = await _db.collection('duyurular')
+          .where('senderFirma', isEqualTo: senderFirma)
+          .where('timestamp', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfToday))
+          .get();
+
+      if (todayAnnouncements.docs.length >= 3) {
+        throw Exception('Günlük duyuru gönderme limitine (3 adet) ulaştınız.');
+      }
+    }
+
     final List<String> recipients = [];
 
     if (isGlobal) {
@@ -898,19 +998,31 @@ class FirestoreService {
       }
     }
     await batch.commit();
+
+    if (!isGlobal) {
+      await _db.collection('duyurular').add({
+        'senderId': senderId,
+        'senderFirma': senderFirma,
+        'baslik': baslik,
+        'icerik': icerik,
+        'timestamp': FieldValue.serverTimestamp(),
+        'targetDrivers': targetDrivers,
+        'targetProducers': targetProducers,
+      });
+    }
   }
 
   // --- COMMON FINANCIAL LEDGER HELPERS ---
 
   String mapMilkTypeToPriceKey(String type) {
     switch (type) {
-      case 'Sıcak Süt':
+      case 'Sıcak süt':
         return 'sicak';
-      case 'Soğuk Süt':
+      case 'Soğuk süt':
         return 'soguk';
-      case 'C Kalite':
+      case 'C kalite':
         return 'c_kalite';
-      case 'D Kalite':
+      case 'D kalite':
         return 'd_kalite';
       default:
         return 'soguk';
@@ -977,19 +1089,47 @@ class FirestoreService {
     required String producerName,
     required String bolge,
     required String group,
+    Map<String, dynamic>? kesintiAyarlari,
   }) {
     final priceList = prices.map((d) => d.data() as Map<String, dynamic>).toList();
 
     // 1. Calculate Gross Milk Receivable
     double toplamAlacak = 0.0;
     double toplamLitre = 0.0;
+    double dynamicKesintiSum = 0.0;
+
+    // Resolve deduction settings schedule
+    final Map<String, dynamic> activeSchedule = {};
+    final defaultRates = {
+      'Bağkur': 2.10,
+      'Stopaj': 1.00,
+      'Borsa': 0.20,
+    };
+
+    if (kesintiAyarlari != null && kesintiAyarlari.isNotEmpty) {
+      kesintiAyarlari.forEach((key, val) {
+        if (val is Map) {
+          activeSchedule[key] = Map<String, dynamic>.from(val);
+        }
+      });
+    } else {
+      defaultRates.forEach((key, val) {
+        activeSchedule[key] = {
+          'oran': val,
+          'aktif': true,
+          'baslangic': null,
+          'bitis': null,
+        };
+      });
+    }
+
     for (var doc in collections) {
       final data = doc.data() as Map<String, dynamic>;
       final mVal = data['m'];
       final double m = mVal is num ? mVal.toDouble() : (double.tryParse(mVal.toString()) ?? 0.0);
       toplamLitre += m;
 
-      final String rawType = data['tip'] ?? 'Soğuk Süt';
+      final String rawType = data['tip'] ?? 'Soğuk süt';
       final String priceKey = mapMilkTypeToPriceKey(rawType);
       final double price = resolveMilkPrice(
         prices: priceList,
@@ -998,7 +1138,64 @@ class FirestoreService {
         group: group,
         type: priceKey,
       );
-      toplamAlacak += m * price;
+      final double colVal = m * price;
+      toplamAlacak += colVal;
+
+      // Resolve collection date
+      DateTime colDate = DateTime.now();
+      final ts = data['timestamp'] as Timestamp?;
+      if (ts != null) {
+        colDate = ts.toDate();
+      } else {
+        final dateStr = data['tarih'] as String?;
+        if (dateStr != null && dateStr.isNotEmpty) {
+          try {
+            final parts = dateStr.split('.');
+            colDate = DateTime(int.parse(parts[2]), int.parse(parts[1]), int.parse(parts[0]));
+          } catch (_) {}
+        }
+      }
+
+      // Calculate dynamic deductions for this collection
+      activeSchedule.forEach((name, settings) {
+        if (settings['aktif'] == true) {
+          bool isInRange = true;
+          final baslangicStr = settings['baslangic'] as String?;
+          final bitisStr = settings['bitis'] as String?;
+
+          DateTime parseDate(String s) {
+            if (s.contains('-')) {
+              return DateTime.parse(s);
+            } else {
+              final parts = s.split('.');
+              return DateTime(int.parse(parts[2]), int.parse(parts[1]), int.parse(parts[0]));
+            }
+          }
+
+          if (baslangicStr != null && baslangicStr.isNotEmpty) {
+            try {
+              final start = parseDate(baslangicStr);
+              final cOnly = DateTime(colDate.year, colDate.month, colDate.day);
+              final sOnly = DateTime(start.year, start.month, start.day);
+              if (cOnly.isBefore(sOnly)) isInRange = false;
+            } catch (_) {}
+          }
+
+          if (bitisStr != null && bitisStr.isNotEmpty) {
+            try {
+              final end = parseDate(bitisStr);
+              final cOnly = DateTime(colDate.year, colDate.month, colDate.day);
+              final eOnly = DateTime(end.year, end.month, end.day);
+              if (cOnly.isAfter(eOnly)) isInRange = false;
+            } catch (_) {}
+          }
+
+          if (isInRange) {
+            final double oran = (settings['oran'] as num?)?.toDouble() ?? 0.0;
+            dynamicKesintiSum += colVal * (oran / 100.0);
+          }
+        }
+      });
     }
 
     // 2. Total Payments (Tahsilat)
@@ -1021,13 +1218,13 @@ class FirestoreService {
     }
 
     // 4. Active Deductions (Kesinti)
-    double totalKesinti = 0.0;
+    double totalManualKesinti = 0.0;
     for (var doc in kesintiler) {
       final data = doc.data() as Map<String, dynamic>;
       final durum = data['durum'] ?? 'aktif';
       if (durum == 'aktif') {
         final kVal = data['tutar'];
-        totalKesinti += kVal is num ? kVal.toDouble() : (double.tryParse(kVal.toString()) ?? 0.0);
+        totalManualKesinti += kVal is num ? kVal.toDouble() : (double.tryParse(kVal.toString()) ?? 0.0);
       }
     }
 
@@ -1047,6 +1244,8 @@ class FirestoreService {
         }
       }
     }
+
+    final double totalKesinti = totalManualKesinti + dynamicKesintiSum;
 
     // Net balance = gross milk receivable - payments - active advances - active kesintiler - active cezalar
     final double netBalance = toplamAlacak - totalTahsilat - totalAvans - totalKesinti - totalCeza;

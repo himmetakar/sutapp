@@ -208,7 +208,7 @@ class _MusteriFiyatAyarlariScreenState extends State<MusteriFiyatAyarlariScreen>
                                             contentPadding: EdgeInsets.zero,
                                             title: Text('${p['tip'].toString().toUpperCase()} - ${p['hedef']}'),
                                             subtitle: Text(
-                                              'Sıcak: ${f['sicak'] ?? 0} ₺ | Soğuk: ${f['soguk'] ?? 0} ₺\nC Kalite: ${f['c_kalite'] ?? 0} ₺\nD Kalite: ${f['d_kalite'] ?? 0} ₺',
+                                              'Sıcak: ${f['sicak'] ?? 0} ₺ | Soğuk: ${f['soguk'] ?? 0} ₺\nC kalite: ${f['c_kalite'] ?? 0} ₺\nD kalite: ${f['d_kalite'] ?? 0} ₺',
                                               style: GoogleFonts.inter(fontSize: 11),
                                             ),
                                             trailing: Text(
@@ -484,13 +484,13 @@ class _MusteriFiyatAyarlariScreenState extends State<MusteriFiyatAyarlariScreen>
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _buildDialogInput('Sıcak Süt (₺/L)', sicakCtrl, Icons.water_drop_rounded, Colors.blue),
+            _buildDialogInput('Sıcak süt (₺/L)', sicakCtrl, Icons.water_drop_rounded, Colors.blue),
             const SizedBox(height: 8),
-            _buildDialogInput('Soğuk Süt (₺/L)', sogukCtrl, Icons.ac_unit_rounded, Colors.teal),
+            _buildDialogInput('Soğuk süt (₺/L)', sogukCtrl, Icons.ac_unit_rounded, Colors.teal),
             const SizedBox(height: 8),
-            _buildDialogInput('C Kalite Süt (₺/L)', cCtrl, Icons.science_rounded, Colors.red),
+            _buildDialogInput('C kalite Süt (₺/L)', cCtrl, Icons.science_rounded, Colors.red),
             const SizedBox(height: 8),
-            _buildDialogInput('D Kalite Süt (₺/L)', dCtrl, Icons.warning_amber_rounded, Colors.orange),
+            _buildDialogInput('D kalite Süt (₺/L)', dCtrl, Icons.warning_amber_rounded, Colors.orange),
           ],
         ),
         actions: [
@@ -742,17 +742,17 @@ class _TopluIslemlerScreenState extends State<TopluIslemlerScreen> {
                     const SizedBox(height: 16),
                     Row(
                       children: [
-                        Expanded(child: _buildFormInput('Sıcak Süt', _sicakCtrl, Colors.blue, Icons.water_drop_rounded)),
+                        Expanded(child: _buildFormInput('Sıcak süt', _sicakCtrl, Colors.blue, Icons.water_drop_rounded)),
                         const SizedBox(width: 12),
-                        Expanded(child: _buildFormInput('Soğuk Süt', _sogukCtrl, Colors.teal, Icons.ac_unit_rounded)),
+                        Expanded(child: _buildFormInput('Soğuk süt', _sogukCtrl, Colors.teal, Icons.ac_unit_rounded)),
                       ],
                     ),
                     const SizedBox(height: 12),
                     Row(
                       children: [
-                        Expanded(child: _buildFormInput('C Kalite', _cCtrl, Colors.red, Icons.science_rounded)),
+                        Expanded(child: _buildFormInput('C kalite', _cCtrl, Colors.red, Icons.science_rounded)),
                         const SizedBox(width: 12),
-                        Expanded(child: _buildFormInput('D Kalite', _dCtrl, Colors.orange, Icons.warning_amber_rounded)),
+                        Expanded(child: _buildFormInput('D kalite', _dCtrl, Colors.orange, Icons.warning_amber_rounded)),
                       ],
                     ),
                   ],

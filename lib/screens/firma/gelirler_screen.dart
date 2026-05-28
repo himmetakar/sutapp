@@ -229,7 +229,7 @@ class _GelirlerScreenState extends State<GelirlerScreen> {
         if (_isWithinFilter(date)) {
           final double m = (data['m'] as num?)?.toDouble() ?? 0.0;
           final String ureticiName = data['u'] ?? '';
-          final String rawType = data['tip'] ?? 'Soğuk Süt';
+          final String rawType = data['tip'] ?? 'Soğuk süt';
 
           final pData = producersMap[ureticiName] ?? {};
           final bolge = pData['bolge'] ?? '';

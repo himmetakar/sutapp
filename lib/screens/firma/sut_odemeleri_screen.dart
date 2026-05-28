@@ -387,7 +387,7 @@ class _SutOdemeleriScreenState extends State<SutOdemeleriScreen> {
       final data = doc.data() as Map<String, dynamic>;
       final dateStr = data['timestamp'] != null ? DateFormat('dd.MM.yyyy').format((data['timestamp'] as Timestamp).toDate()) : '-';
       final double m = (data['m'] as num?)?.toDouble() ?? 0.0;
-      final String rawType = data['tip'] ?? 'Soğuk Süt';
+      final String rawType = data['tip'] ?? 'Soğuk süt';
       final String priceKey = _firestoreService.mapMilkTypeToPriceKey(rawType);
       final double price = _firestoreService.resolveMilkPrice(
         prices: pricesList,
@@ -711,6 +711,7 @@ class _SutOdemeleriScreenState extends State<SutOdemeleriScreen> {
                                     final name = p['name'] as String;
                                     final bolge = p['bolge'] ?? '';
                                     final group = p['group'] ?? '';
+                                    final kesintiAyarlari = p['kesintiAyarlari'] as Map<String, dynamic>?;
 
                                     final pCollections = allCollections.where((doc) => doc['u'] == name).toList();
                                     final pTahsilatlar = allTahsilatlar.where((doc) => doc['uretici'] == name).toList();
@@ -729,6 +730,7 @@ class _SutOdemeleriScreenState extends State<SutOdemeleriScreen> {
                                       producerName: name,
                                       bolge: bolge,
                                       group: group,
+                                      kesintiAyarlari: kesintiAyarlari,
                                     );
 
                                     // 2. Calculate selected month's ledger
@@ -748,6 +750,7 @@ class _SutOdemeleriScreenState extends State<SutOdemeleriScreen> {
                                       producerName: name,
                                       bolge: bolge,
                                       group: group,
+                                      kesintiAyarlari: kesintiAyarlari,
                                     );
 
                                     final double net = fullLedger['netBalance'];

@@ -131,7 +131,7 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
                     final name = nameCtrl.text.trim();
                     final phone = phoneCtrl.text.trim();
                     final bolge = bolgeCtrl.text.trim();
-                    final selectedMilkType = isYem ? 'Yok' : (isSicak ? 'Sıcak Süt' : 'Soğuk Süt');
+                    final selectedMilkType = isYem ? 'Yok' : (isSicak ? 'Sıcak süt' : 'Soğuk süt');
 
                     if (name.isEmpty || phone.isEmpty || bolge.isEmpty) return;
 
@@ -183,8 +183,8 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
         String? selectedGroup = data['group'];
         String? selectedBirlik = data['birlik'];
 
-        final currentMilkType = data['lastMilkType'] ?? 'Soğuk Süt';
-        bool isSicak = currentMilkType == 'Sıcak Süt';
+        final currentMilkType = data['lastMilkType'] ?? 'Soğuk süt';
+        bool isSicak = currentMilkType == 'Sıcak süt';
         bool isYem = data['customerType'] == 'yem';
 
         return StatefulBuilder(
@@ -282,7 +282,7 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
                     final name = nameCtrl.text.trim();
                     final phone = phoneCtrl.text.trim();
                     final bolge = bolgeCtrl.text.trim();
-                    final selectedMilkType = isYem ? 'Yok' : (isSicak ? 'Sıcak Süt' : 'Soğuk Süt');
+                    final selectedMilkType = isYem ? 'Yok' : (isSicak ? 'Sıcak süt' : 'Soğuk süt');
 
                     if (name.isEmpty || phone.isEmpty || bolge.isEmpty) return;
 
@@ -325,12 +325,12 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
     final birlik = data['birlik'] ?? 'Yok';
     final avg = (data['avg'] as num?)?.toDouble() ?? 0.0;
     final total = (data['total'] as num?)?.toDouble() ?? 0.0;
-    String lastMilkType = data['lastMilkType'] ?? 'Soğuk Süt';
+    String lastMilkType = data['lastMilkType'] ?? 'Soğuk süt';
     String customerType = data['customerType'] ?? 'sut';
 
-    const List<String> milkTypes = ['Soğuk Süt', 'Sıcak Süt', 'C Kalite', 'D Kalite'];
+    const List<String> milkTypes = ['Soğuk süt', 'Sıcak süt', 'C kalite', 'D kalite'];
     if (!milkTypes.contains(lastMilkType)) {
-      lastMilkType = 'Soğuk Süt';
+      lastMilkType = 'Soğuk süt';
     }
 
     showDialog(
@@ -412,6 +412,221 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
               child: Text(
                 'Kapat',
                 style: GoogleFonts.inter(color: AppColors.primary600, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showDigitalCardDialog(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    final name = data['name'] ?? '';
+    final group = data['group'] ?? 'Genel';
+    final avg = (data['avg'] as num?)?.toDouble() ?? 0.0;
+    final total = (data['total'] as num?)?.toDouble() ?? 0.0;
+    final docId = doc.id;
+    final cardNumber = "8024 ${docId.hashCode.abs().toString().padRight(12, '0').substring(0, 12).replaceAllMapped(RegExp(r".{4}"), (match) => "${match.group(0)} ")}".trim();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.transparent,
+        contentPadding: EdgeInsets.zero,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 20),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // The Card
+            Container(
+              width: double.infinity,
+              height: 220,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(20),
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF0F172A), Color(0xFF1E293B), Color(0xFF334155)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.4),
+                    blurRadius: 15,
+                    offset: const Offset(0, 8),
+                  )
+                ],
+              ),
+              child: Stack(
+                children: [
+                  // Decorative water drop background
+                  Positioned(
+                    right: -20,
+                    bottom: -20,
+                    child: Opacity(
+                      opacity: 0.1,
+                      child: Icon(Icons.water_drop_rounded, size: 180, color: Colors.blue[300]),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(20.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        // Card Header
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(Icons.water_drop_rounded, color: Colors.blue, size: 24),
+                                const SizedBox(width: 6),
+                                Text(
+                                  'SütApp Kart',
+                                  style: GoogleFonts.outfit(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const Icon(Icons.contactless_outlined, color: Colors.white60, size: 24),
+                          ],
+                        ),
+                        // Chip
+                        Container(
+                          width: 40,
+                          height: 30,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFFFCD34D), Color(0xFFF59E0B)],
+                            ),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                        ),
+                        // Producer Details & Card Number
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              name.toUpperCase(),
+                              style: GoogleFonts.spaceMono(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 1.5,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  cardNumber,
+                                  style: GoogleFonts.spaceMono(
+                                    color: Colors.white70,
+                                    fontSize: 12,
+                                    letterSpacing: 2.0,
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white24,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    group.toUpperCase(),
+                                    style: GoogleFonts.inter(
+                                      color: Colors.white,
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Details & Action Modal Body
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                children: [
+                  Text(
+                    'Dijital Süt Kartı',
+                    style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.gray800),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Üreticinin günlük süt alımlarını ve aylık detaylı kartını inceleyin.',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      context.push('/firma/dijital-kart?name=$name');
+                    },
+                    icon: const Icon(Icons.badge_rounded, size: 16),
+                    label: const Text('Dijital Süt Kartını Görüntüle'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary600,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size(double.infinity, 44),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      elevation: 0,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  // Producer statistics row
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      Column(
+                        children: [
+                          Text('Günlük Ort.', style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray400, fontWeight: FontWeight.w500)),
+                          const SizedBox(height: 4),
+                          Text('${avg.toStringAsFixed(0)} LT', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.gray800)),
+                        ],
+                      ),
+                      Container(width: 1, height: 24, color: AppColors.gray200),
+                      Column(
+                        children: [
+                          Text('Toplam Teslimat', style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray400, fontWeight: FontWeight.w500)),
+                          const SizedBox(height: 4),
+                          Text('${total.toStringAsFixed(0)} LT', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.gray800)),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  OutlinedButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.gray600,
+                      side: const BorderSide(color: AppColors.gray200),
+                      minimumSize: const Size(double.infinity, 40),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    child: const Text('Kapat'),
+                  ),
+                ],
               ),
             ),
           ],
@@ -504,7 +719,7 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
                               ),
                               const SizedBox(width: 4),
                               Text(
-                                isSicak ? 'Sıcak Süt' : 'Soğuk Süt',
+                                isSicak ? 'Sıcak süt' : 'Soğuk süt',
                                 style: GoogleFonts.inter(
                                   color: Colors.white,
                                   fontWeight: FontWeight.bold,
@@ -524,7 +739,7 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
                     Expanded(
                       child: Center(
                         child: Text(
-                          'Sıcak Süt',
+                          'Sıcak süt',
                           style: GoogleFonts.inter(
                             color: isSicak ? Colors.transparent : Colors.grey[600],
                             fontWeight: FontWeight.w600,
@@ -536,7 +751,7 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
                     Expanded(
                       child: Center(
                         child: Text(
-                          'Soğuk Süt',
+                          'Soğuk süt',
                           style: GoogleFonts.inter(
                             color: !isSicak ? Colors.transparent : Colors.grey[600],
                             fontWeight: FontWeight.w600,
@@ -801,6 +1016,12 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               IconButton(
+                                icon: const Icon(Icons.badge_rounded, color: Colors.orange, size: 20),
+                                onPressed: () {
+                                  _showDigitalCardDialog(doc);
+                                },
+                              ),
+                              IconButton(
                                 icon: const Icon(Icons.description_rounded, color: AppColors.primary600, size: 20),
                                 onPressed: () {
                                   context.push('/firma/hesap-ozeti?name=$name');
@@ -826,4 +1047,40 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
       ),
     );
   }
+}
+
+class BarcodePainter extends CustomPainter {
+  final String data;
+  BarcodePainter(this.data);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.black
+      ..strokeWidth = 2.0;
+
+    double x = 10.0;
+    final double step = (size.width - 20) / 40;
+    for (int i = 0; i < 40; i++) {
+      final double width = (i % 3 == 0 || i % 7 == 0) ? 3.5 : 1.5;
+      paint.strokeWidth = width;
+      if (i % 4 != 0) {
+        canvas.drawLine(Offset(x, 2.0), Offset(x, size.height - 15.0), paint);
+      }
+      x += step;
+    }
+
+    final textPainter = TextPainter(
+      text: TextSpan(
+        text: data,
+        style: GoogleFonts.spaceMono(fontSize: 10, color: Colors.black54, fontWeight: FontWeight.bold),
+      ),
+      textDirection: TextDirection.ltr,
+    );
+    textPainter.layout();
+    textPainter.paint(canvas, Offset((size.width - textPainter.width) / 2, size.height - 12.0));
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

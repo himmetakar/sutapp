@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -223,8 +224,8 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
     final startOfMonth = DateTime(_selectedMonth.year, _selectedMonth.month, 1);
     final endOfMonth = DateTime(_selectedMonth.year, _selectedMonth.month + 1, 1).subtract(const Duration(microseconds: 1));
 
-    return FutureBuilder<Map<String, dynamic>>(
-      future: _loadProducerLedgerData(firmaName, ureticiName),
+    return StreamBuilder<Map<String, dynamic>>(
+      stream: _streamProducerLedgerData(firmaName, ureticiName),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return Scaffold(
@@ -254,13 +255,28 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
         double bagkurOran = 2.10;
         double stopajOran = 1.00;
         double borsaOran = 0.20;
+        final List<String> dynamicColumns = [];
         if (settingsDoc != null && settingsDoc.exists) {
           final sData = settingsDoc.data() as Map<String, dynamic>;
           bagkurOran = (sData['bagkurOran'] as num?)?.toDouble() ?? 2.10;
           stopajOran = (sData['stopajOran'] as num?)?.toDouble() ?? 1.00;
           borsaOran = (sData['borsaOran'] as num?)?.toDouble() ?? 0.20;
+          final dynamicCols = sData['kesintiTurleri'] as List?;
+          if (dynamicCols != null) {
+            dynamicColumns.addAll(dynamicCols.map((e) => e.toString()));
+          }
         }
-        double totalDeductionRate = (bagkurOran + stopajOran + borsaOran) / 100.0;
+        if (dynamicColumns.isEmpty) {
+          dynamicColumns.addAll(['Bağkur', 'keyfi kesinti', 'Stopaj']);
+        }
+
+        Map<String, dynamic>? kesintiAyarlari;
+        if (producerDoc != null && producerDoc.exists) {
+          final pData = producerDoc.data() as Map<String, dynamic>;
+          if (pData.containsKey('kesintiAyarlari')) {
+            kesintiAyarlari = pData['kesintiAyarlari'] as Map<String, dynamic>?;
+          }
+        }
 
         String group = '';
         String bolge = '';
@@ -283,7 +299,7 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
           final date = ts.toDate();
           if (date.isBefore(startOfMonth)) {
             final double m = (doc['m'] as num?)?.toDouble() ?? 0.0;
-            final String rawType = doc['tip'] ?? 'Soğuk Süt';
+            final String rawType = doc['tip'] ?? 'Soğuk süt';
             final String priceKey = FirestoreService().mapMilkTypeToPriceKey(rawType);
             final double price = FirestoreService().resolveMilkPrice(
               prices: priceList,
@@ -335,8 +351,81 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
           }
         }
 
-        // Past dynamic kesintiler (Bağkur, Stopaj, Borsa = totalDeductionRate of past Süt Geliri)
-        devirSum -= pastMilkVal * totalDeductionRate;
+        // Past dynamic kesintiler (Bağkur, Stopaj, Borsa dynamically calculated for past Süt Geliri)
+        double pastDynamicKesinti = 0.0;
+        for (var doc in allCollections) {
+          final ts = doc['timestamp'] as Timestamp?;
+          if (ts == null) continue;
+          final date = ts.toDate();
+          if (date.isBefore(startOfMonth)) {
+            final double m = (doc['m'] as num?)?.toDouble() ?? 0.0;
+            final String rawType = doc['tip'] ?? 'Soğuk süt';
+            final String priceKey = FirestoreService().mapMilkTypeToPriceKey(rawType);
+            final double price = FirestoreService().resolveMilkPrice(
+              prices: priceList,
+              producerName: ureticiName,
+              bolge: bolge,
+              group: group,
+              type: priceKey,
+            );
+            final double colVal = m * price;
+            
+            for (var type in dynamicColumns) {
+              double rate = 0.0;
+              bool active = true;
+              String? start;
+              String? end;
+              
+              if (kesintiAyarlari != null && kesintiAyarlari.containsKey(type)) {
+                final s = kesintiAyarlari[type];
+                if (s is Map) {
+                  rate = (s['oran'] as num?)?.toDouble() ?? 0.0;
+                  active = s['aktif'] == true;
+                  start = s['baslangic'] as String?;
+                  end = s['bitis'] as String?;
+                }
+              } else {
+                if (type == 'Bağkur') rate = bagkurOran;
+                else if (type == 'Stopaj') rate = stopajOran;
+                else if (type == 'Borsa') rate = borsaOran;
+                else rate = 0.0;
+                active = true;
+              }
+              
+              if (active) {
+                bool isInRange = true;
+                DateTime parseDate(String s) {
+                  if (s.contains('-')) {
+                    return DateTime.parse(s);
+                  } else {
+                    final parts = s.split('.');
+                    return DateTime(int.parse(parts[2]), int.parse(parts[1]), int.parse(parts[0]));
+                  }
+                }
+                if (start != null && start.isNotEmpty) {
+                  try {
+                    final sDate = parseDate(start);
+                    final cOnly = DateTime(date.year, date.month, date.day);
+                    final sOnly = DateTime(sDate.year, sDate.month, sDate.day);
+                    if (cOnly.isBefore(sOnly)) isInRange = false;
+                  } catch (_) {}
+                }
+                if (end != null && end.isNotEmpty) {
+                  try {
+                    final eDate = parseDate(end);
+                    final cOnly = DateTime(date.year, date.month, date.day);
+                    final eOnly = DateTime(eDate.year, eDate.month, eDate.day);
+                    if (cOnly.isAfter(eOnly)) isInRange = false;
+                  } catch (_) {}
+                }
+                if (isInRange) {
+                  pastDynamicKesinti += colVal * (rate / 100.0);
+                }
+              }
+            }
+          }
+        }
+        devirSum -= pastDynamicKesinti;
 
         // Past active penalties (durum == 'aktif')
         for (var doc in cezalar) {
@@ -356,7 +445,7 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
                 final colDate = colTs.toDate();
                 if (colDate.year == date.year && colDate.month == date.month) {
                   final double m = (col['m'] as num?)?.toDouble() ?? 0.0;
-                  final String rawType = col['tip'] ?? 'Soğuk Süt';
+                  final String rawType = col['tip'] ?? 'Soğuk süt';
                   final String priceKey = FirestoreService().mapMilkTypeToPriceKey(rawType);
                   final double price = FirestoreService().resolveMilkPrice(
                     prices: priceList,
@@ -413,7 +502,7 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
           final double m = (data['m'] as num?)?.toDouble() ?? 0.0;
           toplamLitre += m;
 
-          final String rawType = data['tip'] ?? 'Soğuk Süt';
+          final String rawType = data['tip'] ?? 'Soğuk süt';
           final String priceKey = FirestoreService().mapMilkTypeToPriceKey(rawType);
           final double price = FirestoreService().resolveMilkPrice(
             prices: priceList,
@@ -469,10 +558,99 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
           return sum + ((data['tutar'] as num?)?.toDouble() ?? 0.0);
         });
 
-        double bagkur = milkVal * (bagkurOran / 100.0);
-        double stopaj = milkVal * (stopajOran / 100.0);
-        double borsa = milkVal * (borsaOran / 100.0);
-        double totalDynamicKesinti = bagkur + stopaj + borsa;
+        final Map<String, double> computedDynamicDeductions = {};
+        final Map<String, double> computedRates = {};
+        double totalDynamicKesinti = 0.0;
+
+        for (var colDoc in currentCols) {
+          final colData = colDoc.data() as Map<String, dynamic>;
+          final mVal = colData['m'];
+          final double m = mVal is num ? mVal.toDouble() : (double.tryParse(mVal.toString()) ?? 0.0);
+          
+          final String rawType = colData['tip'] ?? 'Soğuk süt';
+          final String priceKey = FirestoreService().mapMilkTypeToPriceKey(rawType);
+          final double price = FirestoreService().resolveMilkPrice(
+            prices: priceList,
+            producerName: ureticiName,
+            bolge: bolge,
+            group: group,
+            type: priceKey,
+          );
+          final double colVal = m * price;
+          
+          // Resolve collection date
+          DateTime colDate = DateTime.now();
+          final ts = colData['timestamp'] as Timestamp?;
+          if (ts != null) {
+            colDate = ts.toDate();
+          } else {
+            final dateStr = colData['tarih'] as String?;
+            if (dateStr != null && dateStr.isNotEmpty) {
+              try {
+                final parts = dateStr.split('.');
+                colDate = DateTime(int.parse(parts[2]), int.parse(parts[1]), int.parse(parts[0]));
+              } catch (_) {}
+            }
+          }
+          
+          for (var type in dynamicColumns) {
+            double rate = 0.0;
+            bool active = true;
+            String? start;
+            String? end;
+            
+            if (kesintiAyarlari != null && kesintiAyarlari.containsKey(type)) {
+              final s = kesintiAyarlari[type];
+              if (s is Map) {
+                rate = (s['oran'] as num?)?.toDouble() ?? 0.0;
+                active = s['aktif'] == true;
+                start = s['baslangic'] as String?;
+                end = s['bitis'] as String?;
+              }
+            } else {
+              if (type == 'Bağkur') rate = bagkurOran;
+              else if (type == 'Stopaj') rate = stopajOran;
+              else if (type == 'Borsa') rate = borsaOran;
+              else rate = 0.0;
+              active = true;
+            }
+            
+            computedRates[type] = rate;
+            
+            if (active) {
+              bool isInRange = true;
+              DateTime parseDate(String s) {
+                if (s.contains('-')) {
+                  return DateTime.parse(s);
+                } else {
+                  final parts = s.split('.');
+                  return DateTime(int.parse(parts[2]), int.parse(parts[1]), int.parse(parts[0]));
+                }
+              }
+              if (start != null && start.isNotEmpty) {
+                try {
+                  final sDate = parseDate(start);
+                  final cOnly = DateTime(colDate.year, colDate.month, colDate.day);
+                  final sOnly = DateTime(sDate.year, sDate.month, sDate.day);
+                  if (cOnly.isBefore(sOnly)) isInRange = false;
+                } catch (_) {}
+              }
+              if (end != null && end.isNotEmpty) {
+                try {
+                  final eDate = parseDate(end);
+                  final cOnly = DateTime(colDate.year, colDate.month, colDate.day);
+                  final eOnly = DateTime(eDate.year, eDate.month, eDate.day);
+                  if (cOnly.isAfter(eOnly)) isInRange = false;
+                } catch (_) {}
+              }
+              if (isInRange) {
+                final double currentVal = computedDynamicDeductions[type] ?? 0.0;
+                computedDynamicDeductions[type] = currentVal + colVal * (rate / 100.0);
+                totalDynamicKesinti += colVal * (rate / 100.0);
+              }
+            }
+          }
+        }
         double totalKesinti = totalManualKesinti + totalDynamicKesinti;
 
         double totalCorrections = currentDev.fold(0.0, (sum, doc) {
@@ -659,24 +837,18 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
         if (milkVal > 0 || totalManualKesinti > 0) {
           final List<Widget> rows = [];
           if (milkVal > 0) {
-            rows.add(_buildSectionRow(
-              leftText: 'Bağkur',
-              leftSubtitle: '%${bagkurOran.toStringAsFixed(2)} oranında',
-              rightText: '- ${formatCurrency.format(bagkur)}',
-              rightColor: Colors.red[850],
-            ));
-            rows.add(_buildSectionRow(
-              leftText: 'Stopaj',
-              leftSubtitle: '%${stopajOran.toStringAsFixed(2)} oranında',
-              rightText: '- ${formatCurrency.format(stopaj)}',
-              rightColor: Colors.red[850],
-            ));
-            rows.add(_buildSectionRow(
-              leftText: 'Borsa',
-              leftSubtitle: '%${borsaOran.toStringAsFixed(2)} oranında',
-              rightText: '- ${formatCurrency.format(borsa)}',
-              rightColor: Colors.red[850],
-            ));
+            for (var type in dynamicColumns) {
+              final val = computedDynamicDeductions[type] ?? 0.0;
+              final rate = computedRates[type] ?? 0.0;
+              if (val > 0) {
+                rows.add(_buildSectionRow(
+                  leftText: type,
+                  leftSubtitle: '%${rate.toStringAsFixed(2)} oranında',
+                  rightText: '- ${formatCurrency.format(val)}',
+                  rightColor: Colors.red[850],
+                ));
+              }
+            }
           }
           for (var doc in currentKes) {
             final data = doc.data() as Map<String, dynamic>;
@@ -778,12 +950,12 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
                   selectedMonth: _selectedMonth,
                   currentFirmaName: firmaName,
                   milkGrouped: milkGrouped,
-                  bagkur: bagkur,
-                  stopaj: stopaj,
-                  borsa: borsa,
                   bagkurOran: bagkurOran,
                   stopajOran: stopajOran,
                   borsaOran: borsaOran,
+                  dynamicColumns: dynamicColumns,
+                  computedDynamicDeductions: computedDynamicDeductions,
+                  computedRates: computedRates,
                 ),
               ),
             ],
@@ -1063,7 +1235,7 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
     for (var doc in collections) {
       final data = doc.data() as Map<String, dynamic>;
       final double m = (data['m'] as num?)?.toDouble() ?? 0.0;
-      final String rawType = data['tip'] ?? 'Soğuk Süt';
+      final String rawType = data['tip'] ?? 'Soğuk süt';
       final String priceKey = FirestoreService().mapMilkTypeToPriceKey(rawType);
       final double price = FirestoreService().resolveMilkPrice(
         prices: priceList,
@@ -1259,12 +1431,12 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
     required DateTime selectedMonth,
     required String currentFirmaName,
     required Map<String, Map<String, dynamic>> milkGrouped,
-    required double bagkur,
-    required double stopaj,
-    required double borsa,
     required double bagkurOran,
     required double stopajOran,
     required double borsaOran,
+    required List<String> dynamicColumns,
+    required Map<String, double> computedDynamicDeductions,
+    required Map<String, double> computedRates,
   }) async {
     try {
       final pdf = pw.Document();
@@ -1424,9 +1596,18 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
                   headers: [sanitize('Kesinti Turu'), sanitize('Aciklama / Oran'), sanitize('Tutar')],
                   data: [
                     if (milkVal > 0) ...[
-                      ['Bagkur', '%${bagkurOran.toStringAsFixed(2)} oraninda', '- ${formatCurrency.format(bagkur)}'],
-                      ['Stopaj', '%${stopajOran.toStringAsFixed(2)} oraninda', '- ${formatCurrency.format(stopaj)}'],
-                      ['Borsa', '%${borsaOran.toStringAsFixed(2)} oraninda', '- ${formatCurrency.format(borsa)}'],
+                      ...dynamicColumns.map((type) {
+                        final val = computedDynamicDeductions[type] ?? 0.0;
+                        final rate = computedRates[type] ?? 0.0;
+                        if (val > 0) {
+                          return [
+                            sanitize(type),
+                            '%${rate.toStringAsFixed(2)} oraninda',
+                            '- ${formatCurrency.format(val)}'
+                          ];
+                        }
+                        return null;
+                      }).where((row) => row != null).cast<List<String>>(),
                     ],
                     ...kesintiler.map((doc) {
                       final data = doc.data() as Map<String, dynamic>;
@@ -1513,42 +1694,111 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
     );
   }
 
-  Future<Map<String, dynamic>> _loadProducerLedgerData(String firmaName, String ureticiName) async {
-    final futures = await Future.wait([
-      _db.collection('toplamalar').where('firma', isEqualTo: firmaName).where('u', isEqualTo: ureticiName).get(),
-      _db.collection('sut_fiyatlari').where('firma', isEqualTo: firmaName).get(),
-      _db.collection('tahsilatlar').where('firma', isEqualTo: firmaName).where('uretici', isEqualTo: ureticiName).get(),
-      _db.collection('avanslar').where('firma', isEqualTo: firmaName).where('uretici', isEqualTo: ureticiName).get(),
-      _db.collection('kesintiler').where('firma', isEqualTo: firmaName).where('uretici', isEqualTo: ureticiName).get(),
-      _db.collection('cezalar').where('firma', isEqualTo: firmaName).where('uretici', isEqualTo: ureticiName).get(),
-      _db.collection('satislar').where('firma', isEqualTo: firmaName).where('uretici', isEqualTo: ureticiName).get(),
-      _db.collection('ureticiler').where('firmalar', arrayContains: firmaName).where('name', isEqualTo: ureticiName).limit(1).get(),
-      _db.collection('devirler').where('firma', isEqualTo: firmaName).where('uretici', isEqualTo: ureticiName).get(),
-      _db.collection('finans_ayarlari').doc(firmaName).get(),
-    ]);
+  Stream<Map<String, dynamic>> _streamProducerLedgerData(String firmaName, String ureticiName) {
+    final controller = StreamController<Map<String, dynamic>>();
 
-    final QuerySnapshot collections = futures[0] as QuerySnapshot;
-    final QuerySnapshot prices = futures[1] as QuerySnapshot;
-    final QuerySnapshot tahsilatlar = futures[2] as QuerySnapshot;
-    final QuerySnapshot avanslar = futures[3] as QuerySnapshot;
-    final QuerySnapshot kesintiler = futures[4] as QuerySnapshot;
-    final QuerySnapshot cezalar = futures[5] as QuerySnapshot;
-    final QuerySnapshot satislar = futures[6] as QuerySnapshot;
-    final QuerySnapshot ureticiler = futures[7] as QuerySnapshot;
-    final QuerySnapshot devirler = futures[8] as QuerySnapshot;
-    final DocumentSnapshot settings = futures[9] as DocumentSnapshot;
+    QuerySnapshot? collections;
+    QuerySnapshot? prices;
+    QuerySnapshot? tahsilatlar;
+    QuerySnapshot? avanslar;
+    QuerySnapshot? kesintiler;
+    QuerySnapshot? cezalar;
+    QuerySnapshot? satislar;
+    QuerySnapshot? ureticiler;
+    QuerySnapshot? devirler;
+    DocumentSnapshot? settings;
 
-    return {
-      'collections': collections.docs,
-      'prices': prices.docs,
-      'tahsilatlar': tahsilatlar.docs,
-      'avanslar': avanslar.docs,
-      'kesintiler': kesintiler.docs,
-      'cezalar': cezalar.docs,
-      'satislar': satislar.docs,
-      'producerDoc': ureticiler.docs.isNotEmpty ? ureticiler.docs.first : null,
-      'devirler': devirler.docs,
-      'finansAyarlari': settings,
+    void emitLatest() {
+      if (collections != null &&
+          prices != null &&
+          tahsilatlar != null &&
+          avanslar != null &&
+          kesintiler != null &&
+          cezalar != null &&
+          satislar != null &&
+          ureticiler != null &&
+          devirler != null &&
+          settings != null) {
+        if (!controller.isClosed) {
+          controller.add({
+            'collections': collections!.docs,
+            'prices': prices!.docs,
+            'tahsilatlar': tahsilatlar!.docs,
+            'avanslar': avanslar!.docs,
+            'kesintiler': kesintiler!.docs,
+            'cezalar': cezalar!.docs,
+            'satislar': satislar!.docs,
+            'producerDoc': ureticiler!.docs.isNotEmpty ? ureticiler!.docs.first : null,
+            'devirler': devirler!.docs,
+            'finansAyarlari': settings,
+          });
+        }
+      }
+    }
+
+    final s1 = _db.collection('toplamalar').where('firma', isEqualTo: firmaName).where('u', isEqualTo: ureticiName).snapshots().listen((event) {
+      collections = event;
+      emitLatest();
+    }, onError: (e) => controller.addError(e));
+
+    final s2 = _db.collection('sut_fiyatlari').where('firma', isEqualTo: firmaName).snapshots().listen((event) {
+      prices = event;
+      emitLatest();
+    }, onError: (e) => controller.addError(e));
+
+    final s3 = _db.collection('tahsilatlar').where('firma', isEqualTo: firmaName).where('uretici', isEqualTo: ureticiName).snapshots().listen((event) {
+      tahsilatlar = event;
+      emitLatest();
+    }, onError: (e) => controller.addError(e));
+
+    final s4 = _db.collection('avanslar').where('firma', isEqualTo: firmaName).where('uretici', isEqualTo: ureticiName).snapshots().listen((event) {
+      avanslar = event;
+      emitLatest();
+    }, onError: (e) => controller.addError(e));
+
+    final s5 = _db.collection('kesintiler').where('firma', isEqualTo: firmaName).where('uretici', isEqualTo: ureticiName).snapshots().listen((event) {
+      kesintiler = event;
+      emitLatest();
+    }, onError: (e) => controller.addError(e));
+
+    final s6 = _db.collection('cezalar').where('firma', isEqualTo: firmaName).where('uretici', isEqualTo: ureticiName).snapshots().listen((event) {
+      cezalar = event;
+      emitLatest();
+    }, onError: (e) => controller.addError(e));
+
+    final s7 = _db.collection('satislar').where('firma', isEqualTo: firmaName).where('uretici', isEqualTo: ureticiName).snapshots().listen((event) {
+      satislar = event;
+      emitLatest();
+    }, onError: (e) => controller.addError(e));
+
+    final s8 = _db.collection('ureticiler').where('firmalar', arrayContains: firmaName).where('name', isEqualTo: ureticiName).limit(1).snapshots().listen((event) {
+      ureticiler = event;
+      emitLatest();
+    }, onError: (e) => controller.addError(e));
+
+    final s9 = _db.collection('devirler').where('firma', isEqualTo: firmaName).where('uretici', isEqualTo: ureticiName).snapshots().listen((event) {
+      devirler = event;
+      emitLatest();
+    }, onError: (e) => controller.addError(e));
+
+    final s10 = _db.collection('finans_ayarlari').doc(firmaName).snapshots().listen((event) {
+      settings = event;
+      emitLatest();
+    }, onError: (e) => controller.addError(e));
+
+    controller.onCancel = () {
+      s1.cancel();
+      s2.cancel();
+      s3.cancel();
+      s4.cancel();
+      s5.cancel();
+      s6.cancel();
+      s7.cancel();
+      s8.cancel();
+      s9.cancel();
+      s10.cancel();
     };
+
+    return controller.stream;
   }
 }

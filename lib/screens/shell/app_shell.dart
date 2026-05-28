@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -43,8 +44,7 @@ class _AppShellState extends State<AppShell> {
         return [
           _TabItem('/surucu', Icons.dashboard_rounded, 'Ana Sayfa'),
           _TabItem('/surucu/toplama', Icons.water_drop_rounded, 'Süt Al'),
-          _TabItem('/surucu/tanker', Icons.local_shipping_rounded, 'Tank'),
-          _TabItem('/surucu/gecmis', Icons.history_rounded, 'Geçmiş'),
+          _TabItem('/surucu/profil', Icons.person_rounded, 'Profil'),
         ];
       case UserRole.uretici:
         return [
@@ -61,6 +61,7 @@ class _AppShellState extends State<AppShell> {
         return [
           _DrawerItem('/admin', Icons.dashboard_rounded, 'Dashboard'),
           _DrawerItem('/admin/firmalar', Icons.business_rounded, 'Firmalar'),
+          _DrawerItem('/admin/aylik-sut', Icons.calendar_month_rounded, 'Aylık Süt Kayıtları'),
           _DrawerItem('/admin/duyuru-gonder', Icons.campaign_rounded, 'Duyuru Gönder'),
         ];
       case UserRole.firma:
@@ -70,12 +71,15 @@ class _AppShellState extends State<AppShell> {
           _DrawerItem('/firma/araclar', Icons.local_shipping_rounded, 'Araçlar'),
           _DrawerItem('/firma/suruculer', Icons.badge_rounded, 'Toplayıcılar'),
           _DrawerItem('/firma/tanklar', Icons.propane_tank_rounded, 'Tanklar'),
+          _DrawerItem('/firma/tanklar/atama', Icons.link_rounded, 'Tank Atama'),
           _DrawerItem('/firma/toplamalar', Icons.water_drop_rounded, 'Süt Toplamalar'),
+          _DrawerItem('/firma/aylik-sut', Icons.calendar_month_rounded, 'Aylık Süt Kayıtları'),
           _DrawerItem('/firma/teslimatlar', Icons.inventory_rounded, 'Merkez Teslimat'),
           _DrawerItem('/firma/raporlar', Icons.bar_chart_rounded, 'Raporlar'),
           _DrawerItem('/firma/fire-takip', Icons.warning_amber_rounded, 'Fire Takibi'),
           _DrawerItem('/firma/duyuru-gonder', Icons.campaign_rounded, 'Duyuru Gönder'),
           _DrawerItem('/firma/finans', Icons.monetization_on_rounded, 'Finans Yönetimi'),
+          _DrawerItem('/firma/yonetimi', Icons.business_rounded, 'Firma Yönetimi'),
           _DrawerItem('/firma/satis-raporlari', Icons.analytics_rounded, 'Satış Raporları'),
           _DrawerItem('/firma/urunler', Icons.shopping_bag_rounded, 'Ürünler'),
           _DrawerItem('/firma/urunler/siparisler', Icons.shopping_cart_rounded, 'Siparişler'),
@@ -84,12 +88,12 @@ class _AppShellState extends State<AppShell> {
         return [
           _DrawerItem('/surucu', Icons.dashboard_rounded, 'Dashboard'),
           _DrawerItem('/surucu/toplama', Icons.water_drop_rounded, 'Süt Al'),
-          _DrawerItem('/surucu/tanker', Icons.local_shipping_rounded, 'Tank'),
-          _DrawerItem('/surucu/gecmis', Icons.history_rounded, 'Geçmiş'),
+          _DrawerItem('/surucu/profil', Icons.person_rounded, 'Profil'),
         ];
       case UserRole.uretici:
         return [
           _DrawerItem('/uretici', Icons.dashboard_rounded, 'Dashboard'),
+          _DrawerItem('/uretici/dijital-kart', Icons.badge_rounded, 'Dijital Süt Kartı'),
           _DrawerItem('/uretici/gecmis', Icons.history_rounded, 'Geçmiş'),
           _DrawerItem('/uretici/faturalar', Icons.description_rounded, 'Faturalarım'),
           _DrawerItem('/uretici/urunler', Icons.shopping_bag_rounded, 'Ürünler'),
@@ -104,6 +108,8 @@ class _AppShellState extends State<AppShell> {
       '/admin/firmalar': 'Firmalar',
       '/admin/abonelikler': 'Abonelikler',
       '/admin/istatistikler': 'İstatistikler',
+      '/admin/aylik-sut': 'Aylık Süt Kayıtları',
+      '/admin/dijital-kart': 'Dijital Süt Kartı',
       '/firma': 'Ana Sayfa',
       '/firma/dashboard': 'Gösterge Paneli',
       '/firma/profil': 'Profil',
@@ -114,16 +120,21 @@ class _AppShellState extends State<AppShell> {
       '/firma/tanklar/liste': 'Tank Listesi',
       '/firma/tanklar/ekle': 'Yeni Tank Ekle',
       '/firma/tanklar/detay': 'Tank İçerik Detayı',
+      '/firma/tanklar/atama': 'Tank Atama',
       '/firma/sut-kabul': 'Süt Kabul',
       '/firma/sut-transferleri': 'Süt Transferleri',
       '/firma/sut-analiz': 'Analiz Raporları',
       '/firma/toplamalar': 'Süt Toplamalar',
+      '/firma/aylik-sut': 'Aylık Süt Kayıtları',
+      '/firma/dijital-kart': 'Dijital Süt Kartı',
       '/firma/teslimatlar': 'Merkez Teslimat',
       '/firma/raporlar': 'Raporlar',
       '/firma/fire-takip': 'Fire Takibi',
       '/firma/duyuru-gonder': 'Duyuru Gönder',
       '/admin/duyuru-gonder': 'Duyuru Gönder',
       '/firma/finans': 'Finans Yönetimi',
+      '/firma/yonetimi': 'Firma Yönetimi',
+      '/firma/yonetimi/ekstre': 'Cari Hesap Ekstresi',
       '/firma/finans/genel-bakis': 'Finansal Genel Bakış',
       '/firma/finans/faturalar': 'Faturalar',
       '/firma/finans/faturalar/ekle': 'Fatura Ekle',
@@ -141,14 +152,14 @@ class _AppShellState extends State<AppShell> {
       '/firma/finans/sut-fiyatlari/toplu': 'Toplu Fiyat İşlemleri',
       '/surucu': 'Ana Sayfa',
       '/surucu/toplama': 'Süt Toplama',
-      '/surucu/tanker': 'Tank Durumu',
-      '/surucu/gecmis': 'Geçmiş',
+      '/surucu/profil': 'Profil',
       '/uretici': 'Ana Sayfa',
       '/uretici/gecmis': 'Teslim Geçmişi',
       '/uretici/faturalar': 'Faturalarım',
       '/firma/urunler': 'Ürünler',
       '/firma/urunler/siparisler': 'Siparişler',
       '/uretici/urunler': 'Ürünler',
+      '/uretici/dijital-kart': 'Dijital Süt Kartı',
     };
     return titles[loc] ?? 'SütApp';
   }
@@ -442,7 +453,7 @@ class _AppShellState extends State<AppShell> {
 
   // Web AppBar
   Widget _buildWebAppBar(AuthProvider auth) {
-    final today = DateFormat('dd MMMM yyyy Eeee', 'tr_TR').format(DateTime.now());
+    final today = DateFormat('dd MMMM yyyy EEEE', 'tr_TR').format(DateTime.now());
 
     return Container(
       height: 64,
@@ -575,19 +586,13 @@ class _AppShellState extends State<AppShell> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              gradient: AppColors.primaryGradient,
-              shape: BoxShape.circle,
-            ),
-            child: Center(
-              child: Text(
-                auth.user?.displayName.substring(0, 1).toUpperCase() ?? '?',
-                style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
-              ),
-            ),
+          CompanyLogoAvatar(
+            companyName: auth.user?.displayName,
+            size: 36,
+            borderRadius: 18,
+            fallbackText: auth.user?.displayName.isNotEmpty == true 
+                ? auth.user!.displayName.substring(0, 1).toUpperCase() 
+                : '?',
           ),
           const SizedBox(width: 8),
           Column(
@@ -629,20 +634,13 @@ class _AppShellState extends State<AppShell> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      gradient: AppColors.primaryGradient,
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: AppShadows.blue,
-                    ),
-                    child: Center(
-                      child: Text(
-                        auth.user?.displayName.substring(0, 1) ?? '?',
-                        style: GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.w700, color: Colors.white),
-                      ),
-                    ),
+                  CompanyLogoAvatar(
+                    companyName: auth.user?.displayName,
+                    size: 48,
+                    borderRadius: 12,
+                    fallbackText: auth.user?.displayName.isNotEmpty == true 
+                        ? auth.user!.displayName.substring(0, 1).toUpperCase() 
+                        : '?',
                   ),
                   const SizedBox(height: 12),
                   Text(auth.user?.displayName ?? '', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.gray800)),
@@ -781,23 +779,11 @@ class _AppShellState extends State<AppShell> {
     if (widget.role == UserRole.firma) {
       return GestureDetector(
         onTap: () => context.go('/firma/profil'),
-        child: Container(
-          width: 32,
-          height: 32,
-          decoration: BoxDecoration(
-            color: AppColors.primary50,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Center(
-            child: Text(
-              avatarChar,
-              style: GoogleFonts.inter(
-                fontSize: 13, 
-                fontWeight: FontWeight.w700, 
-                color: AppColors.primary600,
-              ),
-            ),
-          ),
+        child: CompanyLogoAvatar(
+          companyName: auth.user?.displayName,
+          size: 32,
+          borderRadius: 8,
+          fallbackText: avatarChar,
         ),
       );
     }
@@ -1008,4 +994,97 @@ class _DrawerItem {
   final IconData icon;
   final String label;
   _DrawerItem(this.path, this.icon, this.label);
+}
+
+class CompanyLogoAvatar extends StatelessWidget {
+  final String? companyName;
+  final double size;
+  final double borderRadius;
+  final String fallbackText;
+
+  const CompanyLogoAvatar({
+    super.key,
+    required this.companyName,
+    required this.size,
+    required this.borderRadius,
+    required this.fallbackText,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (companyName == null || companyName!.isEmpty) {
+      return _buildFallback();
+    }
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('firmalar')
+          .where('ad', isEqualTo: companyName)
+          .limit(1)
+          .snapshots(),
+      builder: (context, snapshot) {
+        String? logoUrl;
+        if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
+          final doc = snapshot.data!.docs.first;
+          final data = doc.data() as Map<String, dynamic>?;
+          if (data != null && data.containsKey('logoUrl')) {
+            logoUrl = data['logoUrl'] as String?;
+          }
+        }
+
+        if (logoUrl != null && logoUrl.isNotEmpty) {
+          ImageProvider provider;
+          if (logoUrl.startsWith('data:image')) {
+            final commaIndex = logoUrl.indexOf(',');
+            if (commaIndex != -1) {
+              final base64Part = logoUrl.substring(commaIndex + 1);
+              try {
+                provider = MemoryImage(base64Decode(base64Part));
+              } catch (e) {
+                provider = NetworkImage(logoUrl);
+              }
+            } else {
+              provider = NetworkImage(logoUrl);
+            }
+          } else {
+            provider = NetworkImage(logoUrl);
+          }
+
+          return Container(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(borderRadius),
+              image: DecorationImage(
+                image: provider,
+                fit: BoxFit.cover,
+              ),
+            ),
+          );
+        }
+
+        return _buildFallback();
+      },
+    );
+  }
+
+  Widget _buildFallback() {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        gradient: AppColors.primaryGradient,
+        borderRadius: BorderRadius.circular(borderRadius),
+      ),
+      child: Center(
+        child: Text(
+          fallbackText,
+          style: GoogleFonts.inter(
+            fontSize: size * 0.4,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+      ),
+    );
+  }
 }

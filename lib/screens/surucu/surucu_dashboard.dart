@@ -27,8 +27,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
   String? _selectedUreticiForm;
   String? _selectedMilkTypeForm;
   String? _selectedCustomerTypeForm;
-  final List<String> _milkTypes = const ['Soğuk Süt', 'Sıcak Süt', 'C Kalite', 'D Kalite'];
-  String _selectedVakit = 'Sabah';
+  final List<String> _milkTypes = const ['Soğuk süt', 'Sıcak süt', 'C kalite', 'D kalite'];
   String? _selectedUreticiForSutAl;
   String? _selectedQualityForm;
   String? _selectedTankForm;
@@ -288,7 +287,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                       bolge: ilce,
                       avg: 30.0,
                       firma: currentFirmaName,
-                      lastMilkType: isYem ? 'Yok' : (isSicak ? 'Sıcak Süt' : 'Soğuk Süt'),
+                      lastMilkType: isYem ? 'Yok' : (isSicak ? 'Sıcak süt' : 'Soğuk süt'),
                       customerType: isYem ? 'yem' : 'sut',
                     );
 
@@ -333,7 +332,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
     String? localSelectedUretici;
     String? localSelectedMilkType;
     String? localSelectedCustomerType;
-    const List<String> milkTypes = ['Soğuk Süt', 'Sıcak Süt', 'C Kalite', 'D Kalite'];
+    const List<String> milkTypes = ['Soğuk süt', 'Sıcak süt', 'C kalite', 'D kalite'];
     
     // Track selected tank inside the dialog
     String? localSelectedTank = tankList.isNotEmpty ? (tankList.first as Map)['ad'] as String : null;
@@ -361,10 +360,10 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
             try {
               final prodDoc = prodSnapshot.data!.docs.firstWhere((doc) => doc['name'] == localSelectedUretici);
               final docData = prodDoc.data() as Map<String, dynamic>;
-              localSelectedMilkType = docData['lastMilkType'] ?? 'Soğuk Süt';
+              localSelectedMilkType = docData['lastMilkType'] ?? 'Soğuk süt';
               localSelectedCustomerType = docData['customerType'] ?? 'sut';
             } catch (_) {
-              localSelectedMilkType = 'Soğuk Süt';
+              localSelectedMilkType = 'Soğuk süt';
               localSelectedCustomerType = 'sut';
             }
           } else if (localSelectedCustomerType == null) {
@@ -378,7 +377,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
           }
 
           if (localSelectedMilkType == null || !milkTypes.contains(localSelectedMilkType)) {
-            localSelectedMilkType = 'Soğuk Süt';
+            localSelectedMilkType = 'Soğuk süt';
           }
 
           return StatefulBuilder(
@@ -412,14 +411,14 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                               try {
                                 final prodDoc = prodSnapshot.data!.docs.firstWhere((doc) => doc['name'] == localSelectedUretici);
                                 final docData = prodDoc.data() as Map<String, dynamic>;
-                                localSelectedMilkType = docData['lastMilkType'] ?? 'Soğuk Süt';
+                                localSelectedMilkType = docData['lastMilkType'] ?? 'Soğuk süt';
                                 localSelectedCustomerType = docData['customerType'] ?? 'sut';
                               } catch (_) {
-                                localSelectedMilkType = 'Soğuk Süt';
+                                localSelectedMilkType = 'Soğuk süt';
                                 localSelectedCustomerType = 'sut';
                               }
                               if (localSelectedMilkType == null || !milkTypes.contains(localSelectedMilkType)) {
-                                localSelectedMilkType = 'Soğuk Süt';
+                                localSelectedMilkType = 'Soğuk süt';
                               }
                             });
                           }
@@ -549,7 +548,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                         driverName: driverName,
                         vehiclePlate: plate,
                         region: region,
-                        sutTipi: localSelectedMilkType ?? 'Soğuk Süt',
+                        sutTipi: localSelectedMilkType ?? 'Soğuk süt',
                         customerType: localSelectedCustomerType ?? 'sut',
                       );
 
@@ -639,7 +638,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                                 ),
                                 const SizedBox(width: 4),
                                 Text(
-                                  isSicak ? 'Sıcak Süt' : 'Soğuk Süt',
+                                  isSicak ? 'Sıcak süt' : 'Soğuk süt',
                                   style: GoogleFonts.inter(
                                     color: Colors.white,
                                     fontWeight: FontWeight.bold,
@@ -659,7 +658,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                       Expanded(
                         child: Center(
                           child: Text(
-                            'Sıcak Süt',
+                            'Sıcak süt',
                             style: GoogleFonts.inter(
                               color: isSicak ? Colors.transparent : Colors.grey[600],
                               fontWeight: FontWeight.w600,
@@ -671,7 +670,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                       Expanded(
                         child: Center(
                           child: Text(
-                            'Soğuk Süt',
+                            'Soğuk süt',
                             style: GoogleFonts.inter(
                               color: !isSicak ? Colors.transparent : Colors.grey[600],
                               fontWeight: FontWeight.w600,
@@ -799,18 +798,93 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
     );
   }
 
+  Future<bool> _checkYesterdayEmptyStatus(String driverName, String plate) async {
+    final now = DateTime.now();
+    final yesterday = now.subtract(const Duration(days: 1));
+    
+    final startOfYesterday = DateTime(yesterday.year, yesterday.month, yesterday.day, 0, 0, 0);
+    final endOfYesterday = DateTime(yesterday.year, yesterday.month, yesterday.day, 23, 59, 59);
+    
+    final collectionsQuery = await FirebaseFirestore.instance
+        .collection('toplamalar')
+        .where('sr', isEqualTo: driverName)
+        .where('timestamp', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfYesterday))
+        .where('timestamp', isLessThanOrEqualTo: Timestamp.fromDate(endOfYesterday))
+        .limit(1)
+        .get();
+        
+    if (collectionsQuery.docs.isEmpty) {
+      return true;
+    }
+    
+    final dateStr = DateFormat('dd.MM.yyyy').format(yesterday);
+    final deliveriesQuery = await FirebaseFirestore.instance
+        .collection('teslimatlar')
+        .where('plaka', isEqualTo: plate)
+        .where('tarih', isEqualTo: dateStr)
+        .limit(1)
+        .get();
+        
+    return deliveriesQuery.docs.isNotEmpty;
+  }
+
+  Widget _buildYesterdayWarning() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFEF2F2),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFFCA5A5)),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFDC2626).withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          )
+        ],
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.warning_amber_rounded, color: Color(0xFFDC2626), size: 24),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Dün Süt Boşaltımı Yapmadınız!',
+                  style: GoogleFonts.inter(
+                    color: const Color(0xFF991B1B),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Bir gün öncenin tankındaki süt sistemde merkez tanka boşaltılmamıştır.',
+                  style: GoogleFonts.inter(
+                    color: const Color(0xFF7F1D1D),
+                    fontSize: 11.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final driverName = authProvider.user?.displayName ?? 'Ahmet Kara';
+    final userEmail = authProvider.user?.email ?? '';
 
-    final parts = driverName.split(' ');
-    final ad = parts.isNotEmpty ? parts.first : '';
-    final soyad = parts.length > 1 ? parts.sublist(1).join(' ') : '';
     final profileStream = FirebaseFirestore.instance
         .collection('suruculer')
-        .where('ad', isEqualTo: ad)
-        .where('soyad', isEqualTo: soyad)
+        .where('email', isEqualTo: userEmail)
         .limit(1)
         .snapshots();
 
@@ -820,6 +894,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
         bool canAddCustomer = true;
         bool canEditCustomer = true;
         bool canCreateOrder = true;
+        String resolvedDriverName = driverName;
 
         if (profileSnapshot.hasData && profileSnapshot.data!.docs.isNotEmpty) {
           final pDoc = profileSnapshot.data!.docs.first;
@@ -827,10 +902,16 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
           canAddCustomer = pData['canAddCustomer'] ?? true;
           canEditCustomer = pData['canEditCustomer'] ?? true;
           canCreateOrder = pData['canCreateOrder'] ?? true;
+          final dbAd = pData['ad'] ?? '';
+          final dbSoyad = pData['soyad'] ?? '';
+          final dbFullName = '$dbAd $dbSoyad'.trim();
+          if (dbFullName.isNotEmpty) {
+            resolvedDriverName = dbFullName;
+          }
         }
 
         return StreamBuilder<QuerySnapshot>(
-          stream: _firestoreService.getDriverVehicleStream(driverName),
+          stream: _firestoreService.getDriverVehicleStream(resolvedDriverName),
           builder: (context, vehicleSnapshot) {
         if (vehicleSnapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
@@ -839,69 +920,72 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
         }
 
         final vehicleDocs = vehicleSnapshot.data?.docs ?? [];
-        if (vehicleDocs.isEmpty) {
-          return Scaffold(
-            backgroundColor: AppColors.gray50,
-            body: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.local_shipping_outlined, size: 64, color: AppColors.gray400),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Aktif aracınız bulunamadı!',
-                    style: GoogleFonts.inter(fontSize: 16, color: AppColors.gray600, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Yönetici tarafından araç ataması yapılması gerekmektedir.',
-                    style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray500),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
-
-        final vehicleDoc = vehicleDocs.first;
-        final vehicleData = vehicleDoc.data() as Map<String, dynamic>;
-        final plate = vehicleData['plaka'] ?? '';
-        final rawTankList = vehicleData['tanklar'] as List? ?? [];
+        final bool hasVehicle = vehicleDocs.isNotEmpty;
         
-        // Filter tankList to only contain tanks where this driver is assigned
-        final tankList = rawTankList.where((t) {
-          final tankMap = t as Map;
-          final tDrivers = List<String>.from(tankMap['suruculer'] as List? ?? []);
-          return tDrivers.contains(driverName);
-        }).toList();
-
-        final currentFirmaName = vehicleData['firma'] ?? '';
-
-        if (tankList.isEmpty) {
+        bool hasTank = false;
+        String plate = '';
+        List<Map<String, dynamic>> tankList = [];
+        String currentFirmaName = '';
+        
+        if (hasVehicle) {
+          final vehicleDoc = vehicleDocs.first;
+          final vehicleData = vehicleDoc.data() as Map<String, dynamic>;
+          plate = vehicleData['plaka'] ?? '';
+          final rawTankList = vehicleData['tanklar'] as List? ?? [];
+          
+          tankList = List<Map<String, dynamic>>.from(rawTankList);
+          hasTank = tankList.isNotEmpty;
+          currentFirmaName = vehicleData['firma'] ?? '';
+        }
+        
+        if (!hasVehicle || !hasTank) {
+          String mainMessage = '';
+          String subMessage = '';
+          IconData icon = Icons.warning_amber_rounded;
+          
+          if (!hasVehicle && !hasTank) {
+            mainMessage = 'Araç ve Tank Atanmadı!';
+            subMessage = 'Sistemi kullanabilmek için yönetici tarafından üzerinize araç ve tank ataması yapılması gerekmektedir.';
+            icon = Icons.local_shipping_outlined;
+          } else if (!hasVehicle) {
+            mainMessage = 'Araç Atanmadı!';
+            subMessage = 'Sistemi kullanabilmek için yönetici tarafından üzerinize araç ataması yapılması gerekmektedir.';
+            icon = Icons.local_shipping_outlined;
+          } else {
+            mainMessage = 'Tank Atanmadı!';
+            subMessage = 'Sistemi kullanabilmek için yönetici tarafından aracınıza ($plate) tank ataması yapılması gerekmektedir.';
+            icon = Icons.propane_tank_rounded;
+          }
+          
           return Scaffold(
             backgroundColor: AppColors.gray50,
             body: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.propane_tank_rounded, size: 64, color: AppColors.gray400),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Üzerinize atanmış aktif tank bulunamadı!',
-                    style: GoogleFonts.inter(fontSize: 16, color: AppColors.gray600, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Yönetici tarafından tank ataması yapılması gerekmektedir.',
-                    style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray500),
-                  ),
-                ],
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(icon, size: 64, color: AppColors.gray400),
+                    const SizedBox(height: 16),
+                    Text(
+                      mainMessage,
+                      style: GoogleFonts.inter(fontSize: 16, color: AppColors.gray600, fontWeight: FontWeight.bold),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      subMessage,
+                      style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray500),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
               ),
             ),
           );
         }
 
-        final tank = tankList.first as Map;
+        final tank = tankList.first;
         final tankName = tank['ad'] ?? '';
         final double currentStock = (tank['stok'] as num?)?.toDouble() ?? 0.0;
         final double capacity = (tank['kap'] as num?)?.toDouble() ?? 2000.0;
@@ -910,31 +994,15 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
           backgroundColor: AppColors.gray50,
           floatingActionButton: widget.showSutAlDirectly
               ? null
-              : Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    FloatingActionButton.extended(
-                      onPressed: () => _showAddProducerDialog(currentFirmaName),
-                      heroTag: 'yeni_uretici_fab',
-                      backgroundColor: AppColors.primary600,
-                      icon: const Icon(Icons.person_add_alt_1_rounded, color: Colors.white, size: 20),
-                      label: Text(
-                        'Yeni Üretici',
-                        style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    FloatingActionButton.extended(
-                      onPressed: () => _showSutAlDialog(plate, tankList, driverName, currentFirmaName, canAddCustomer),
-                      heroTag: 'sut_al_fab',
-                      backgroundColor: AppColors.primary600,
-                      icon: const Icon(Icons.add_rounded, color: Colors.white, size: 20),
-                      label: Text(
-                        'Süt Al',
-                        style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white),
-                      ),
-                    ),
-                  ],
+              : FloatingActionButton.extended(
+                  onPressed: () => context.go('/surucu/toplama'),
+                  heroTag: 'sut_al_fab',
+                  backgroundColor: AppColors.primary600,
+                  icon: const Icon(Icons.add_rounded, color: Colors.white, size: 20),
+                  label: Text(
+                    'Süt Al',
+                    style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white),
+                  ),
                 ),
           body: LayoutBuilder(
             builder: (context, constraints) {
@@ -945,41 +1013,109 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
                 children: [
                   // Header
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              widget.showSutAlDirectly ? 'Süt Alım Formu' : 'Toplayıcı Paneli',
-                              style: GoogleFonts.inter(
-                                  fontSize: isDesktop ? 22 : 18,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.gray900),
+                  StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('firmalar')
+                        .where('ad', isEqualTo: currentFirmaName)
+                        .limit(1)
+                        .snapshots(),
+                    builder: (context, companySnap) {
+                      String? logoUrl;
+                      if (companySnap.hasData && companySnap.data!.docs.isNotEmpty) {
+                        final companyData = companySnap.data!.docs.first.data() as Map<String, dynamic>;
+                        logoUrl = companyData['logoUrl'] as String?;
+                      }
+
+                      return Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  widget.showSutAlDirectly ? 'Süt Alım Formu' : 'Toplayıcı Paneli',
+                                  style: GoogleFonts.inter(
+                                      fontSize: isDesktop ? 22 : 18,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.gray900),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  widget.showSutAlDirectly
+                                      ? 'Üreticiden aldığınız süt miktarını girerek tank stoğuna ekleyin.'
+                                      : 'Süt toplama rotanızı ve araç tank doluluğunu buradan takip edebilirsiniz.',
+                                  style: GoogleFonts.inter(
+                                    fontSize: isDesktop ? 12 : 11,
+                                    color: AppColors.gray500,
+                                    fontWeight: FontWeight.w400,
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              widget.showSutAlDirectly
-                                  ? 'Üreticiden aldığınız süt miktarını girerek tank stoğuna ekleyin.'
-                                  : 'Süt toplama rotanızı ve araç tank doluluğunu buradan takip edebilirsiniz.',
-                              style: GoogleFonts.inter(
-                                fontSize: isDesktop ? 12 : 11,
-                                color: AppColors.gray500,
-                                fontWeight: FontWeight.w400,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+                          ),
+                          // Right side action (Üretici Ekle) and logo
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (canAddCustomer) ...[
+                                ElevatedButton.icon(
+                                  onPressed: () => _showAddProducerDialog(currentFirmaName),
+                                  icon: const Icon(Icons.person_add_alt_1_rounded, size: 16),
+                                  label: Text(
+                                    'Üretici Ekle',
+                                    style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold),
+                                  ),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppColors.primary600,
+                                    foregroundColor: Colors.white,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                  ),
+                                ),
+                                if (logoUrl != null && logoUrl.isNotEmpty) const SizedBox(width: 12),
+                              ],
+                              if (logoUrl != null && logoUrl.isNotEmpty)
+                                Container(
+                                  width: 48,
+                                  height: 48,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: AppColors.gray200, width: 1.5),
+                                    image: DecorationImage(
+                                      image: logoUrl.startsWith('data:image')
+                                          ? MemoryImage(base64Decode(logoUrl.substring(logoUrl.indexOf(',') + 1))) as ImageProvider
+                                          : NetworkImage(logoUrl),
+                                      fit: BoxFit.cover,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ],
+                      );
+                    }
                   ),
                   const SizedBox(height: 20),
+                  FutureBuilder<bool>(
+                    future: _checkYesterdayEmptyStatus(resolvedDriverName, plate),
+                    builder: (context, emptySnapshot) {
+                      if (emptySnapshot.hasData && emptySnapshot.data == false) {
+                        return _buildYesterdayWarning();
+                      }
+                      return const SizedBox.shrink();
+                    },
+                  ),
 
-                  widget.showSutAlDirectly
-                      ? _buildSutAlFormView(isDesktop, plate, tankName, currentStock, capacity, driverName, currentFirmaName, canAddCustomer, tankList)
-                      : _buildResponsiveLayout(isDesktop, isTablet, plate, driverName, tankList),
+                  Column(
+                    children: [
+                      if (!widget.showSutAlDirectly) ...[
+                        _buildResponsiveLayout(isDesktop, isTablet, plate, resolvedDriverName, tankList),
+                        const SizedBox(height: 16),
+                      ],
+                      _buildSutAlFormView(isDesktop, plate, tankName, currentStock, capacity, resolvedDriverName, currentFirmaName, canAddCustomer, tankList),
+                    ],
+                  ),
                   const SizedBox(height: 80),
                 ],
               );
@@ -1086,21 +1222,6 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                           ],
                         ),
                       ),
-                      if (canAddCustomer)
-                        ElevatedButton.icon(
-                          onPressed: () => _showAddProducerDialog(firma),
-                          icon: const Icon(Icons.person_add_alt_1_rounded, size: 16),
-                          label: Text(
-                            'Üretici Ekle',
-                            style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primary600,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          ),
-                        ),
                     ],
                   ),
                 ),
@@ -1168,7 +1289,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                       final name = data['name'] ?? '';
                       final group = data['group'] ?? 'Bilinmeyen Bölge';
                       final avg = (data['avg'] as num?)?.toDouble() ?? 0.0;
-                      final lastMilkType = data['lastMilkType'] ?? 'Soğuk Süt';
+                      final lastMilkType = data['lastMilkType'] ?? 'Soğuk süt';
                       final hasBeenVisited = visitedProducersToday.contains(name);
 
                       return _buildProducerItemTile(
@@ -1206,7 +1327,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
     required bool hasBeenVisited,
     required VoidCallback onTap,
   }) {
-    final isSicak = lastMilkType == 'Sıcak Süt';
+    final isSicak = lastMilkType == 'Sıcak süt';
 
     return Container(
       decoration: BoxDecoration(
@@ -1351,7 +1472,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
       _selectedTankForm = tanks.isNotEmpty ? tanks.first : tankName;
     }
 
-    final qualities = const ['A Kalite', 'B Kalite', 'C Kalite', 'D Kalite'];
+    final qualities = const ['A Kalite', 'B Kalite', 'C kalite', 'D kalite'];
     if (_selectedQualityForm == null || !qualities.contains(_selectedQualityForm)) {
       _selectedQualityForm = qualities.first;
     }
@@ -1370,7 +1491,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
     final double previewPct = (previewStock / tCapacity).clamp(0.0, 1.0);
     final bool previewOverflow = previewStock > tCapacity;
 
-    final String todayDateStr = DateFormat('dd MMMM yyyy, Eeee', 'tr_TR').format(DateTime.now());
+    final String todayDateStr = DateFormat('dd MMMM yyyy, EEEE', 'tr_TR').format(DateTime.now());
 
     return Center(
       child: ConstrainedBox(
@@ -1455,34 +1576,12 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
               ),
               const SizedBox(height: 16),
 
-              // Vakit Toggle Row (Sabah/Akşam)
-              Row(
-                children: [
-                  Text(
-                    'Vakit:',
-                    style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.gray700),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: _buildVakitSegment('Sabah', Icons.wb_sunny_rounded, Colors.orange),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: _buildVakitSegment('Akşam', Icons.nights_stay_rounded, Colors.indigo),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 0),
 
               // Litre Input
               TextField(
                 controller: _miktarFormCtrl,
+                autofocus: true,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold),
                 decoration: const InputDecoration(
@@ -1579,49 +1678,28 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
               ),
               const SizedBox(height: 20),
 
-              // Analiz Ekle / Yeni Üretici Ekle
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () {
-                        SutAnalizDialog.show(
-                          context,
-                          targetName: _selectedUreticiForSutAl!,
-                          tip: 'Üretici',
-                        );
-                      },
-                      icon: const Icon(Icons.science_rounded, size: 16),
-                      label: Text(
-                        'Analiz Ekle',
-                        style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: AppColors.primary600),
-                        foregroundColor: AppColors.primary600,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                      ),
-                    ),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    SutAnalizDialog.show(
+                      context,
+                      targetName: _selectedUreticiForSutAl!,
+                      tip: 'Üretici',
+                    );
+                  },
+                  icon: const Icon(Icons.science_rounded, size: 16),
+                  label: Text(
+                    'Analiz Ekle',
+                    style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _showAddProducerDialog(firma),
-                      icon: const Icon(Icons.person_add_alt_1_rounded, size: 16),
-                      label: Text(
-                        'Üretici Ekle',
-                        style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: AppColors.primary600),
-                        foregroundColor: AppColors.primary600,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                      ),
-                    ),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: AppColors.primary600),
+                    foregroundColor: AppColors.primary600,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
                   ),
-                ],
+                ),
               ),
 
               // Today's records for this customer
@@ -1674,7 +1752,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
-                                  '$s • $vakit • $kalite',
+                                  '$s • $kalite',
                                   style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray600, fontWeight: FontWeight.w500),
                                 ),
                               ),
@@ -1748,38 +1826,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
     );
   }
 
-  Widget _buildVakitSegment(String val, IconData icon, Color color) {
-    final isSelected = _selectedVakit == val;
-    return GestureDetector(
-      onTap: () => setState(() => _selectedVakit = val),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        decoration: BoxDecoration(
-          color: isSelected ? color.withOpacity(0.1) : Colors.white,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: isSelected ? color : AppColors.gray200,
-            width: isSelected ? 1.5 : 1,
-          ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 16, color: isSelected ? color : AppColors.gray400),
-            const SizedBox(width: 6),
-            Text(
-              val,
-              style: GoogleFonts.inter(
-                fontSize: 13,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                color: isSelected ? color : AppColors.gray600,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  // Vakit toggle segment removed
 
   void _saveCustomSutGirisi(
     String plate,
@@ -1835,9 +1882,8 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
       driverName: driverName,
       vehiclePlate: plate,
       region: region,
-      sutTipi: _selectedMilkTypeForm ?? 'Soğuk Süt',
+      sutTipi: _selectedMilkTypeForm ?? 'Soğuk süt',
       customerType: _selectedCustomerTypeForm ?? 'sut',
-      vakit: _selectedVakit,
       kalite: _selectedQualityForm ?? 'A Kalite',
     );
 
@@ -1882,308 +1928,307 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
     String driverName,
     List<dynamic> assignedTanks,
   ) {
-    final tankerDurumuWidget = Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: assignedTanks.map<Widget>((t) {
-        final tank = t as Map;
-        final tankName = tank['ad'] ?? '';
-        final double currentStock = (tank['stok'] as num?)?.toDouble() ?? 0.0;
-        final double capacity = (tank['kap'] as num?)?.toDouble() ?? 2000.0;
+    if (assignedTanks.isEmpty) return const SizedBox();
+    return _buildVerticalDriverTankList(assignedTanks, plate);
+  }
 
-        final pct = (currentStock / capacity).clamp(0.0, 1.0);
-        final pctText = ((currentStock / capacity) * 100).toStringAsFixed(0);
-        final bool isOverflow = currentStock > capacity;
-        final Color gaugeColor = isOverflow ? Colors.red : AppColors.primary500;
-        final Color textColor = isOverflow ? Colors.red : AppColors.primary600;
-        final Color badgeBgColor = isOverflow ? const Color(0xFFFEE2E2) : AppColors.primary50;
-        final Color badgeTextColor = isOverflow ? Colors.red : AppColors.primary600;
+  Widget _buildVerticalDriverTankList(List<dynamic> tanks, String plate) {
+    final double cardHeight = 88.0;
+    final double spacing = 8.0;
+    final double totalItemHeight = cardHeight + spacing;
+    final double containerHeight = tanks.length <= 4 
+        ? (tanks.length * totalItemHeight) 
+        : (4 * totalItemHeight);
 
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: AppCard(
-            shadow: AppShadows.md,
-            borderColor: isOverflow ? Colors.red : null,
-            borderWidth: isOverflow ? 2.0 : null,
-            child: Column(
+    return SizedBox(
+      height: containerHeight,
+      child: ListView.builder(
+        scrollDirection: Axis.vertical,
+        padding: EdgeInsets.zero,
+        physics: const AlwaysScrollableScrollPhysics(),
+        itemCount: tanks.length,
+        itemBuilder: (context, index) {
+          final tank = tanks[index] as Map;
+          final String ad = tank['ad'] ?? '';
+          final double stok = (tank['stok'] as num?)?.toDouble() ?? 0.0;
+          final double kap = (tank['kap'] as num?)?.toDouble() ?? 2000.0;
+          final double fillPercent = kap > 0 ? (stok / kap) : 0.0;
+
+          Color gaugeColor = const Color(0xFF3B82F6);
+          final bool isOverflow = stok > kap;
+          if (isOverflow || fillPercent >= 0.8) {
+            gaugeColor = const Color(0xFFEF4444);
+          } else if (fillPercent >= 0.5) {
+            gaugeColor = const Color(0xFFF59E0B);
+          }
+
+          return Container(
+            height: cardHeight,
+            margin: EdgeInsets.only(bottom: spacing),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: isOverflow ? Colors.red : AppColors.gray200, width: isOverflow ? 1.5 : 1.0),
+              boxShadow: AppShadows.sm,
+            ),
+            child: Row(
               children: [
-                Row(
-                  children: [
-                    Text(tankName, style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600)),
-                    const Spacer(),
-                    StatusBadge.active('Yolda'),
-                  ],
+                // Left: Shipping Icon
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEFF6FF),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Center(
+                    child: Icon(
+                      Icons.local_shipping_rounded,
+                      color: Color(0xFF3B82F6),
+                      size: 20,
+                    ),
+                  ),
                 ),
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: 150,
-                  height: 150,
-                  child: Stack(
-                    alignment: Alignment.center,
+                const SizedBox(width: 12),
+
+                // Middle: Name & Vehicle Info
+                Expanded(
+                  flex: 3,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      SizedBox(
-                        width: 150,
-                        height: 150,
-                        child: CircularProgressIndicator(
-                          value: pct,
-                          strokeWidth: 12,
-                          backgroundColor: AppColors.gray100,
-                          valueColor: AlwaysStoppedAnimation<Color>(gaugeColor),
-                          strokeCap: StrokeCap.round,
+                      Text(
+                        ad,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.inter(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.gray800,
                         ),
                       ),
-                      Column(
-                        mainAxisSize: MainAxisSize.min,
+                      const SizedBox(height: 2),
+                      Text(
+                        plate.isNotEmpty ? plate : 'Araç Tankı',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.inter(
+                          fontSize: 10,
+                          color: AppColors.gray400,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${stok.toStringAsFixed(0)} / ${kap.toStringAsFixed(0)} LT',
+                        style: GoogleFonts.inter(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.bold,
+                          color: isOverflow ? Colors.red : AppColors.gray600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+
+                // Right: Horizontal Progress Bar & Details
+                Expanded(
+                  flex: 4,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(currentStock.toStringAsFixed(0), style: GoogleFonts.inter(fontSize: 28, fontWeight: FontWeight.w700, color: textColor)),
-                          Text('/ ${capacity.toStringAsFixed(0)} LT', style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500)),
-                          Container(
-                            margin: const EdgeInsets.only(top: 4),
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(color: badgeBgColor, borderRadius: BorderRadius.circular(6)),
-                            child: Text('%$pctText', style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w600, color: badgeTextColor)),
+                          Text(
+                            'Doluluk',
+                            style: GoogleFonts.inter(fontSize: 9, fontWeight: FontWeight.bold, color: AppColors.gray400),
+                          ),
+                          Text(
+                            '%${(fillPercent * 100).toStringAsFixed(0)}',
+                            style: GoogleFonts.inter(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.bold,
+                              color: isOverflow ? Colors.red : AppColors.gray800,
+                            ),
                           ),
                         ],
                       ),
+                      const SizedBox(height: 5),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(
+                          value: fillPercent.clamp(0.0, 1.0),
+                          minHeight: 8,
+                          backgroundColor: AppColors.gray100,
+                          valueColor: AlwaysStoppedAnimation<Color>(gaugeColor),
+                        ),
+                      ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 14),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(color: AppColors.gray50, borderRadius: BorderRadius.circular(8)),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.local_shipping_rounded, size: 14, color: AppColors.primary600),
-                      const SizedBox(width: 6),
-                      Text('$plate • $tankName', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w500, color: AppColors.gray700)),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      }).toList(),
-    );
+                const SizedBox(width: 12),
 
-    return StreamBuilder<QuerySnapshot>(
-      stream: _firestoreService.getDriverCollectionsStream(driverName),
-      builder: (context, collectionsSnapshot) {
-        final docs = List<QueryDocumentSnapshot>.from(collectionsSnapshot.data?.docs ?? []);
-        docs.sort((a, b) {
-          final aTime = (a.data() as Map)['timestamp'] as Timestamp?;
-          final bTime = (b.data() as Map)['timestamp'] as Timestamp?;
-          if (aTime == null) return -1;
-          if (bTime == null) return 1;
-          return bTime.compareTo(aTime);
-        });
-        
-        // Calculate dynamic values for card
-        double todayTotal = 0;
-        for (var doc in docs) {
-          final mVal = doc['m'];
-          if (mVal is num) {
-            todayTotal += mVal.toDouble();
-          } else if (mVal is String) {
-            todayTotal += double.tryParse(mVal) ?? 0;
-          }
-        }
-
-        final statsCardsWidget = Column(
-          children: [
-            StatCard(
-              icon: Icons.water_drop_rounded,
-              value: todayTotal.toStringAsFixed(0),
-              label: 'Bugün Toplanan (LT)',
-              color: AppColors.primary600,
-              change: '+%15',
-              subtext: 'Tank Güncel Hacmi',
-              sparklineData: const [120, 150, 180, 210, 240, 280, 320],
-              isUp: true,
-            ),
-            const SizedBox(height: 12),
-            StatCard(
-              icon: Icons.people_rounded,
-              value: docs.length.toString(),
-              label: 'Ziyaret Edilen Üretici',
-              color: AppColors.success,
-              change: '+1',
-              subtext: 'Hedef: 12',
-              sparklineData: const [3, 4, 5, 5, 6, 7, 8],
-              isUp: true,
-            ),
-          ],
-        );
-
-        final listWidget = AppCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Text('Bugünkü Toplamalar', style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600)),
-                  const Spacer(),
-                  const LiveDot(),
-                ],
-              ),
-              const SizedBox(height: 14),
-              if (docs.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 24),
-                  child: Center(
-                    child: Text('Henüz süt toplama kaydı bulunmuyor.', style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray500)),
-                  ),
-                )
-              else
-                ...docs.map((t) {
-                  final data = t.data() as Map<String, dynamic>;
-                  final u = data['u'] ?? '-';
-                  final mVal = data['m'] ?? 0;
-                  final mStr = mVal is num ? mVal.toStringAsFixed(0) : mVal.toString();
-                  final s = data['s'] ?? '';
-                  final sync = data['sync'] ?? true;
-
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 6),
+                // Action Button: Detay
+                GestureDetector(
+                  onTap: () => _showDriverTankIcerik(context, ad),
+                  child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    decoration: BoxDecoration(color: AppColors.gray50, borderRadius: BorderRadius.circular(8)),
+                    decoration: BoxDecoration(
+                      color: AppColors.gray50,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: AppColors.gray200),
+                    ),
                     child: Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Container(
-                          width: 30,
-                          height: 30,
-                          decoration: BoxDecoration(gradient: AppColors.primaryGradient, borderRadius: BorderRadius.circular(8)),
-                          child: Center(
-                            child: Text(
-                              u.isNotEmpty ? u[0] : 'U',
-                              style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(u, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w500)),
-                              Row(
-                                children: [
-                                  Text(s, style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray400)),
-                                  const SizedBox(width: 6),
-                                  Icon(
-                                    sync ? Icons.cloud_done_rounded : Icons.cloud_off_rounded,
-                                    size: 12,
-                                    color: sync ? AppColors.success : AppColors.warning,
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(color: AppColors.primary50, borderRadius: BorderRadius.circular(6)),
-                          child: Text('$mStr LT', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.primary600)),
-                        ),
-                        const SizedBox(width: 8),
-                        // Delete button
-                        GestureDetector(
-                          onTap: () {
-                            final double mDouble = mVal is num ? mVal.toDouble() : (double.tryParse(mVal.toString()) ?? 0.0);
-                            showDialog(
-                              context: context,
-                              builder: (ctx) => AlertDialog(
-                                title: Text('Kaydı Sil', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
-                                content: Text(
-                                  '$u üreticisinden alınan $mStr LT süt kaydını silmek istediğinize emin misiniz?',
-                                  style: GoogleFonts.inter(fontSize: 14),
-                                ),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(ctx),
-                                    child: Text('İptal', style: GoogleFonts.inter(color: AppColors.gray500)),
-                                  ),
-                                  ElevatedButton(
-                                    onPressed: () async {
-                                      Navigator.pop(ctx);
-                                      await _firestoreService.deleteMilkCollection(t.id);
-                                      if (context.mounted) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(
-                                            content: Text('$mStr LT süt kaydı silindi.'),
-                                            backgroundColor: AppColors.danger,
-                                          ),
-                                        );
-                                      }
-                                    },
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.red,
-                                      foregroundColor: Colors.white,
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                    ),
-                                    child: const Text('Sil'),
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.all(4),
-                            decoration: BoxDecoration(
-                              color: Colors.red.withOpacity(0.08),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: const Icon(Icons.delete_outline_rounded, size: 14, color: Colors.red),
+                        Icon(Icons.visibility_rounded, size: 12, color: AppColors.gray600),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Detay',
+                          style: GoogleFonts.inter(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.gray600,
                           ),
                         ),
                       ],
                     ),
-                  );
-                }),
-            ],
-          ),
-        );
-
-        if (isDesktop) {
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(flex: 3, child: tankerDurumuWidget),
-              const SizedBox(width: 16),
-              Expanded(flex: 3, child: statsCardsWidget),
-              const SizedBox(width: 16),
-              Expanded(flex: 4, child: listWidget),
-            ],
+                  ),
+                ),
+              ],
+            ),
           );
-        } else if (isTablet) {
-          return Column(
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+        },
+      ),
+    );
+  }
+
+  void _showDriverTankIcerik(BuildContext context, String tankAdi) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (_) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        maxChildSize: 0.9,
+        minChildSize: 0.3,
+        expand: false,
+        builder: (_, sc) => Column(
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                color: AppColors.gray300,
+                borderRadius: BorderRadius.circular(99),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Row(
                 children: [
-                  Expanded(child: tankerDurumuWidget),
-                  const SizedBox(width: 16),
-                  Expanded(child: statsCardsWidget),
+                  Text(
+                    '$tankAdi Giriş Kayıtları',
+                    style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.gray800),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
                 ],
               ),
-              const SizedBox(height: 16),
-              listWidget,
-            ],
-          );
-        }
+            ),
+            Container(
+              margin: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEFF6FF),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline_rounded, color: Color(0xFF3B82F6), size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Bu tanka son giren süt toplama kayıtları listelenmektedir.',
+                      style: GoogleFonts.inter(fontSize: 11.5, color: const Color(0xFF1D4ED8), fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: FutureBuilder<QuerySnapshot>(
+                future: FirebaseFirestore.instance
+                    .collection('toplamalar')
+                    .orderBy('tarih', descending: true)
+                    .limit(15)
+                    .get(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  final docs = snapshot.data?.docs ?? [];
+                  if (docs.isEmpty) {
+                    return Center(
+                      child: Text(
+                        'Kayıt bulunamadı.',
+                        style: GoogleFonts.inter(color: AppColors.gray400),
+                      ),
+                    );
+                  }
+                  return ListView.builder(
+                    controller: sc,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: docs.length,
+                    itemBuilder: (_, i) {
+                      final doc = docs[i];
+                      final data = doc.data() as Map<String, dynamic>;
+                      final u = data['u'] ?? 'Bilinmeyen Üretici';
+                      final double m = (data['m'] as num?)?.toDouble() ?? 0.0;
+                      final s = data['s'] ?? '';
+                      final t = data['tarih'] ?? '';
 
-        return Column(
-          children: [
-            tankerDurumuWidget,
-            const SizedBox(height: 16),
-            statsCardsWidget,
-            const SizedBox(height: 16),
-            listWidget,
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: AppColors.gray200),
+                        ),
+                        child: ListTile(
+                          title: Text(
+                            u,
+                            style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.gray800),
+                          ),
+                          subtitle: Text(
+                            '$t $s',
+                            style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray400),
+                          ),
+                          trailing: Text(
+                            '${m.toStringAsFixed(1)} LT',
+                            style: GoogleFonts.inter(fontWeight: FontWeight.bold, color: const Color(0xFF3B82F6), fontSize: 14),
+                          ),
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
           ],
-        );
-      }
+        ),
+      ),
     );
   }
 

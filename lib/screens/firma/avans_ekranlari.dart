@@ -68,18 +68,6 @@ class _MusteriAvanslariScreenState extends State<MusteriAvanslariScreen> {
         content: Text('$uretici adına tanımlanan ${formatNumber.format(tutar)} ₺ tutarındaki avans kaydı üzerinde yapılacak işlemi seçin:'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Vazgeç')),
-          if (currentDurum != 'odendi')
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
-              onPressed: () async {
-                await FirebaseFirestore.instance.collection('avanslar').doc(docId).update({'durum': 'odendi'});
-                Navigator.pop(ctx);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Avans ödendi olarak güncellendi!'), backgroundColor: AppColors.success),
-                );
-              },
-              child: const Text('Ödendi Yap'),
-            ),
           if (currentDurum != 'iptal')
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, foregroundColor: Colors.white),
@@ -132,7 +120,7 @@ class _MusteriAvanslariScreenState extends State<MusteriAvanslariScreen> {
         title: Text('Müşteri Avansları', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.go('/firma/finans'),
+          onPressed: () => context.pop(),
         ),
       ),
       backgroundColor: AppColors.gray50,
@@ -495,7 +483,7 @@ class _AvansVerScreenState extends State<AvansVerScreen> {
         title: Text('Avans Ver', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.go('/firma/finans/avanslar'),
+          onPressed: () => context.pop(),
         ),
       ),
       backgroundColor: AppColors.gray50,

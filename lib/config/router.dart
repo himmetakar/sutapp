@@ -36,6 +36,7 @@ import '../screens/firma/gelirler_screen.dart';
 import '../screens/firma/urunler_screen.dart';
 import '../screens/firma/urun_siparisleri_screen.dart';
 import '../screens/surucu/surucu_dashboard.dart';
+import '../screens/surucu/surucu_profil.dart';
 import '../screens/uretici/uretici_dashboard.dart';
 import '../screens/uretici/uretici_faturalar.dart';
 import '../screens/auth/duyuru_gonder_screens.dart';
@@ -54,6 +55,9 @@ import '../screens/firma/tank_detay_screen.dart';
 import '../screens/firma/sut_kabul_screen.dart';
 import '../screens/firma/sut_transfer_screen.dart';
 import '../screens/firma/sut_analiz_screen.dart';
+import '../screens/firma/firma_tank_atama.dart';
+import '../screens/firma/firma_yonetimi_screen.dart';
+import '../screens/uretici/dijital_sut_karti.dart';
 
 
 
@@ -100,6 +104,14 @@ GoRouter createRouter(AuthProvider auth) {
           GoRoute(path: '/admin/firmalar', builder: (_, __) => const AdminFirmalar()),
           GoRoute(path: '/admin/abonelikler', builder: (_, __) => const AdminFirmalar()),
           GoRoute(path: '/admin/istatistikler', builder: (_, __) => const AdminDashboard()),
+          GoRoute(path: '/admin/aylik-sut', builder: (_, __) => const FirmaAylikSutScreen()),
+          GoRoute(
+            path: '/admin/dijital-kart',
+            builder: (context, state) {
+              final name = state.uri.queryParameters['name'];
+              return DijitalSutKartiScreen(producerName: name);
+            },
+          ),
         ],
       ),
 
@@ -126,6 +138,21 @@ GoRouter createRouter(AuthProvider auth) {
             },
           ),
           GoRoute(path: '/firma/aylik-sut', builder: (_, __) => const FirmaAylikSutScreen()),
+          GoRoute(
+            path: '/firma/dijital-kart',
+            builder: (context, state) {
+              final name = state.uri.queryParameters['name'];
+              return DijitalSutKartiScreen(producerName: name);
+            },
+          ),
+          GoRoute(path: '/firma/yonetimi', builder: (_, __) => const FirmaYonetimiScreen()),
+          GoRoute(
+            path: '/firma/yonetimi/ekstre',
+            builder: (context, state) {
+              final name = state.uri.queryParameters['name'];
+              return FirmaCariEkstreScreen(companyName: name);
+            },
+          ),
           GoRoute(path: '/firma/araclar', builder: (_, __) => const FirmaAraclar()),
           GoRoute(path: '/firma/suruculer', builder: (_, __) => const FirmaSuruculer()),
           GoRoute(path: '/firma/personel', builder: (_, __) => const FirmaPersonelYonetimiScreen()),
@@ -141,6 +168,7 @@ GoRouter createRouter(AuthProvider auth) {
           GoRoute(path: '/firma/tanklar/liste', builder: (_, __) => const TankListesiScreen()),
           GoRoute(path: '/firma/tanklar/ekle', builder: (_, __) => const TankEkleScreen()),
           GoRoute(path: '/firma/tanklar/detay', builder: (_, __) => const TankDetayScreen()),
+          GoRoute(path: '/firma/tanklar/atama', builder: (_, __) => const FirmaTankAtamaScreen()),
           GoRoute(path: '/firma/sut-kabul', builder: (_, __) => const SutKabulScreen()),
           GoRoute(path: '/firma/sut-transferleri', builder: (_, __) => const SutTransferScreen()),
           GoRoute(path: '/firma/sut-analiz', builder: (_, __) => const SutAnalizScreen()),
@@ -174,7 +202,6 @@ GoRouter createRouter(AuthProvider auth) {
           GoRoute(path: '/firma/finans/cezalar', builder: (_, __) => const MusteriCezalariScreen()),
           GoRoute(path: '/firma/finans/cezalar/ekle', builder: (_, __) => const CezaKesScreen()),
           GoRoute(path: '/firma/finans/kesintiler', builder: (_, __) => const MusteriKesintileriScreen()),
-          GoRoute(path: '/firma/finans/kesintiler/ekle', builder: (_, __) => const KesintiUygulaScreen()),
           GoRoute(path: '/firma/finans/oranlar', builder: (_, __) => const KesintiOranlariScreen()),
         ],
       ),
@@ -185,8 +212,7 @@ GoRouter createRouter(AuthProvider auth) {
         routes: [
           GoRoute(path: '/surucu', builder: (_, __) => const SurucuDashboard()),
           GoRoute(path: '/surucu/toplama', builder: (_, __) => const SurucuDashboard(showSutAlDirectly: true)),
-          GoRoute(path: '/surucu/tanker', builder: (_, __) => const SurucuDashboard()),
-          GoRoute(path: '/surucu/gecmis', builder: (_, __) => const SurucuDashboard()),
+          GoRoute(path: '/surucu/profil', builder: (_, __) => const SurucuProfilScreen()),
         ],
       ),
 
@@ -198,6 +224,13 @@ GoRouter createRouter(AuthProvider auth) {
           GoRoute(path: '/uretici/gecmis', builder: (_, __) => const UreticiDashboard()),
           GoRoute(path: '/uretici/faturalar', builder: (_, __) => const UreticiFaturalarScreen()),
           GoRoute(path: '/uretici/urunler', builder: (_, __) => const UrunlerScreen()),
+          GoRoute(
+            path: '/uretici/dijital-kart',
+            builder: (context, state) {
+              final name = state.uri.queryParameters['name'];
+              return DijitalSutKartiScreen(producerName: name);
+            },
+          ),
         ],
       ),
     ],

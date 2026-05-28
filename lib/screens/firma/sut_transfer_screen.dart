@@ -496,47 +496,69 @@ class _SutTransferScreenState extends State<SutTransferScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           // Buyer company dropdown
-                          DropdownButtonFormField<String>(
-                            value: selectedAliciFirma,
-                            decoration: const InputDecoration(
-                              labelText: 'Alıcı Firma *',
-                              prefixIcon: Icon(Icons.business_rounded, size: 18),
-                            ),
-                            hint: Text(
-                              'Firma seçin...',
-                              style: GoogleFonts.inter(fontSize: 13, color: AppColors.gray400),
-                            ),
-                            isExpanded: true,
-                            items: anaFirmalar.map((f) {
-                              final bool isDiger = f == 'Diğer';
-                              return DropdownMenuItem<String>(
-                                value: f,
-                                child: Row(
-                                  children: [
-                                    if (!isDiger)
-                                      Icon(Icons.business_rounded, size: 16, color: AppColors.gray400)
-                                    else
-                                      const Icon(Icons.edit_rounded, size: 16, color: Color(0xFFD97706)),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      f,
-                                      style: GoogleFonts.inter(
-                                        fontSize: 13,
-                                        fontWeight: isDiger ? FontWeight.w600 : FontWeight.w500,
-                                        color: isDiger ? const Color(0xFFD97706) : AppColors.gray700,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            }).toList(),
-                            onChanged: (val) {
-                              setDialogState(() {
-                                selectedAliciFirma = val;
-                                if (val != 'Diğer') {
-                                  digerFirmaCtrl.clear();
+                          FutureBuilder<QuerySnapshot>(
+                            future: db.collection('cari_firmalar')
+                                .where('firma', isEqualTo: firma)
+                                .where('tip', isEqualTo: 'alici')
+                                .get(),
+                            builder: (context, companySnapshot) {
+                              List<String> combinedFirmalar = List.from(anaFirmalar);
+                              if (companySnapshot.hasData) {
+                                final dbFirms = companySnapshot.data!.docs
+                                    .map((doc) => (doc.data() as Map<String, dynamic>)['ad'] as String)
+                                    .toList();
+                                combinedFirmalar.remove('Diğer');
+                                for (var f in dbFirms) {
+                                  if (!combinedFirmalar.contains(f)) {
+                                    combinedFirmalar.add(f);
+                                  }
                                 }
-                              });
+                                combinedFirmalar.add('Diğer');
+                              }
+
+                              return DropdownButtonFormField<String>(
+                                value: selectedAliciFirma,
+                                decoration: const InputDecoration(
+                                  labelText: 'Alıcı Firma *',
+                                  prefixIcon: Icon(Icons.business_rounded, size: 18),
+                                ),
+                                hint: Text(
+                                  'Firma seçin...',
+                                  style: GoogleFonts.inter(fontSize: 13, color: AppColors.gray400),
+                                ),
+                                isExpanded: true,
+                                items: combinedFirmalar.map((f) {
+                                  final bool isDiger = f == 'Diğer';
+                                  return DropdownMenuItem<String>(
+                                    value: f,
+                                    child: Row(
+                                      children: [
+                                        if (!isDiger)
+                                          Icon(Icons.business_rounded, size: 16, color: AppColors.gray400)
+                                        else
+                                          const Icon(Icons.edit_rounded, size: 16, color: Color(0xFFD97706)),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          f,
+                                          style: GoogleFonts.inter(
+                                            fontSize: 13,
+                                            fontWeight: isDiger ? FontWeight.w600 : FontWeight.w500,
+                                            color: isDiger ? const Color(0xFFD97706) : AppColors.gray700,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }).toList(),
+                                onChanged: (val) {
+                                  setDialogState(() {
+                                    selectedAliciFirma = val;
+                                    if (val != 'Diğer') {
+                                      digerFirmaCtrl.clear();
+                                    }
+                                  });
+                                },
+                              );
                             },
                           ),
                           // Custom company name field when 'Diğer' is selected

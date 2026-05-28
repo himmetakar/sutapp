@@ -17,6 +17,40 @@ class FirmaTahsilatScreen extends StatefulWidget {
 
 class _FirmaTahsilatScreenState extends State<FirmaTahsilatScreen> {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
+  DateTime _selectedDate = DateTime.now();
+  String _searchQuery = '';
+  final _searchCtrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  void _changeMonth(int delta) {
+    setState(() {
+      _selectedDate = DateTime(_selectedDate.year, _selectedDate.month + delta);
+    });
+  }
+
+  bool _isDocInSelectedMonth(DocumentSnapshot doc, DateTime selectedMonth) {
+    final data = doc.data() as Map<String, dynamic>?;
+    if (data == null) return false;
+
+    if (data['timestamp'] != null) {
+      final date = (data['timestamp'] as Timestamp).toDate();
+      return date.month == selectedMonth.month && date.year == selectedMonth.year;
+    }
+
+    final rawDate = data['tarih'];
+    if (rawDate != null) {
+      try {
+        final parsed = DateFormat('dd.MM.yyyy').parse(rawDate.toString());
+        return parsed.month == selectedMonth.month && parsed.year == selectedMonth.year;
+      } catch (_) {}
+    }
+    return false;
+  }
 
   void _showAddTahsilatDialog() async {
     final auth = Provider.of<AuthProvider>(context, listen: false);
@@ -168,6 +202,7 @@ class _FirmaTahsilatScreenState extends State<FirmaTahsilatScreen> {
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final currentFirmaName = auth.user?.displayName ?? '';
     final formatCurrency = NumberFormat.currency(locale: 'tr_TR', symbol: '₺');
+    final monthStr = DateFormat('MMMM yyyy', 'tr_TR').format(_selectedDate);
 
     return Scaffold(
       appBar: AppBar(
@@ -195,11 +230,36 @@ class _FirmaTahsilatScreenState extends State<FirmaTahsilatScreen> {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
+          
           final rawDocs = snapshot.data?.docs ?? [];
           
-          // Sort in memory to avoid index requirements
-          final docs = List<QueryDocumentSnapshot>.from(rawDocs);
-          docs.sort((a, b) {
+          double monthlyTotal = 0.0;
+          int monthlyCount = 0;
+          final List<QueryDocumentSnapshot> filteredDocs = [];
+
+          for (var doc in rawDocs) {
+            if (_isDocInSelectedMonth(doc, _selectedDate)) {
+              final data = doc.data() as Map<String, dynamic>;
+              final uretici = data['uretici'] as String? ?? '';
+              final aciklama = data['aciklama'] as String? ?? '';
+              final tutarVal = data['tutar'] ?? 0.0;
+              final double tutar = tutarVal is num ? tutarVal.toDouble() : (double.tryParse(tutarVal.toString()) ?? 0.0);
+
+              final matchesSearch = _searchQuery.isEmpty ||
+                  uretici.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+                  aciklama.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+                  tutar.toString().contains(_searchQuery);
+
+              if (matchesSearch) {
+                filteredDocs.add(doc);
+                monthlyTotal += tutar;
+                monthlyCount++;
+              }
+            }
+          }
+
+          // Sort filtered docs by timestamp/date descending
+          filteredDocs.sort((a, b) {
             final aData = a.data() as Map<String, dynamic>;
             final bData = b.data() as Map<String, dynamic>;
             final aTime = aData['timestamp'] as Timestamp?;
@@ -210,89 +270,200 @@ class _FirmaTahsilatScreenState extends State<FirmaTahsilatScreen> {
             return bTime.compareTo(aTime);
           });
 
-          if (docs.isEmpty) {
-            return Center(
-              child: Text(
-                'Kayıtlı tahsilat bulunmuyor.',
-                style: GoogleFonts.inter(color: AppColors.gray500),
-              ),
-            );
-          }
-
-          return ListView.builder(
+          return ListView(
             padding: const EdgeInsets.all(16),
-            itemCount: docs.length,
-            itemBuilder: (context, index) {
-              final doc = docs[index];
-              final data = doc.data() as Map<String, dynamic>;
-              final uretici = data['uretici'] ?? '';
-              final tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
-              final odemeYontemi = data['odemeYontemi'] ?? 'Nakit';
-              final aciklama = data['aciklama'] ?? '';
-              final tarih = data['tarih'] ?? '';
+            children: [
+              // Month Selector
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.chevron_left_rounded),
+                    onPressed: () => _changeMonth(-1),
+                  ),
+                  Row(
+                    children: [
+                      const Icon(Icons.calendar_month_rounded, color: AppColors.primary600, size: 18),
+                      const SizedBox(width: 8),
+                      Text(
+                        monthStr,
+                        style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.gray800),
+                      ),
+                    ],
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.chevron_right_rounded),
+                    onPressed: () => _changeMonth(1),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
 
-              return Container(
-                margin: const EdgeInsets.only(bottom: 10),
-                padding: const EdgeInsets.all(14),
+              // Search Bar
+              Container(
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(10),
                   boxShadow: AppShadows.sm,
                 ),
+                child: TextField(
+                  controller: _searchCtrl,
+                  onChanged: (val) => setState(() => _searchQuery = val),
+                  decoration: InputDecoration(
+                    hintText: 'Müşteri adı, tutar veya açıklama ile ara...',
+                    hintStyle: GoogleFonts.inter(fontSize: 13, color: AppColors.gray400),
+                    prefixIcon: const Icon(Icons.search_rounded, color: AppColors.gray400, size: 20),
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // Total Tahsilat Summary Card
+              AppCard(
+                padding: const EdgeInsets.all(16),
+                shadow: AppShadows.sm,
                 child: Row(
                   children: [
                     Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: AppColors.warningLight,
-                        borderRadius: BorderRadius.circular(10),
+                      width: 44,
+                      height: 44,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFDCFCE7),
+                        shape: BoxShape.circle,
                       ),
-                      child: const Center(
-                        child: Icon(Icons.credit_card_rounded, color: AppColors.warning, size: 20),
-                      ),
+                      child: const Icon(Icons.credit_card_rounded, color: Color(0xFF16A34A), size: 22),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(uretici, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600)),
-                          const SizedBox(height: 3),
-                          Text(
-                            '$odemeYontemi ${aciklama.isNotEmpty ? "- $aciklama" : ""}',
-                            style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray600),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            tarih,
-                            style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray400),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 16),
                     Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        Text('$monthStr Toplam Tahsilat', style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray500, fontWeight: FontWeight.w500)),
+                        const SizedBox(height: 4),
                         Text(
-                          formatCurrency.format(tutar),
-                          style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.success),
+                          formatCurrency.format(monthlyTotal),
+                          style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.gray800),
                         ),
-                        IconButton(
-                          icon: const Icon(Icons.delete_outline_rounded, color: AppColors.gray400, size: 18),
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
-                          onPressed: () => _deleteTahsilat(doc),
-                        ),
+                        Text('$monthlyCount kayıt', style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray400)),
                       ],
                     ),
                   ],
                 ),
-              );
-            },
+              ),
+              const SizedBox(height: 20),
+
+              // Tahsilat Geçmişi Title
+              Text(
+                'Tahsilat Geçmişi',
+                style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.gray800),
+              ),
+              const SizedBox(height: 12),
+
+              // List of Tahsilatlar
+              if (filteredDocs.isEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(vertical: 64),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: AppShadows.sm,
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.search_off_rounded, size: 48, color: AppColors.gray300),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Henüz uygun tahsilat kaydı bulunmuyor',
+                        style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.gray600),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Filtreyi değiştirin veya yeni tahsilat ekleyin',
+                        style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray400),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: filteredDocs.length,
+                  itemBuilder: (context, index) {
+                    final doc = filteredDocs[index];
+                    final data = doc.data() as Map<String, dynamic>;
+                    final uretici = data['uretici'] ?? '';
+                    final tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
+                    final odemeYontemi = data['odemeYontemi'] ?? 'Nakit';
+                    final aciklama = data['aciklama'] ?? '';
+                    final tarih = data['tarih'] ?? '';
+
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 10),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(14),
+                        boxShadow: AppShadows.sm,
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: AppColors.warningLight,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Center(
+                              child: Icon(Icons.credit_card_rounded, color: AppColors.warning, size: 20),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(uretici, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600)),
+                                const SizedBox(height: 3),
+                                Text(
+                                  '$odemeYontemi ${aciklama.isNotEmpty ? "- $aciklama" : ""}',
+                                  style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray600),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  tarih,
+                                  style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray400),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                formatCurrency.format(tutar),
+                                style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.success),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete_outline_rounded, color: AppColors.gray400, size: 18),
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                                onPressed: () => _deleteTahsilat(doc),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+            ],
           );
         },
       ),

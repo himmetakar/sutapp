@@ -68,8 +68,17 @@ class _FirmaDuyuruGonderScreenState extends State<FirmaDuyuruGonderScreen> {
       }
     } catch (e) {
       if (mounted) {
+        String errMsg = e.toString();
+        if (errMsg.contains('Exception:')) {
+          errMsg = errMsg.replaceAll('Exception:', '').trim();
+        } else {
+          errMsg = 'Duyuru gönderilirken hata oluştu: $errMsg';
+        }
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Duyuru gönderilirken hata oluştu: $e')),
+          SnackBar(
+            content: Text(errMsg),
+            backgroundColor: AppColors.danger,
+          ),
         );
       }
     } finally {

@@ -1,9 +1,11 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'package:go_router/go_router.dart';
 import '../../config/theme.dart';
 import '../../widgets/common_widgets.dart';
 import '../../services/firestore_service.dart';
@@ -155,6 +157,9 @@ class UreticiDashboard extends StatelessWidget {
                                   producerName: producerName,
                                   bolge: bolge,
                                   group: group,
+                                  kesintiAyarlari: producerSnap.hasData && producerSnap.data!.docs.isNotEmpty
+                                      ? (producerSnap.data!.docs.first.data() as Map<String, dynamic>)['kesintiAyarlari'] as Map<String, dynamic>?
+                                      : null,
                                 );
 
                                 final double toplamAlacak = ledger['toplamAlacak'];
@@ -173,34 +178,86 @@ class UreticiDashboard extends StatelessWidget {
                                       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
                                       children: [
                                         // Header
-                                        Row(
-                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            Expanded(
-                                              child: Column(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                children: [
-                                                  Text(
-                                                    'Üretici Paneli',
-                                                    style: GoogleFonts.inter(
-                                                      fontSize: isDesktop ? 22 : 18,
-                                                      fontWeight: FontWeight.w700,
-                                                      color: AppColors.gray900,
+                                        StreamBuilder<QuerySnapshot>(
+                                          stream: FirebaseFirestore.instance
+                                              .collection('firmalar')
+                                              .where('ad', isEqualTo: currentFirma)
+                                              .limit(1)
+                                              .snapshots(),
+                                          builder: (context, companySnap) {
+                                            String? logoUrl;
+                                            if (companySnap.hasData && companySnap.data!.docs.isNotEmpty) {
+                                              final companyData = companySnap.data!.docs.first.data() as Map<String, dynamic>;
+                                              logoUrl = companyData['logoUrl'] as String?;
+                                            }
+
+                                            return Row(
+                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                              children: [
+                                                Expanded(
+                                                  child: Column(
+                                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                                    children: [
+                                                       Row(
+                                                         children: [
+                                                           Text(
+                                                             'Üretici Paneli',
+                                                             style: GoogleFonts.inter(
+                                                               fontSize: isDesktop ? 22 : 18,
+                                                               fontWeight: FontWeight.w700,
+                                                               color: AppColors.gray900,
+                                                             ),
+                                                           ),
+                                                           const SizedBox(width: 8),
+                                                           ElevatedButton.icon(
+                                                             onPressed: () => context.push('/uretici/dijital-kart'),
+                                                             icon: const Icon(Icons.badge_rounded, size: 13),
+                                                             label: Text(
+                                                               'Dijital Süt Kartı',
+                                                               style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.bold),
+                                                             ),
+                                                             style: ElevatedButton.styleFrom(
+                                                               backgroundColor: AppColors.primary600,
+                                                               foregroundColor: Colors.white,
+                                                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                                               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                                               minimumSize: Size.zero,
+                                                               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                                             ),
+                                                           ),
+                                                         ],
+                                                       ),
+                                                      const SizedBox(height: 4),
+                                                      Text(
+                                                        'Süt teslimatlarınızı ve güncel geçmişinizi buradan inceleyebilirsiniz.',
+                                                        style: GoogleFonts.inter(
+                                                          fontSize: isDesktop ? 12 : 11,
+                                                          color: AppColors.gray500,
+                                                          fontWeight: FontWeight.w400,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                                if (logoUrl != null && logoUrl.isNotEmpty)
+                                                  Container(
+                                                    margin: const EdgeInsets.only(left: 12),
+                                                    width: 48,
+                                                    height: 48,
+                                                    decoration: BoxDecoration(
+                                                      shape: BoxShape.circle,
+                                                      border: Border.all(color: AppColors.gray200, width: 1.5),
+                                                      image: DecorationImage(
+                                                        image: logoUrl.startsWith('data:image')
+                                                            ? MemoryImage(base64Decode(logoUrl.substring(logoUrl.indexOf(',') + 1))) as ImageProvider
+                                                            : NetworkImage(logoUrl),
+                                                        fit: BoxFit.cover,
+                                                      ),
                                                     ),
                                                   ),
-                                                  const SizedBox(height: 4),
-                                                  Text(
-                                                    'Süt teslimatlarınızı ve güncel geçmişinizi buradan inceleyebilirsiniz.',
-                                                    style: GoogleFonts.inter(
-                                                      fontSize: isDesktop ? 12 : 11,
-                                                      color: AppColors.gray500,
-                                                      fontWeight: FontWeight.w400,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ],
+                                              ],
+                                            );
+                                          }
                                         ),
                                         const SizedBox(height: 20),
 

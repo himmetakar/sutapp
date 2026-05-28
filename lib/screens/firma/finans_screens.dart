@@ -815,11 +815,11 @@ class _FaturaEkleScreenState extends State<FaturaEkleScreen> {
       final auth = Provider.of<AuthProvider>(context, listen: false);
       final currentFirmaName = auth.user?.displayName ?? '';
       final snapshot = await FirebaseFirestore.instance
-          .collection('ureticiler')
-          .where('firmalar', arrayContains: currentFirmaName)
+          .collection('cari_firmalar')
+          .where('firma', isEqualTo: currentFirmaName)
           .get();
       setState(() {
-        _musteriler = snapshot.docs.map((doc) => doc['name'] as String).toList();
+        _musteriler = snapshot.docs.map((doc) => doc['ad'] as String).toList();
         _isLoadingMusteriler = false;
       });
     } catch (e) {
@@ -2109,6 +2109,7 @@ class _DevirYonetimiScreenState extends State<DevirYonetimiScreen> {
                                         final bolge = p['bolge'] ?? '';
                                         final group = p['group'] ?? '';
                                         final email = p['email'] ?? '';
+                                        final kesintiAyarlari = p['kesintiAyarlari'] as Map<String, dynamic>?;
 
                                         final pCollections = allCollections.where((doc) => doc['u'] == name).toList();
                                         final pTahsilatlar = allTahsilatlar.where((doc) => doc['uretici'] == name).toList();
@@ -2127,6 +2128,7 @@ class _DevirYonetimiScreenState extends State<DevirYonetimiScreen> {
                                           producerName: name,
                                           bolge: bolge,
                                           group: group,
+                                          kesintiAyarlari: kesintiAyarlari,
                                         );
 
                                         double devirSum = 0.0;

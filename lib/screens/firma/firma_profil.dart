@@ -1,11 +1,13 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import '../../providers/auth_provider.dart';
 import '../../config/theme.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class FirmaProfilScreen extends StatefulWidget {
   const FirmaProfilScreen({super.key});
@@ -21,6 +23,7 @@ class _FirmaProfilScreenState extends State<FirmaProfilScreen> {
   late TextEditingController _nameController;
   late TextEditingController _emailController;
   late TextEditingController _phoneController;
+  late TextEditingController _logoController;
 
   bool _loadingAddress = false;
   List<Map<String, dynamic>> _provinces = [];
@@ -37,8 +40,52 @@ class _FirmaProfilScreenState extends State<FirmaProfilScreen> {
     _nameController = TextEditingController(text: user?.displayName ?? '');
     _emailController = TextEditingController(text: user?.email ?? '');
     _phoneController = TextEditingController(text: user?.phone ?? '');
+    _logoController = TextEditingController();
     
+    _loadCompanyLogo();
     _loadProvinces();
+  }
+
+  Future<void> _loadCompanyLogo() async {
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final user = auth.user;
+    if (user != null) {
+      try {
+        final compQuery = await FirebaseFirestore.instance
+            .collection('firmalar')
+            .where('ad', isEqualTo: user.displayName)
+            .limit(1)
+            .get();
+        if (compQuery.docs.isNotEmpty) {
+          final compDoc = compQuery.docs.first;
+          final compData = compDoc.data();
+          if (compData.containsKey('logoUrl')) {
+            if (mounted) {
+              setState(() {
+                _logoController.text = compData['logoUrl'] ?? '';
+              });
+            }
+          }
+        }
+      } catch (e) {
+        print('Error loading company logo: $e');
+      }
+    }
+  }
+
+  ImageProvider _getLogoImageProvider(String logoStr) {
+    if (logoStr.startsWith('data:image')) {
+      final commaIndex = logoStr.indexOf(',');
+      if (commaIndex != -1) {
+        final base64Part = logoStr.substring(commaIndex + 1);
+        try {
+          return MemoryImage(base64Decode(base64Part));
+        } catch (e) {
+          print('Base64 decode error: $e');
+        }
+      }
+    }
+    return NetworkImage(logoStr);
   }
 
   @override
@@ -46,6 +93,7 @@ class _FirmaProfilScreenState extends State<FirmaProfilScreen> {
     _nameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
+    _logoController.dispose();
     super.dispose();
   }
 
@@ -156,6 +204,7 @@ class _FirmaProfilScreenState extends State<FirmaProfilScreen> {
       }
       _isEditing = false;
     });
+    _loadCompanyLogo();
   }
 
   Future<void> _saveProfile() async {
@@ -178,6 +227,7 @@ class _FirmaProfilScreenState extends State<FirmaProfilScreen> {
     }
 
     final auth = Provider.of<AuthProvider>(context, listen: false);
+    final oldName = auth.user?.displayName;
     
     try {
       await auth.updateUserProfile(
@@ -187,6 +237,24 @@ class _FirmaProfilScreenState extends State<FirmaProfilScreen> {
         il: il,
         ilce: ilce,
       );
+
+      // Update company logoUrl in 'firmalar' collection
+      final user = auth.user;
+      if (user != null) {
+        final queryName = (oldName != null && oldName.isNotEmpty) ? oldName : user.displayName;
+        final compQuery = await FirebaseFirestore.instance
+            .collection('firmalar')
+            .where('ad', isEqualTo: queryName)
+            .limit(1)
+            .get();
+        if (compQuery.docs.isNotEmpty) {
+          final compDoc = compQuery.docs.first;
+          await compDoc.reference.update({
+            'ad': user.displayName,
+            'logoUrl': _logoController.text.trim(),
+          });
+        }
+      }
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -259,18 +327,26 @@ class _FirmaProfilScreenState extends State<FirmaProfilScreen> {
                 key: _formKey,
                 child: Column(
                   children: [
-                    // Avatar
+                    // Avatar / Logo
                     Container(
                       width: 80,
                       height: 80,
-                      decoration: const BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [AppColors.primary500, AppColors.primary700],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
+                      decoration: BoxDecoration(
+                        gradient: _logoController.text.isEmpty
+                            ? const LinearGradient(
+                                colors: [AppColors.primary500, AppColors.primary700],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              )
+                            : null,
                         shape: BoxShape.circle,
-                        boxShadow: [
+                        image: _logoController.text.isNotEmpty
+                            ? DecorationImage(
+                                image: _getLogoImageProvider(_logoController.text),
+                                fit: BoxFit.cover,
+                              )
+                            : null,
+                        boxShadow: const [
                           BoxShadow(
                             color: Colors.blueAccent,
                             blurRadius: 12,
@@ -278,16 +354,18 @@ class _FirmaProfilScreenState extends State<FirmaProfilScreen> {
                           ),
                         ],
                       ),
-                      child: Center(
-                        child: Text(
-                          avatarChar,
-                          style: GoogleFonts.inter(
-                            fontSize: 32,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
+                      child: _logoController.text.isEmpty
+                          ? Center(
+                              child: Text(
+                                avatarChar,
+                                style: GoogleFonts.inter(
+                                  fontSize: 32,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            )
+                          : null,
                     ),
                     const SizedBox(height: 16),
 
@@ -364,6 +442,7 @@ class _FirmaProfilScreenState extends State<FirmaProfilScreen> {
                       _buildDetailItem(Icons.mail_outline_rounded, 'E-posta', user?.email ?? '-'),
                       _buildDetailItem(Icons.phone_outlined, 'Telefon', user?.phone ?? '-'),
                       _buildDetailItem(Icons.info_outline_rounded, 'Firma ID', user?.firmaId ?? 'Demo Firma'),
+                      _buildDetailItem(Icons.image_outlined, 'Firma Logosu', _logoController.text.isNotEmpty ? 'Eklenmiş' : 'Eklenmemiş'),
                       _buildDetailItem(
                         Icons.location_on_outlined, 
                         'Konum', 
@@ -383,6 +462,97 @@ class _FirmaProfilScreenState extends State<FirmaProfilScreen> {
                         if (val == null || val.trim().isEmpty) return 'Telefon boş bırakılamaz.';
                         return null;
                       }),
+                      
+                      // Custom image picker widget instead of logo text field
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Firma Logosu',
+                              style: GoogleFonts.inter(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.gray700,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Container(
+                                  width: 60,
+                                  height: 60,
+                                  decoration: BoxDecoration(
+                                    color: AppColors.gray100,
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(color: AppColors.gray300),
+                                    image: _logoController.text.isNotEmpty
+                                        ? DecorationImage(
+                                            image: _getLogoImageProvider(_logoController.text),
+                                            fit: BoxFit.cover,
+                                          )
+                                        : null,
+                                  ),
+                                  child: _logoController.text.isEmpty
+                                      ? const Icon(Icons.image_outlined, color: AppColors.gray400)
+                                      : null,
+                                ),
+                                const SizedBox(width: 16),
+                                ElevatedButton.icon(
+                                  onPressed: () async {
+                                    try {
+                                      final ImagePicker picker = ImagePicker();
+                                      final XFile? image = await picker.pickImage(
+                                        source: ImageSource.gallery,
+                                        maxWidth: 300,
+                                        maxHeight: 300,
+                                        imageQuality: 70,
+                                      );
+                                      if (image != null) {
+                                        final bytes = await image.readAsBytes();
+                                        final base64String = 'data:image/png;base64,${base64Encode(bytes)}';
+                                        setState(() {
+                                          _logoController.text = base64String;
+                                        });
+                                      }
+                                    } catch (e) {
+                                      print("Error picking image: $e");
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text('Dosya seçilirken bir hata oluştu: $e'),
+                                          backgroundColor: AppColors.danger,
+                                        ),
+                                      );
+                                    }
+                                  },
+                                  icon: const Icon(Icons.photo_library_rounded, size: 16),
+                                  label: const Text('Dosya Seç'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppColors.primary600,
+                                    foregroundColor: Colors.white,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                  ),
+                                ),
+                                if (_logoController.text.isNotEmpty) ...[
+                                  const SizedBox(width: 8),
+                                  TextButton.icon(
+                                    onPressed: () {
+                                      setState(() {
+                                        _logoController.text = '';
+                                      });
+                                    },
+                                    icon: const Icon(Icons.delete_outline_rounded, size: 16, color: AppColors.danger),
+                                    label: const Text('Kaldır', style: TextStyle(color: AppColors.danger)),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
                       
                       const SizedBox(height: 8),
                       // Province Dropdown
