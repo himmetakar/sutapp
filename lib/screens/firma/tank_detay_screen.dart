@@ -111,58 +111,75 @@ class _TankDetayScreenState extends State<TankDetayScreen> {
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
-                  .collection('toplamalar')
+                  .collection('tanklar')
                   .where('firma', isEqualTo: currentFirmaName)
                   .snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                
-                final docs = snapshot.data?.docs ?? [];
-                
-                // Filter locally by date
-                final dateFiltered = docs.where((doc) {
+              builder: (context, tankSnapshot) {
+                final tankDocs = tankSnapshot.data?.docs ?? [];
+                final Map<String, String> plateToTankName = {};
+                for (var doc in tankDocs) {
                   final data = doc.data() as Map<String, dynamic>;
-                  final date = data['tarih'] ?? '';
-                  // If collection contains date field, compare it. If timestamp exists, compare it.
-                  if (date.isNotEmpty) {
-                    return date == formattedDateStr;
+                  final String name = data['ad'] ?? '';
+                  final String assignedVehicle = data['arac'] ?? '';
+                  if (assignedVehicle.isNotEmpty) {
+                    plateToTankName[assignedVehicle] = name;
                   }
-                  final ts = data['timestamp'] as Timestamp?;
-                  if (ts != null) {
-                    final d = ts.toDate();
-                    return d.year == _selectedDate.year &&
-                        d.month == _selectedDate.month &&
-                        d.day == _selectedDate.day;
-                  }
-                  return false;
-                }).toList();
-
-                // Calculate metrics
-                int totalGiris = dateFiltered.length;
-                double totalSut = 0.0;
-                
-                // Group entries by tank name
-                final Map<String, List<QueryDocumentSnapshot>> groups = {};
-                for (var doc in dateFiltered) {
-                  final data = doc.data() as Map<String, dynamic>;
-                  final mVal = data['m'] ?? 0;
-                  final double m = mVal is num ? mVal.toDouble() : (double.tryParse(mVal.toString()) ?? 0.0);
-                  totalSut += m;
-
-                  // Group Key: tank name (fall back to vehicle if no tank info)
-                  final vehicle = data['km'] ?? 'Araçsız';
-                  final driver = data['sr'] ?? 'Yönetici';
-                  // Try to get the tank name from the collection record
-                  // Tank name might be stored in 'tank' field or we derive from vehicle
-                  final tankName = data['tank'] ?? data['tankAd'] ?? vehicle;
-                  final groupKey = '$tankName|$vehicle|$driver';
-                  if (!groups.containsKey(groupKey)) {
-                    groups[groupKey] = [];
-                  }
-                  groups[groupKey]!.add(doc);
                 }
+
+                return StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection('toplamalar')
+                      .where('firma', isEqualTo: currentFirmaName)
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    
+                    final docs = snapshot.data?.docs ?? [];
+                    
+                    // Filter locally by date
+                    final dateFiltered = docs.where((doc) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      final date = data['tarih'] ?? '';
+                      // If collection contains date field, compare it. If timestamp exists, compare it.
+                      if (date.isNotEmpty) {
+                        return date == formattedDateStr;
+                      }
+                      final ts = data['timestamp'] as Timestamp?;
+                      if (ts != null) {
+                        final d = ts.toDate();
+                        return d.year == _selectedDate.year &&
+                            d.month == _selectedDate.month &&
+                            d.day == _selectedDate.day;
+                      }
+                      return false;
+                    }).toList();
+
+                    // Calculate metrics
+                    int totalGiris = dateFiltered.length;
+                    double totalSut = 0.0;
+                    
+                    // Group entries by tank name
+                    final Map<String, List<QueryDocumentSnapshot>> groups = {};
+                    for (var doc in dateFiltered) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      final mVal = data['m'] ?? 0;
+                      final double m = mVal is num ? mVal.toDouble() : (double.tryParse(mVal.toString()) ?? 0.0);
+                      totalSut += m;
+
+                      // Group Key: tank name (fall back to vehicle if no tank info)
+                      final vehicle = data['km'] ?? 'Araçsız';
+                      final driver = data['sr'] ?? 'Yönetici';
+                      // Try to get the tank name from the collection record or map
+                      final String assignedTank = plateToTankName[vehicle] ?? vehicle;
+                      final tankName = data['tank'] ?? data['tankAd'] ?? assignedTank;
+                      final groupKey = '$tankName|$vehicle|$driver';
+                      if (!groups.containsKey(groupKey)) {
+                        groups[groupKey] = [];
+                      }
+                      groups[groupKey]!.add(doc);
+                    }
 
 
                 int totalTanks = groups.keys.length;
@@ -443,8 +460,10 @@ class _TankDetayScreenState extends State<TankDetayScreen> {
                   ],
                 );
               },
-            ),
-          ),
+            );
+          },
+        ),
+      ),
         ],
       ),
     );

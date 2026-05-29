@@ -171,61 +171,64 @@ class _FirmaGruplarScreenState extends State<FirmaGruplarScreen> {
               final data = doc.data() as Map<String, dynamic>;
               final name = data['ad'] ?? '';
 
-              return Container(
-                margin: const EdgeInsets.only(bottom: 10),
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(14),
-                  boxShadow: AppShadows.sm,
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: AppColors.primary50,
-                        borderRadius: BorderRadius.circular(10),
+              return GestureDetector(
+                onTap: () => context.push('/firma/ureticiler/liste?group=${Uri.encodeComponent(name)}'),
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: AppShadows.sm,
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: AppColors.primary50,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Center(
+                          child: Icon(Icons.folder_shared_rounded, color: AppColors.primary600, size: 20),
+                        ),
                       ),
-                      child: const Center(
-                        child: Icon(Icons.folder_shared_rounded, color: AppColors.primary600, size: 20),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(name, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600)),
+                            const SizedBox(height: 3),
+                            // Count how many producers are in this group
+                            StreamBuilder<QuerySnapshot>(
+                              stream: _db
+                                  .collection('ureticiler')
+                                  .where('firmalar', arrayContains: currentFirmaName)
+                                  .where('group', isEqualTo: name)
+                                  .snapshots(),
+                              builder: (context, prodSnap) {
+                                final count = prodSnap.data?.docs.length ?? 0;
+                                return Text(
+                                  '$count Üretici',
+                                  style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(name, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600)),
-                          const SizedBox(height: 3),
-                          // Count how many producers are in this group
-                          StreamBuilder<QuerySnapshot>(
-                            stream: _db
-                                .collection('ureticiler')
-                                .where('firmalar', arrayContains: currentFirmaName)
-                                .where('group', isEqualTo: name)
-                                .snapshots(),
-                            builder: (context, prodSnap) {
-                              final count = prodSnap.data?.docs.length ?? 0;
-                              return Text(
-                                '$count Üretici',
-                                style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500),
-                              );
-                            },
-                          ),
-                        ],
+                      IconButton(
+                        icon: const Icon(Icons.edit_rounded, color: AppColors.gray500, size: 20),
+                        onPressed: () => _showEditGroupDialog(doc),
                       ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.edit_rounded, color: AppColors.gray500, size: 20),
-                      onPressed: () => _showEditGroupDialog(doc),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.delete_rounded, color: AppColors.danger, size: 20),
-                      onPressed: () => _deleteGroup(doc),
-                    ),
-                  ],
+                      IconButton(
+                        icon: const Icon(Icons.delete_rounded, color: AppColors.danger, size: 20),
+                        onPressed: () => _deleteGroup(doc),
+                      ),
+                    ],
+                  ),
                 ),
               );
             },

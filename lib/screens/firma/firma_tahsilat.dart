@@ -87,6 +87,8 @@ class _FirmaTahsilatScreenState extends State<FirmaTahsilatScreen> {
         final amountCtrl = TextEditingController();
         final descCtrl = TextEditingController();
         String selectedMethod = 'Nakit';
+        DateTime recDate = DateTime.now();
+        DateTime periodDate = DateTime.now();
 
         return StatefulBuilder(
           builder: (context, setState) {
@@ -121,6 +123,91 @@ class _FirmaTahsilatScreenState extends State<FirmaTahsilatScreen> {
                       onChanged: (val) => setState(() => selectedMethod = val ?? 'Nakit'),
                       decoration: const InputDecoration(contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
                     ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: InkWell(
+                            onTap: () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                initialDate: recDate,
+                                firstDate: DateTime(2020),
+                                lastDate: DateTime(2030),
+                                locale: const Locale('tr', 'TR'),
+                              );
+                              if (picked != null) {
+                                setState(() {
+                                  recDate = picked;
+                                  periodDate = picked;
+                                });
+                              }
+                            },
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Alındığı Tarih', style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.gray500)),
+                                const SizedBox(height: 4),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    border: Border.all(color: AppColors.gray300),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(DateFormat('dd.MM.yyyy').format(recDate), style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.gray800)),
+                                      const Icon(Icons.calendar_today_rounded, size: 12, color: AppColors.gray500),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: InkWell(
+                            onTap: () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                initialDate: periodDate,
+                                firstDate: DateTime(2020),
+                                lastDate: DateTime(2030),
+                                locale: const Locale('tr', 'TR'),
+                              );
+                              if (picked != null) {
+                                setState(() {
+                                  periodDate = picked;
+                                });
+                              }
+                            },
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('İşleneceği Dönem', style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.gray500)),
+                                const SizedBox(height: 4),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    border: Border.all(color: AppColors.gray300),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(DateFormat('MMMM yyyy', 'tr_TR').format(periodDate), style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.gray800)),
+                                      const Icon(Icons.calendar_month_rounded, size: 12, color: AppColors.gray500),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: descCtrl,
@@ -143,9 +230,9 @@ class _FirmaTahsilatScreenState extends State<FirmaTahsilatScreen> {
                       'tutar': tutar,
                       'odemeYontemi': selectedMethod,
                       'aciklama': aciklama,
-                      'tarih': DateFormat('dd.MM.yyyy').format(DateTime.now()),
+                      'tarih': DateFormat('dd.MM.yyyy').format(recDate),
                       'saat': DateFormat('HH:mm').format(DateTime.now()),
-                      'timestamp': FieldValue.serverTimestamp(),
+                      'timestamp': Timestamp.fromDate(periodDate),
                       'firma': currentFirmaName,
                     });
 
@@ -209,15 +296,10 @@ class _FirmaTahsilatScreenState extends State<FirmaTahsilatScreen> {
         title: Text('Üretici Tahsilatları', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.go('/firma/ureticiler'),
+          onPressed: () => context.pop(),
         ),
       ),
       backgroundColor: AppColors.gray50,
-      floatingActionButton: AppFab(
-        icon: Icons.add_card_rounded,
-        label: 'Tahsilat Yap',
-        onTap: _showAddTahsilatDialog,
-      ),
       body: StreamBuilder<QuerySnapshot>(
         stream: _db
             .collection('tahsilatlar')
@@ -273,6 +355,20 @@ class _FirmaTahsilatScreenState extends State<FirmaTahsilatScreen> {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
+              // + Tahsilat Yap Button
+              ElevatedButton.icon(
+                onPressed: _showAddTahsilatDialog,
+                icon: const Icon(Icons.add_rounded, color: Colors.white, size: 18),
+                label: const Text('Tahsilat Yap'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary500,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(double.infinity, 44),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  elevation: 0,
+                ),
+              ),
+              const SizedBox(height: 16),
               // Month Selector
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -447,8 +543,8 @@ class _FirmaTahsilatScreenState extends State<FirmaTahsilatScreen> {
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
                               Text(
-                                formatCurrency.format(tutar),
-                                style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.success),
+                                  formatCurrency.format(tutar),
+                                  style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.success),
                               ),
                               IconButton(
                                 icon: const Icon(Icons.delete_outline_rounded, color: AppColors.gray400, size: 18),

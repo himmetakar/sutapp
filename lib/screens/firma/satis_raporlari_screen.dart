@@ -346,7 +346,7 @@ class _SatisRaporlariScreenState extends State<SatisRaporlariScreen> {
       ),
       backgroundColor: AppColors.gray50,
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showAddSaleDialog(currentFirmaName),
+        onPressed: () => context.go('/firma/sut-transferleri?action=addSale'),
         backgroundColor: AppColors.primary600,
         foregroundColor: Colors.white,
         icon: const Icon(Icons.add_rounded),

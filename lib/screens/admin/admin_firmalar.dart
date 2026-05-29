@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import '../../config/theme.dart';
 import '../../widgets/common_widgets.dart';
+import '../../services/firestore_service.dart';
 
 class AdminFirmalar extends StatefulWidget {
   const AdminFirmalar({super.key});
@@ -72,6 +73,15 @@ class _AdminFirmalarState extends State<AdminFirmalar> {
     final yetkiliCtrl = TextEditingController(text: existingData?['yetkili'] ?? '');
     String selectedTip = existingData?['tip'] ?? 'Her İkisi';
 
+    DateTime? selectedBitisDate = existingData?['abonelikBitis'] != null
+        ? (existingData!['abonelikBitis'] as Timestamp).toDate()
+        : DateTime.now().add(const Duration(days: 365));
+
+    final maxPersonelCtrl = TextEditingController(text: (existingData?['maxPersonel'] ?? 10).toString());
+    final maxUreticiCtrl = TextEditingController(text: (existingData?['maxUretici'] ?? 100).toString());
+    final maxAracCtrl = TextEditingController(text: (existingData?['maxArac'] ?? 5).toString());
+    final maxMesajCtrl = TextEditingController(text: (existingData?['maxMesaj'] ?? 20).toString());
+
     showDialog(
       context: context,
       builder: (ctx) {
@@ -130,6 +140,58 @@ class _AdminFirmalarState extends State<AdminFirmalar> {
                         maxLines: 2,
                         decoration: const InputDecoration(labelText: 'Adres'),
                       ),
+                      const SizedBox(height: 12),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(
+                          'Abonelik Bitiş: ${selectedBitisDate != null ? DateFormat('dd.MM.yyyy').format(selectedBitisDate!) : 'Seçilmedi'}',
+                          style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600),
+                        ),
+                        trailing: ElevatedButton(
+                          onPressed: () async {
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: selectedBitisDate ?? DateTime.now(),
+                              firstDate: DateTime.now().subtract(const Duration(days: 365)),
+                              lastDate: DateTime.now().add(const Duration(days: 3650)),
+                            );
+                            if (picked != null) {
+                              setDialogState(() {
+                                selectedBitisDate = picked;
+                              });
+                            }
+                          },
+                          child: const Text('Seç'),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: maxPersonelCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(labelText: 'Maks. Personel Sayısı *'),
+                        validator: (value) => value == null || int.tryParse(value) == null ? 'Geçerli bir sayı girin' : null,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: maxUreticiCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(labelText: 'Maks. Üretici Sayısı *'),
+                        validator: (value) => value == null || int.tryParse(value) == null ? 'Geçerli bir sayı girin' : null,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: maxAracCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(labelText: 'Maks. Araç Sayısı *'),
+                        validator: (value) => value == null || int.tryParse(value) == null ? 'Geçerli bir sayı girin' : null,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: maxMesajCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(labelText: 'Maks. Mesaj Gönderimi *'),
+                        validator: (value) => value == null || int.tryParse(value) == null ? 'Geçerli bir sayı girin' : null,
+                      ),
                     ],
                   ),
                 ),
@@ -149,6 +211,12 @@ class _AdminFirmalarState extends State<AdminFirmalar> {
                         'yetkili': yetkiliCtrl.text.trim(),
                         'tip': selectedTip,
                         'adres': adresCtrl.text.trim(),
+                        'abonelikBitis': selectedBitisDate != null ? Timestamp.fromDate(selectedBitisDate!) : null,
+                        'maxPersonel': int.parse(maxPersonelCtrl.text.trim()),
+                        'maxUretici': int.parse(maxUreticiCtrl.text.trim()),
+                        'maxArac': int.parse(maxAracCtrl.text.trim()),
+                        'maxMesaj': int.parse(maxMesajCtrl.text.trim()),
+                        if (docId == null) 'createdAt': FieldValue.serverTimestamp(),
                       };
 
                       if (docId == null) {
@@ -534,6 +602,60 @@ class _AdminFirmalarState extends State<AdminFirmalar> {
                             ),
                           ),
                           const SizedBox(height: 12),
+                          // Detailed Metrics Grid Card
+                          FutureBuilder<Map<String, dynamic>>(
+                            future: _loadDetailedFirmaMetrics(_selectedCariFirmaName!),
+                            builder: (context, metricSnap) {
+                              if (!metricSnap.hasData) {
+                                return const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 16),
+                                  child: Center(child: CircularProgressIndicator()),
+                                );
+                              }
+                              final metrics = metricSnap.data!;
+                              final fmtNum = NumberFormat('#,##0', 'tr_TR');
+                              final fmtLitre = NumberFormat('#,##0.0', 'tr_TR');
+
+                              return Container(
+                                margin: const EdgeInsets.only(bottom: 12),
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(color: AppColors.gray200),
+                                  boxShadow: AppShadows.sm,
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Firma İstatistikleri & Performans',
+                                      style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.gray800),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    GridView.count(
+                                      crossAxisCount: 2,
+                                      crossAxisSpacing: 10,
+                                      mainAxisSpacing: 10,
+                                      shrinkWrap: true,
+                                      physics: const NeverScrollableScrollPhysics(),
+                                      childAspectRatio: 2.2,
+                                      children: [
+                                        _buildMetricGridItem('Kayıtlı Üretici', '${metrics['ureticiCount']} üretici', Icons.people_rounded, Colors.blue),
+                                        _buildMetricGridItem('Toplam Personel', '${metrics['personelCount']} çalışan', Icons.badge_rounded, Colors.teal),
+                                        _buildMetricGridItem('Araç Sayısı', '${metrics['aracCount']} araç', Icons.local_shipping_rounded, Colors.amber),
+                                        _buildMetricGridItem('Tank Sayısı', '${metrics['tankCount']} tank', Icons.speed_rounded, Colors.cyan),
+                                        _buildMetricGridItem('Aylık Süt', '${fmtLitre.format(metrics['aylikSut'])} LT', Icons.water_drop_rounded, Colors.indigo),
+                                        _buildMetricGridItem('Süt Satış Tutarı', '${fmtNum.format(metrics['sutSatisTutari'])} ₺', Icons.monetization_on_rounded, Colors.green),
+                                        _buildMetricGridItem('Ürün Satış Tutarı', '${fmtNum.format(metrics['urunSatisTutari'])} ₺', Icons.category_rounded, Colors.purple),
+                                        _buildMetricGridItem('Hesaplanan Net Kar', '${fmtNum.format(metrics['netKar'])} ₺', Icons.analytics_rounded, metrics['netKar'] >= 0 ? Colors.green : Colors.red),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
                           // Summary metrics box
                           Row(
                             children: [
@@ -911,6 +1033,196 @@ class _AdminFirmalarState extends State<AdminFirmalar> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Future<Map<String, dynamic>> _loadDetailedFirmaMetrics(String firmaName) async {
+    final now = DateTime.now();
+    final startOfMonth = DateTime(now.year, now.month, 1);
+    final startOfMonthTs = Timestamp.fromDate(startOfMonth);
+
+    try {
+      // 1. Üretici sayısı
+      final ureticiSnap = await FirebaseFirestore.instance
+          .collection('ureticiler')
+          .where('firmalar', arrayContains: firmaName)
+          .get();
+      final ureticiCount = ureticiSnap.docs.length;
+
+      // 2. Personel sayısı
+      final personelSnap = await FirebaseFirestore.instance
+          .collection('suruculer')
+          .where('firma', isEqualTo: firmaName)
+          .get();
+      final personelCount = personelSnap.docs.length;
+
+      // 3. Araç sayısı
+      final aracSnap = await FirebaseFirestore.instance
+          .collection('araclar')
+          .where('firma', isEqualTo: firmaName)
+          .get();
+      final aracCount = aracSnap.docs.length;
+
+      // 4. Tank sayısı
+      final tankSnap = await FirebaseFirestore.instance
+          .collection('tanklar')
+          .where('firma', isEqualTo: firmaName)
+          .get();
+      final tankCount = tankSnap.docs.length;
+
+      // 5. Aylık süt miktarı (Litre)
+      final colSnap = await FirebaseFirestore.instance
+          .collection('toplamalar')
+          .where('firma', isEqualTo: firmaName)
+          .where('timestamp', isGreaterThanOrEqualTo: startOfMonthTs)
+          .get();
+      double aylikSut = 0.0;
+      for (var doc in colSnap.docs) {
+        final val = doc.data()['m'];
+        if (val is num) aylikSut += val.toDouble();
+      }
+
+      // 6. Süt satış tutarı (satislar total)
+      final satisSnap = await FirebaseFirestore.instance
+          .collection('satislar')
+          .where('firma', isEqualTo: firmaName)
+          .get();
+      double sutSatisTutari = 0.0;
+      for (var doc in satisSnap.docs) {
+        final val = doc.data()['toplam'] ?? doc.data()['tutar'];
+        if (val is num) sutSatisTutari += val.toDouble();
+      }
+
+      // 7. Ürün satış tutarı (yem kesintileri total)
+      final kesintiSnap = await FirebaseFirestore.instance
+          .collection('kesintiler')
+          .where('firma', isEqualTo: firmaName)
+          .get();
+      double urunSatisTutari = 0.0;
+      for (var doc in kesintiSnap.docs) {
+        final data = doc.data();
+        if (data['durum'] == 'iptal') continue;
+        final val = data['tutar'];
+        final String tur = data['kesintiTuru'] as String? ?? 'Yem Kesintisi';
+        if (tur.contains('Yem') && val is num) {
+          urunSatisTutari += val.toDouble();
+        }
+      }
+
+      // 8. Toplam süt alım bedeli (Expenses -> what we owe producers)
+      final priceSnap = await FirebaseFirestore.instance
+          .collection('sut_fiyatlari')
+          .where('firma', isEqualTo: firmaName)
+          .get();
+      final prices = priceSnap.docs.map((doc) => doc.data()).toList();
+      
+      final producersMap = {
+        for (var doc in ureticiSnap.docs)
+          doc['name'] as String: doc.data()
+      };
+
+      final firestoreService = FirestoreService();
+      double totalMilkCost = 0.0;
+
+      final allToplamalar = await FirebaseFirestore.instance
+          .collection('toplamalar')
+          .where('firma', isEqualTo: firmaName)
+          .get();
+
+      for (var doc in allToplamalar.docs) {
+        final data = doc.data();
+        final double m = (data['m'] as num?)?.toDouble() ?? 0.0;
+        final String ureticiName = data['u'] ?? '';
+        final String rawType = data['tip'] ?? 'Soğuk süt';
+
+        final pData = producersMap[ureticiName] ?? {};
+        final bolge = pData['bolge'] ?? '';
+        final group = pData['group'] ?? '';
+
+        final String priceKey = firestoreService.mapMilkTypeToPriceKey(rawType);
+        final double price = firestoreService.resolveMilkPrice(
+          prices: prices,
+          producerName: ureticiName,
+          bolge: bolge,
+          group: group,
+          type: priceKey,
+        );
+        totalMilkCost += m * price;
+      }
+
+      // 9. Diğer giderler (giderler total)
+      final expensesSnap = await FirebaseFirestore.instance
+          .collection('giderler')
+          .where('firma', isEqualTo: firmaName)
+          .get();
+      double digerGiderler = 0.0;
+      for (var doc in expensesSnap.docs) {
+        final val = doc.data()['tutar'];
+        if (val is num) digerGiderler += val.toDouble();
+      }
+
+      // Net kar
+      final double toplamGelir = sutSatisTutari + urunSatisTutari;
+      final double toplamGider = totalMilkCost + digerGiderler;
+      final double netKar = toplamGelir - toplamGider;
+
+      return {
+        'ureticiCount': ureticiCount,
+        'personelCount': personelCount,
+        'aracCount': aracCount,
+        'tankCount': tankCount,
+        'aylikSut': aylikSut,
+        'sutSatisTutari': sutSatisTutari,
+        'urunSatisTutari': urunSatisTutari,
+        'netKar': netKar,
+      };
+    } catch (e) {
+      print('Error calculating company metrics: $e');
+      return {
+        'ureticiCount': 0,
+        'personelCount': 0,
+        'aracCount': 0,
+        'tankCount': 0,
+        'aylikSut': 0.0,
+        'sutSatisTutari': 0.0,
+        'urunSatisTutari': 0.0,
+        'netKar': 0.0,
+      };
+    }
+  }
+
+  Widget _buildMetricGridItem(String title, String value, IconData icon, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.15)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: color, size: 16),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(title, style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray500, fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis),
+                const SizedBox(height: 2),
+                Text(value, style: GoogleFonts.inter(fontSize: 11.5, color: AppColors.gray800, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -73,6 +73,27 @@ class _FirmaPersonelEkleScreenState extends State<FirmaPersonelEkleScreen> {
       final auth = Provider.of<AuthProvider>(context, listen: false);
       final currentFirmaName = auth.user?.displayName ?? '';
 
+      if (!_isEdit) {
+        final firmSnap = await FirebaseFirestore.instance.collection('firmalar').where('ad', isEqualTo: currentFirmaName).limit(1).get();
+        if (firmSnap.docs.isNotEmpty) {
+          final firmData = firmSnap.docs.first.data();
+          final int maxPersonel = (firmData['maxPersonel'] as num?)?.toInt() ?? 10;
+          final staffSnap = await FirebaseFirestore.instance.collection('suruculer').where('firma', isEqualTo: currentFirmaName).get();
+          if (staffSnap.docs.length >= maxPersonel) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Maksimum personel limitine ulaşıldı ($maxPersonel). Daha fazla personel ekleyemezsiniz.'),
+                backgroundColor: AppColors.danger,
+              ),
+            );
+            setState(() {
+              _isSaving = false;
+            });
+            return;
+          }
+        }
+      }
+
       // Parse first name and last name
       final nameParts = _adSoyadCtrl.text.trim().split(' ');
       String ad = '';

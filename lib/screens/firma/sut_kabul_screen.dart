@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../config/theme.dart';
 import '../../widgets/common_widgets.dart';
 import '../../widgets/sut_analiz_dialog.dart';
+import '../../services/firestore_service.dart';
 
 class SutKabulScreen extends StatefulWidget {
   const SutKabulScreen({super.key});
@@ -53,34 +54,39 @@ class _SutKabulScreenState extends State<SutKabulScreen> {
   Future<void> _handleAccept(QueryDocumentSnapshot doc) async {
     final data = doc.data() as Map<String, dynamic>;
     final double miktar = (data['miktar'] as num?)?.toDouble() ?? 0.0;
+    final String kaynak = data['kaynak'] ?? '';
     final String hedef = data['hedef'] ?? '';
     final String email = data['email'] ?? '';
+    final String plaka = data['plaka'] ?? '';
+    final String surucuName = data['surucuName'] ?? email;
 
-    // Update status to 'Kabul Edildi'
-    await doc.reference.update({'durum': 'Kabul Edildi'});
-
-    // Update target tank's stock inside Firestore if applicable
-    final tankQuery = await FirebaseFirestore.instance
-        .collection('tanklar')
-        .where('ad', isEqualTo: hedef)
-        .limit(1)
-        .get();
-
-    if (tankQuery.docs.isNotEmpty) {
-      final tankDoc = tankQuery.docs.first;
-      final currentStock = (tankDoc['stok'] as num?)?.toDouble() ?? 0.0;
-      final cap = (tankDoc['kap'] as num?)?.toDouble() ?? 5000.0;
-      final newStock = (currentStock + miktar).clamp(0.0, cap);
-      await tankDoc.reference.update({'stok': newStock});
-    }
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('$email tarafından gönderilen $miktar LT süt kabul edildi!'),
-          backgroundColor: AppColors.success,
-        ),
+    try {
+      final fs = FirestoreService();
+      await fs.transferTankStock(
+        sutKabulId: doc.id,
+        sourceTankName: kaynak,
+        targetTankName: hedef,
+        miktar: miktar,
+        vehiclePlate: plaka,
+        driverName: surucuName,
       );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('$surucuName tarafından gönderilen $miktar LT süt kabul edildi!'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Hata oluştu: $e'),
+            backgroundColor: AppColors.danger,
+          ),
+        );
+      }
     }
   }
 
@@ -411,18 +417,43 @@ class _SutKabulScreenState extends State<SutKabulScreen> {
                                    const SizedBox(height: 10),
                                    Row(
                                      children: [
-                                      Expanded(
-                                        child: OutlinedButton(
-                                          onPressed: () {
-                                            // Handle conflict dialog
-                                          },
-                                          style: OutlinedButton.styleFrom(
-                                            side: const BorderSide(color: AppColors.gray300),
-                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                          ),
-                                          child: Text('Reddet / Fark Gir', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.gray600)),
-                                        ),
-                                      ),
+                                       Expanded(
+                                         child: OutlinedButton(
+                                           onPressed: () async {
+                                             final String surucuName = data['surucuName'] ?? email;
+                                             final String kaynak = data['kaynak'] ?? '';
+                                             final String hedef = data['hedef'] ?? '';
+                                             try {
+                                               final fs = FirestoreService();
+                                               await fs.rejectTankUnload(
+                                                 doc.id,
+                                                 surucuName,
+                                                 kaynak,
+                                                 hedef,
+                                               );
+                                               if (context.mounted) {
+                                                 ScaffoldMessenger.of(context).showSnackBar(
+                                                   const SnackBar(
+                                                     content: Text('Talebi reddettiniz.'),
+                                                     backgroundColor: AppColors.danger,
+                                                   ),
+                                                 );
+                                               }
+                                             } catch (e) {
+                                               if (context.mounted) {
+                                                 ScaffoldMessenger.of(context).showSnackBar(
+                                                   SnackBar(content: Text('Hata: $e')),
+                                                 );
+                                               }
+                                             }
+                                           },
+                                           style: OutlinedButton.styleFrom(
+                                             side: const BorderSide(color: AppColors.gray300),
+                                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                           ),
+                                           child: Text('Reddet', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.danger)),
+                                         ),
+                                       ),
                                       const SizedBox(width: 12),
                                       Expanded(
                                         child: ElevatedButton(

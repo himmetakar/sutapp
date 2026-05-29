@@ -6,10 +6,12 @@ import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../config/theme.dart';
 import '../../widgets/common_widgets.dart';
 import '../../services/firestore_service.dart';
 import '../../providers/auth_provider.dart';
+import '../firma/urunler_screen.dart';
 
 class UreticiDashboard extends StatelessWidget {
   const UreticiDashboard({super.key});
@@ -19,15 +21,24 @@ class UreticiDashboard extends StatelessWidget {
     return date.year == now.year && date.month == now.month && date.day == now.day;
   }
 
-  bool _isThisWeek(DateTime date) {
-    final now = DateTime.now();
-    final difference = now.difference(date).inDays;
-    return difference >= 0 && difference < 7;
-  }
-
   bool _isThisMonth(DateTime date) {
     final now = DateTime.now();
     return date.year == now.year && date.month == now.month;
+  }
+
+  DateTime? _getDocDate(QueryDocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>?;
+    if (data == null) return null;
+    final ts = data['timestamp'] as Timestamp?;
+    if (ts != null) return ts.toDate();
+    final dateStr = data['tarih'] as String?;
+    if (dateStr != null && dateStr.isNotEmpty) {
+      try {
+        final parts = dateStr.split('.');
+        return DateTime(int.parse(parts[2]), int.parse(parts[1]), int.parse(parts[0]));
+      } catch (_) {}
+    }
+    return null;
   }
 
   @override
@@ -35,7 +46,9 @@ class UreticiDashboard extends StatelessWidget {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final producerName = authProvider.user?.displayName ?? 'Mehmet Yılmaz';
     final firestoreService = FirestoreService();
-    return StreamBuilder<QuerySnapshot>(
+    return PopUpAdWrapper(
+      role: 'uretici',
+      child: StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection('ureticiler')
           .where('name', isEqualTo: producerName)
@@ -64,14 +77,12 @@ class UreticiDashboard extends StatelessWidget {
               stream: firestoreService.getProducerCollectionsStream(producerName),
               builder: (context, snapshot) {
                 double bugunTotal = 0.0;
-                double haftaTotal = 0.0;
                 double ayTotal = 0.0;
-                double toplamTotal = 0.0;
 
                 final docs = List<QueryDocumentSnapshot>.from(snapshot.data?.docs ?? []);
                 docs.sort((a, b) {
-                  final aTime = (a.data() as Map)['timestamp'] as Timestamp?;
-                  final bTime = (b.data() as Map)['timestamp'] as Timestamp?;
+                  final aTime = _getDocDate(a);
+                  final bTime = _getDocDate(b);
                   if (aTime == null) return -1;
                   if (bTime == null) return 1;
                   return bTime.compareTo(aTime);
@@ -84,22 +95,18 @@ class UreticiDashboard extends StatelessWidget {
                   final mVal = data['m'];
                   final double m = mVal is num ? mVal.toDouble() : (double.tryParse(mVal.toString()) ?? 0.0);
 
-                  toplamTotal += m;
-
-                  if (data['timestamp'] != null) {
-                    final docDate = (data['timestamp'] as Timestamp).toDate();
-                    
+                  final docDate = _getDocDate(doc);
+                  if (docDate != null) {
                     if (_isToday(docDate)) {
                       bugunTotal += m;
-                    }
-                    if (_isThisWeek(docDate)) {
-                      haftaTotal += m;
                     }
                     if (_isThisMonth(docDate)) {
                       ayTotal += m;
                     }
 
-                    final difference = now.difference(docDate).inDays;
+                    final docLocalDate = DateTime(docDate.year, docDate.month, docDate.day);
+                    final nowLocalDate = DateTime(now.year, now.month, now.day);
+                    final difference = nowLocalDate.difference(docLocalDate).inDays;
                     if (difference >= 0 && difference < 7) {
                       final index = 6 - difference;
                       if (index >= 0 && index < 7) {
@@ -107,9 +114,7 @@ class UreticiDashboard extends StatelessWidget {
                       }
                     }
                   } else {
-                    // Default to today if timestamp is null (local optimistic UI update)
                     bugunTotal += m;
-                    haftaTotal += m;
                     ayTotal += m;
                     last7DaysVal[6] += m;
                   }
@@ -147,137 +152,254 @@ class UreticiDashboard extends StatelessWidget {
                               builder: (context, cezalarSnap) {
                                 final cDocs = cezalarSnap.data?.docs ?? [];
 
-                                final ledger = firestoreService.calculateLedger(
-                                  collections: docs,
-                                  prices: priceDocs,
-                                  tahsilatlar: tDocs,
-                                  avanslar: aDocs,
-                                  kesintiler: kDocs,
-                                  cezalar: cDocs,
-                                  producerName: producerName,
-                                  bolge: bolge,
-                                  group: group,
-                                  kesintiAyarlari: producerSnap.hasData && producerSnap.data!.docs.isNotEmpty
-                                      ? (producerSnap.data!.docs.first.data() as Map<String, dynamic>)['kesintiAyarlari'] as Map<String, dynamic>?
-                                      : null,
-                                );
+                                return StreamBuilder<QuerySnapshot>(
+                                  stream: FirebaseFirestore.instance
+                                      .collection('devirler')
+                                      .where('uretici', isEqualTo: producerName)
+                                      .snapshots(),
+                                  builder: (context, devirlerSnap) {
+                                    final devirDocs = devirlerSnap.data?.docs ?? [];
 
-                                final double toplamAlacak = ledger['toplamAlacak'];
-                                final double totalTahsilat = ledger['totalTahsilat'];
-                                final double totalAvans = ledger['totalAvans'];
-                                final double totalKesinti = ledger['totalKesinti'];
-                                final double totalCeza = ledger['totalCeza'];
-                                final double netAlacak = ledger['netBalance'];
+                                    final ledger = firestoreService.calculateLedger(
+                                      collections: docs,
+                                      prices: priceDocs,
+                                      tahsilatlar: tDocs,
+                                      avanslar: aDocs,
+                                      kesintiler: kDocs,
+                                      cezalar: cDocs,
+                                      producerName: producerName,
+                                      bolge: bolge,
+                                      group: group,
+                                      kesintiAyarlari: producerSnap.hasData && producerSnap.data!.docs.isNotEmpty
+                                          ? (producerSnap.data!.docs.first.data() as Map<String, dynamic>)['kesintiAyarlari'] as Map<String, dynamic>?
+                                          : null,
+                                    );
 
-                                return LayoutBuilder(
-                                  builder: (context, constraints) {
-                                    final isDesktop = constraints.maxWidth >= 1024;
-                                    final isTablet = constraints.maxWidth >= 640 && constraints.maxWidth < 1024;
+                                    final double toplamAlacak = ledger['toplamAlacak'];
+                                    final double totalTahsilat = ledger['totalTahsilat'];
+                                    final double totalAvans = ledger['totalAvans'];
+                                    final double totalKesinti = ledger['totalKesinti'];
+                                    final double totalCeza = ledger['totalCeza'];
 
-                                    return ListView(
-                                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-                                      children: [
-                                        // Header
-                                        StreamBuilder<QuerySnapshot>(
-                                          stream: FirebaseFirestore.instance
-                                              .collection('firmalar')
-                                              .where('ad', isEqualTo: currentFirma)
-                                              .limit(1)
-                                              .snapshots(),
-                                          builder: (context, companySnap) {
-                                            String? logoUrl;
-                                            if (companySnap.hasData && companySnap.data!.docs.isNotEmpty) {
-                                              final companyData = companySnap.data!.docs.first.data() as Map<String, dynamic>;
-                                              logoUrl = companyData['logoUrl'] as String?;
-                                            }
+                                    // Calculate prior collections & balances
+                                    final startOfThisMonth = DateTime(now.year, now.month, 1);
 
-                                            return Row(
-                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                              children: [
-                                                Expanded(
-                                                  child: Column(
-                                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                                    children: [
-                                                       Row(
-                                                         children: [
-                                                           Text(
-                                                             'Üretici Paneli',
-                                                             style: GoogleFonts.inter(
-                                                               fontSize: isDesktop ? 22 : 18,
-                                                               fontWeight: FontWeight.w700,
-                                                               color: AppColors.gray900,
-                                                             ),
+                                    final priorDocs = docs.where((doc) {
+                                      final date = _getDocDate(doc);
+                                      return date != null && date.isBefore(startOfThisMonth);
+                                    }).toList();
+
+                                    final priorTDocs = tDocs.where((doc) {
+                                      final date = _getDocDate(doc);
+                                      return date != null && date.isBefore(startOfThisMonth);
+                                    }).toList();
+
+                                    final priorADocs = aDocs.where((doc) {
+                                      final date = _getDocDate(doc);
+                                      return date != null && date.isBefore(startOfThisMonth);
+                                    }).toList();
+
+                                    final priorKDocs = kDocs.where((doc) {
+                                      final date = _getDocDate(doc);
+                                      return date != null && date.isBefore(startOfThisMonth);
+                                    }).toList();
+
+                                    final priorCDocs = cDocs.where((doc) {
+                                      final date = _getDocDate(doc);
+                                      return date != null && date.isBefore(startOfThisMonth);
+                                    }).toList();
+
+                                    final priorLedger = firestoreService.calculateLedger(
+                                      collections: priorDocs,
+                                      prices: priceDocs,
+                                      tahsilatlar: priorTDocs,
+                                      avanslar: priorADocs,
+                                      kesintiler: priorKDocs,
+                                      cezalar: priorCDocs,
+                                      producerName: producerName,
+                                      bolge: bolge,
+                                      group: group,
+                                      kesintiAyarlari: producerSnap.hasData && producerSnap.data!.docs.isNotEmpty
+                                          ? (producerSnap.data!.docs.first.data() as Map<String, dynamic>)['kesintiAyarlari'] as Map<String, dynamic>?
+                                          : null,
+                                    );
+
+                                    double priorDevirSum = 0.0;
+                                    double totalDevir = 0.0;
+                                    for (var doc in devirDocs) {
+                                      final date = _getDocDate(doc);
+                                      final data = doc.data() as Map<String, dynamic>;
+                                      final val = data['tutar'];
+                                      final double valDouble = val is num ? val.toDouble() : (double.tryParse(val.toString()) ?? 0.0);
+                                      totalDevir += valDouble;
+                                      if (date != null && date.isBefore(startOfThisMonth)) {
+                                        priorDevirSum += valDouble;
+                                      }
+                                    }
+
+                                    final double bekleyenOdeme = priorLedger['netBalance'] + priorDevirSum;
+                                    final double netAlacak = ledger['netBalance'] + totalDevir;
+
+                                    final currentDay = now.day;
+                                    final double gunlukOrtalama = currentDay > 0 ? (ayTotal / currentDay) : 0.0;
+
+                                    bool siparisIzni = true;
+                                    if (producerSnap.hasData && producerSnap.data!.docs.isNotEmpty) {
+                                      final pDoc = producerSnap.data!.docs.first.data() as Map<String, dynamic>;
+                                      siparisIzni = pDoc['siparisIzni'] ?? true;
+                                    }
+
+                                    return LayoutBuilder(
+                                      builder: (context, constraints) {
+                                        final isDesktop = constraints.maxWidth >= 1024;
+                                        final isTablet = constraints.maxWidth >= 640 && constraints.maxWidth < 1024;
+
+                                        return ListView(
+                                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                                          children: [
+                                            // Header
+                                            StreamBuilder<QuerySnapshot>(
+                                              stream: FirebaseFirestore.instance
+                                                  .collection('firmalar')
+                                                  .where('ad', isEqualTo: currentFirma)
+                                                  .limit(1)
+                                                  .snapshots(),
+                                              builder: (context, companySnap) {
+                                                String? logoUrl;
+                                                if (companySnap.hasData && companySnap.data!.docs.isNotEmpty) {
+                                                  final companyData = companySnap.data!.docs.first.data() as Map<String, dynamic>;
+                                                  logoUrl = companyData['logoUrl'] as String?;
+                                                }
+
+                                                return Row(
+                                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                  children: [
+                                                    Expanded(
+                                                      child: Column(
+                                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                                        children: [
+                                                           Row(
+                                                             children: [
+                                                               Text(
+                                                                 'Üretici Paneli',
+                                                                 style: GoogleFonts.inter(
+                                                                   fontSize: isDesktop ? 22 : 18,
+                                                                   fontWeight: FontWeight.w700,
+                                                                   color: AppColors.gray900,
+                                                                 ),
+                                                               ),
+                                                               const SizedBox(width: 8),
+                                                               ElevatedButton.icon(
+                                                                 onPressed: () => context.push('/uretici/dijital-kart'),
+                                                                 icon: const Icon(Icons.badge_rounded, size: 13),
+                                                                 label: Text(
+                                                                   'Dijital Süt Kartı',
+                                                                   style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.bold),
+                                                                 ),
+                                                                 style: ElevatedButton.styleFrom(
+                                                                   backgroundColor: AppColors.primary600,
+                                                                   foregroundColor: Colors.white,
+                                                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                                                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                                                   minimumSize: Size.zero,
+                                                                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                                                 ),
+                                                               ),
+                                                             ],
                                                            ),
-                                                           const SizedBox(width: 8),
-                                                           ElevatedButton.icon(
-                                                             onPressed: () => context.push('/uretici/dijital-kart'),
-                                                             icon: const Icon(Icons.badge_rounded, size: 13),
-                                                             label: Text(
-                                                               'Dijital Süt Kartı',
-                                                               style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.bold),
-                                                             ),
-                                                             style: ElevatedButton.styleFrom(
-                                                               backgroundColor: AppColors.primary600,
-                                                               foregroundColor: Colors.white,
-                                                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                                               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                                               minimumSize: Size.zero,
-                                                               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                                             ),
-                                                           ),
-                                                         ],
-                                                       ),
-                                                      const SizedBox(height: 4),
-                                                      Text(
-                                                        'Süt teslimatlarınızı ve güncel geçmişinizi buradan inceleyebilirsiniz.',
-                                                        style: GoogleFonts.inter(
-                                                          fontSize: isDesktop ? 12 : 11,
-                                                          color: AppColors.gray500,
-                                                          fontWeight: FontWeight.w400,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
-                                                if (logoUrl != null && logoUrl.isNotEmpty)
-                                                  Container(
-                                                    margin: const EdgeInsets.only(left: 12),
-                                                    width: 48,
-                                                    height: 48,
-                                                    decoration: BoxDecoration(
-                                                      shape: BoxShape.circle,
-                                                      border: Border.all(color: AppColors.gray200, width: 1.5),
-                                                      image: DecorationImage(
-                                                        image: logoUrl.startsWith('data:image')
-                                                            ? MemoryImage(base64Decode(logoUrl.substring(logoUrl.indexOf(',') + 1))) as ImageProvider
-                                                            : NetworkImage(logoUrl),
-                                                        fit: BoxFit.cover,
+                                                          const SizedBox(height: 4),
+                                                          Text(
+                                                            'Süt teslimatlarınızı ve güncel geçmişinizi buradan inceleyebilirsiniz.',
+                                                            style: GoogleFonts.inter(
+                                                              fontSize: isDesktop ? 12 : 11,
+                                                              color: AppColors.gray500,
+                                                              fontWeight: FontWeight.w400,
+                                                            ),
+                                                          ),
+                                                        ],
                                                       ),
                                                     ),
-                                                  ),
-                                              ],
-                                            );
-                                          }
-                                        ),
-                                        const SizedBox(height: 20),
+                                                    Padding(
+                                                      padding: const EdgeInsets.only(left: 12),
+                                                      child: Column(
+                                                        mainAxisSize: MainAxisSize.min,
+                                                        children: [
+                                                          Container(
+                                                            width: 60,
+                                                            height: 60,
+                                                            decoration: BoxDecoration(
+                                                              borderRadius: BorderRadius.circular(12),
+                                                              border: Border.all(color: AppColors.gray200, width: 1.5),
+                                                              color: Colors.white,
+                                                              image: logoUrl != null && logoUrl.isNotEmpty
+                                                                  ? DecorationImage(
+                                                                      image: logoUrl.startsWith('data:image')
+                                                                          ? MemoryImage(base64Decode(logoUrl.substring(logoUrl.indexOf(',') + 1))) as ImageProvider
+                                                                          : NetworkImage(logoUrl),
+                                                                      fit: BoxFit.cover,
+                                                                    )
+                                                                  : null,
+                                                            ),
+                                                            child: logoUrl == null || logoUrl.isEmpty
+                                                                ? Center(
+                                                                    child: Icon(Icons.business_rounded, color: AppColors.gray400, size: 24),
+                                                                  )
+                                                                : null,
+                                                          ),
+                                                          if (currentFirma.isNotEmpty) ...[
+                                                            const SizedBox(height: 6),
+                                                            SizedBox(
+                                                              width: 72,
+                                                              child: Text(
+                                                                currentFirma,
+                                                                textAlign: TextAlign.center,
+                                                                maxLines: 1,
+                                                                overflow: TextOverflow.ellipsis,
+                                                                style: GoogleFonts.inter(
+                                                                  fontSize: 9.5,
+                                                                  fontWeight: FontWeight.w800,
+                                                                  color: AppColors.gray700,
+                                                                ),
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ],
+                                                );
+                                              }
+                                            ),
+                                            const SizedBox(height: 20),
 
-                                        // Stat Cards Grid
-                                        _buildStatCards(isDesktop, isTablet, bugunTotal, haftaTotal, ayTotal, toplamTotal),
-                                        const SizedBox(height: 24),
+                                            // Stat Cards Grid
+                                            _buildStatCards(isDesktop, isTablet, bugunTotal, ayTotal, gunlukOrtalama, bekleyenOdeme),
+                                            const SizedBox(height: 24),
 
-                                        // Mali Özet Section Title
-                                        Text(
-                                          'Mali Durum Özeti',
-                                          style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.gray800),
-                                        ),
-                                        const SizedBox(height: 12),
-                                        _buildMaliCards(isDesktop, isTablet, toplamAlacak, totalTahsilat, totalAvans, totalCeza, totalKesinti, netAlacak),
-                                        const SizedBox(height: 24),
+                                            // Hızlı İşlemler Section Title
+                                            Text(
+                                              'Hızlı İşlemler',
+                                              style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.gray800),
+                                            ),
+                                            const SizedBox(height: 12),
+                                            _buildQuickActionsGrid(context, producerName, currentFirma, bolge, group, siparisIzni),
+                                            const SizedBox(height: 24),
 
-                                        // Charts & History
-                                        _buildContentLayout(isDesktop, docs, last7DaysVal),
-                                        const SizedBox(height: 80),
-                                      ],
+                                            // Mali Özet Section Title
+                                            Text(
+                                              'Mali Durum Özeti',
+                                              style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.gray800),
+                                            ),
+                                            const SizedBox(height: 12),
+                                            _buildMaliCards(isDesktop, isTablet, toplamAlacak, totalTahsilat, totalAvans, totalCeza, totalKesinti, netAlacak),
+                                            const SizedBox(height: 24),
+
+                                            // Charts & History
+                                            _buildContentLayout(isDesktop, docs, last7DaysVal),
+                                            const SizedBox(height: 80),
+                                          ],
+                                        );
+                                      },
                                     );
                                   },
                                 );
@@ -294,51 +416,432 @@ class UreticiDashboard extends StatelessWidget {
           },
         );
       },
+    ),
+  );
+  }
+
+  Widget _buildQuickActionsGrid(BuildContext context, String producerName, String currentFirma, String bolge, String group, bool siparisIzni) {
+    final List<Map<String, dynamic>> actions = [
+      {
+        'title': 'Hesap Özeti',
+        'subtitle': 'Aylık detaylı rapor',
+        'icon': Icons.description_rounded,
+        'color': Colors.blue,
+        'onTap': () => context.push('/uretici/faturalar'),
+      },
+      {
+        'title': 'Dijital Kart',
+        'subtitle': 'Teslimat barkodu',
+        'icon': Icons.qr_code_rounded,
+        'color': Colors.teal,
+        'onTap': () => context.push('/uretici/dijital-kart'),
+      },
+      {
+        'title': 'Destek Hattı',
+        'subtitle': 'Toplayıcıyı ara',
+        'icon': Icons.support_agent_rounded,
+        'color': Colors.orange,
+        'onTap': () => _handleSupportCall(context, producerName, currentFirma, bolge, group),
+      },
+      if (siparisIzni)
+        {
+          'title': 'Ürün Siparişi',
+          'subtitle': 'Yem, kepek sipariş et',
+          'icon': Icons.shopping_bag_rounded,
+          'color': Colors.indigo,
+          'onTap': () => context.push('/uretici/urunler'),
+        },
+      {
+        'title': 'Sipariş Takip',
+        'subtitle': 'Sipariş durumunu izle',
+        'icon': Icons.local_shipping_rounded,
+        'color': Colors.purple,
+        'onTap': () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (ctx) => ProducerOrdersHistoryPage(
+                producerName: producerName,
+                firmaName: currentFirma,
+              ),
+            ),
+          );
+        },
+      },
+      {
+        'title': 'Analiz Sonuçları',
+        'subtitle': 'Süt analiz değerleri',
+        'icon': Icons.science_rounded,
+        'color': Colors.deepOrange,
+        'onTap': () => _showAnalysisHistoryDialog(context, producerName),
+      },
+    ];
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        int crossAxisCount = 2;
+        if (constraints.maxWidth >= 1024) {
+          crossAxisCount = 4;
+        } else if (constraints.maxWidth >= 640) {
+          crossAxisCount = 3;
+        }
+
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: actions.length,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: crossAxisCount,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+            childAspectRatio: 1.6,
+          ),
+          itemBuilder: (context, index) {
+            final action = actions[index];
+            final Color color = action['color'];
+            return Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: AppShadows.sm,
+                border: Border.all(color: AppColors.gray100),
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: action['onTap'],
+                  child: Padding(
+                    padding: const EdgeInsets.all(12.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: color.withOpacity(0.1),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(action['icon'], color: color, size: 20),
+                        ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              action['title'],
+                              style: GoogleFonts.inter(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.gray800,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              action['subtitle'],
+                              style: GoogleFonts.inter(
+                                fontSize: 10,
+                                color: AppColors.gray500,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
-  Widget _buildStatCards(bool isDesktop, bool isTablet, double bugun, double hafta, double ay, double toplam) {
-    final format = NumberFormat('#,##0', 'tr_TR');
+  Future<void> _handleSupportCall(BuildContext context, String producerName, String firma, String bolge, String group) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(child: CircularProgressIndicator()),
+    );
+
+    String? assignedDriver;
+
+    try {
+      final atamalarQuery = await FirebaseFirestore.instance
+          .collection('toplayici_atamalari')
+          .where('firma', isEqualTo: firma)
+          .get();
+
+      for (var doc in atamalarQuery.docs) {
+        final data = doc.data();
+        final hTip = data['hedefTip'];
+        final hAd = data['hedefAd'];
+        if (hTip == 'uretici' && hAd == producerName) {
+          assignedDriver = data['toplayici'];
+          break;
+        }
+      }
+      if (assignedDriver == null) {
+        for (var doc in atamalarQuery.docs) {
+          final data = doc.data();
+          final hTip = data['hedefTip'];
+          final hAd = data['hedefAd'];
+          if (hTip == 'grup' && hAd == group && group.isNotEmpty) {
+            assignedDriver = data['toplayici'];
+            break;
+          }
+        }
+      }
+      if (assignedDriver == null) {
+        for (var doc in atamalarQuery.docs) {
+          final data = doc.data();
+          final hTip = data['hedefTip'];
+          final hAd = data['hedefAd'];
+          if (hTip == 'bolge' && hAd == bolge && bolge.isNotEmpty) {
+            assignedDriver = data['toplayici'];
+            break;
+          }
+        }
+      }
+    } catch (_) {}
+
+    if (context.mounted) {
+      Navigator.pop(context);
+    }
+
+    if (assignedDriver == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Kayıtlı süt toplayıcınız bulunamadı.'), backgroundColor: AppColors.warning),
+      );
+      return;
+    }
+
+    try {
+      final surucuQuery = await FirebaseFirestore.instance
+          .collection('suruculer')
+          .where('firma', isEqualTo: firma)
+          .get();
+
+      String? phone;
+      for (var doc in surucuQuery.docs) {
+        final data = doc.data();
+        final ad = data['ad'] ?? '';
+        final soyad = data['soyad'] ?? '';
+        final fullName = '$ad $soyad'.trim();
+        if (fullName.toLowerCase() == assignedDriver.toLowerCase()) {
+          phone = data['tel'];
+          break;
+        }
+      }
+
+      if (phone != null && phone.isNotEmpty) {
+        final Uri telUri = Uri.parse('tel:$phone');
+        if (await canLaunchUrl(telUri)) {
+          await launchUrl(telUri);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Arama başlatılamadı: $phone'), backgroundColor: AppColors.danger),
+          );
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$assignedDriver için telefon numarası bulunamadı.'), backgroundColor: AppColors.warning),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Toplayıcı telefon bilgisi alınamadı: $e'), backgroundColor: AppColors.danger),
+      );
+    }
+  }
+
+  void _showAnalysisHistoryDialog(BuildContext context, String producerName) {
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: Text(
+            'Süt Analiz Sonuçlarım',
+            style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16),
+          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          content: SizedBox(
+            width: double.maxFinite,
+            height: 400,
+            child: StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('sut_analiz')
+                  .where('hedef', isEqualTo: producerName)
+                  .where('tip', isEqualTo: 'Üretici')
+                  .snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                  return Center(
+                    child: Text(
+                      'Kayıtlı analiz sonucu bulunamadı.',
+                      style: GoogleFonts.inter(color: AppColors.gray500, fontSize: 13),
+                    ),
+                  );
+                }
+
+                final docs = List<QueryDocumentSnapshot>.from(snapshot.data!.docs);
+                docs.sort((a, b) {
+                  final aTime = (a.data() as Map)['timestamp'] as Timestamp?;
+                  final bTime = (b.data() as Map)['timestamp'] as Timestamp?;
+                  if (aTime == null) return 1;
+                  if (bTime == null) return -1;
+                  return bTime.compareTo(aTime);
+                });
+
+                return ListView.separated(
+                  itemCount: docs.length,
+                  separatorBuilder: (_, __) => const Divider(height: 16),
+                  itemBuilder: (context, index) {
+                    final data = docs[index].data() as Map<String, dynamic>;
+                    final tarih = data['tarih'] ?? '-';
+                    final yag = (data['yag'] as num?)?.toDouble() ?? 0.0;
+                    final protein = (data['protein'] as num?)?.toDouble() ?? 0.0;
+                    final su = (data['su'] as num?)?.toDouble() ?? 0.0;
+                    final sicaklik = (data['sicaklik'] as num?)?.toDouble() ?? 0.0;
+                    final durum = data['durum'] ?? 'Normal';
+                    final isRiskli = durum == 'Riskli';
+
+                    return ExpansionTile(
+                      tilePadding: EdgeInsets.zero,
+                      title: Row(
+                        children: [
+                          Icon(
+                            isRiskli ? Icons.warning_amber_rounded : Icons.check_circle_outline_rounded,
+                            color: isRiskli ? Colors.red : Colors.green,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              tarih,
+                              style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: isRiskli ? Colors.red[50] : Colors.green[50],
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              durum,
+                              style: GoogleFonts.inter(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: isRiskli ? Colors.red[700] : Colors.green[700],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4.0),
+                          child: Table(
+                            columnWidths: const {
+                              0: FlexColumnWidth(1.2),
+                              1: FlexColumnWidth(1),
+                            },
+                            children: [
+                              TableRow(children: [
+                                _buildTableCell('Yağ (%)', header: true),
+                                _buildTableCell(yag.toStringAsFixed(2)),
+                              ]),
+                              TableRow(children: [
+                                _buildTableCell('Protein (%)', header: true),
+                                _buildTableCell(protein.toStringAsFixed(2)),
+                              ]),
+                              TableRow(children: [
+                                _buildTableCell('Eklenen Su (%)', header: true),
+                                _buildTableCell(su.toStringAsFixed(2)),
+                              ]),
+                              TableRow(children: [
+                                _buildTableCell('Sıcaklık (°C)', header: true),
+                                _buildTableCell(sicaklik.toStringAsFixed(1)),
+                              ]),
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Kapat'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildTableCell(String text, {bool header = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3.0),
+      child: Text(
+        text,
+        style: GoogleFonts.inter(
+          fontSize: 12,
+          fontWeight: header ? FontWeight.w600 : FontWeight.w400,
+          color: header ? AppColors.gray700 : AppColors.gray900,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatCards(bool isDesktop, bool isTablet, double bugun, double buAy, double gunlukOrtalama, double bekleyenOdeme) {
+    final formatLitre = NumberFormat('#,##0', 'tr_TR');
+    final formatCurrency = NumberFormat('#,##0.00', 'tr_TR');
     final cards = [
       StatCard(
         icon: Icons.today_rounded,
-        value: format.format(bugun),
+        value: formatLitre.format(bugun),
         label: 'Bugün (LT)',
         color: AppColors.primary600,
-        change: '+%12',
-        subtext: 'Günlük Alım Miktarı',
-        sparklineData: const [42, 45, 38, 48, 40, 35, 45],
-        isUp: true,
-      ),
-      StatCard(
-        icon: Icons.date_range_rounded,
-        value: format.format(hafta),
-        label: 'Bu Hafta (LT)',
-        color: AppColors.success,
-        change: '+%5',
-        subtext: 'Son 7 Günlük Toplam',
-        sparklineData: const [250, 260, 270, 265, 275, 280, 285],
+        subtext: 'Bugünkü Alım Miktarı',
         isUp: true,
       ),
       StatCard(
         icon: Icons.calendar_month_rounded,
-        value: format.format(ay),
+        value: formatLitre.format(buAy),
         label: 'Bu Ay (LT)',
-        color: AppColors.warning,
-        change: '+%8',
-        subtext: 'Aylık Toplam Süt',
-        sparklineData: const [1100, 1120, 1150, 1180, 1200, 1220, 1240],
+        color: AppColors.success,
+        subtext: '1\'inden bugüne toplam',
         isUp: true,
       ),
       StatCard(
-        icon: Icons.all_inclusive_rounded,
-        value: format.format(toplam),
-        label: 'Toplam Süt (LT)',
-        color: AppColors.primary700,
-        change: '+%4',
-        subtext: 'Genel Toplam Teslimat',
-        sparklineData: const [11800, 11900, 12000, 12100, 12300, 12400, 12500],
+        icon: Icons.trending_up_rounded,
+        value: formatLitre.format(gunlukOrtalama),
+        label: 'Günlük Ortalama (LT)',
+        color: AppColors.warning,
+        subtext: 'Aylık Ortalama',
         isUp: true,
+      ),
+      StatCard(
+        icon: Icons.account_balance_wallet_rounded,
+        value: '${formatCurrency.format(bekleyenOdeme.abs())} ₺',
+        label: bekleyenOdeme >= 0 ? 'Devreden Alacak' : 'Devreden Borç',
+        color: bekleyenOdeme >= 0 ? Colors.green : Colors.red,
+        subtext: 'Önceki aydan devir',
+        isUp: bekleyenOdeme >= 0,
       ),
     ];
 
@@ -638,5 +1141,99 @@ class UreticiDashboard extends StatelessWidget {
         children: cards,
       );
     }
+  }
+}
+
+class PopUpAdWrapper extends StatefulWidget {
+  final Widget child;
+  final String role;
+
+  const PopUpAdWrapper({super.key, required this.child, required this.role});
+
+  @override
+  State<PopUpAdWrapper> createState() => _PopUpAdWrapperState();
+}
+
+class _PopUpAdWrapperState extends State<PopUpAdWrapper> {
+  static final Set<String> _shownPopups = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _checkForPopUpAds();
+  }
+
+  void _checkForPopUpAds() {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        final query = await FirebaseFirestore.instance
+            .collection('duyurular')
+            .where('isGlobal', isEqualTo: true)
+            .where('isPopUp', isEqualTo: true)
+            .where('targetRoles', arrayContains: widget.role)
+            .get();
+
+        if (query.docs.isNotEmpty) {
+          final docs = List<QueryDocumentSnapshot>.from(query.docs);
+          docs.sort((a, b) {
+            final aTime = (a.data() as Map<String, dynamic>)['timestamp'] as Timestamp?;
+            final bTime = (b.data() as Map<String, dynamic>)['timestamp'] as Timestamp?;
+            if (aTime == null) return 1;
+            if (bTime == null) return -1;
+            return bTime.compareTo(aTime);
+          });
+          final doc = docs.first;
+          final docId = doc.id;
+          
+          if (_shownPopups.contains(docId)) return;
+          _shownPopups.add(docId);
+
+          final data = doc.data() as Map<String, dynamic>?;
+          final baslik = data?['baslik'] ?? '';
+          final icerik = data?['icerik'] ?? '';
+
+          if (!mounted) return;
+
+          showDialog(
+            context: context,
+            barrierDismissible: true,
+            builder: (ctx) {
+              return AlertDialog(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                title: Row(
+                  children: [
+                    const Icon(Icons.campaign_rounded, color: Colors.blueAccent),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        baslik,
+                        style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                    ),
+                  ],
+                ),
+                content: Text(
+                  icerik,
+                  style: GoogleFonts.inter(fontSize: 13, color: AppColors.gray700),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: Text('Kapat', style: GoogleFonts.inter(fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              );
+            },
+          );
+        }
+      } catch (e) {
+        print('Error checking pop-up ads: $e');
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return widget.child;
   }
 }

@@ -110,11 +110,20 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
   Widget _buildFirmaHubView(String currentFirmaName) {
     return Scaffold(
       backgroundColor: Colors.white,
+      appBar: AppBar(
+        title: Text('Ürün Yönetimi', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded),
+          onPressed: () => context.go('/firma'),
+        ),
+        elevation: 0,
+        backgroundColor: Colors.white,
+        foregroundColor: AppColors.gray900,
+      ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20.0),
+        padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
         child: Column(
           children: [
-            const SizedBox(height: 10),
             // Header Mockup style
             Center(
               child: Column(
@@ -143,7 +152,7 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
             ),
             const SizedBox(height: 32),
 
-            // Grid of 5 Actions
+            // Grid of 6 Actions
             LayoutBuilder(
               builder: (context, constraints) {
                 final width = constraints.maxWidth;
@@ -183,6 +192,13 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
                       iconColor: const Color(0xFF2196F3),
                       bgColor: const Color(0xFFE3F2FD),
                       onTap: () => setState(() => _currentView = 'siparisler'),
+                    ),
+                    _buildHubGridItem(
+                      label: 'Ürün Satışları',
+                      icon: Icons.list_alt_rounded,
+                      iconColor: const Color(0xFF22C55E),
+                      bgColor: const Color(0xFFE8F5E9),
+                      onTap: () => context.push('/firma/satislar'),
                     ),
                     _buildHubGridItem(
                       label: 'Satış Raporları',
@@ -248,14 +264,36 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
   // ==========================================
   // 2. PRODUCT DIALOG (ADD / EDIT)
   // ==========================================
-  void _showAddProductDialog(String currentFirmaName, {String? docId, Map<String, dynamic>? existingData}) {
+  void _showAddProductDialog(String currentFirmaName, {String? docId, Map<String, dynamic>? existingData}) async {
+    // Fetch categories dynamically
+    final categoriesQuery = await FirebaseFirestore.instance
+        .collection('urunler_kategoriler')
+        .where('firma', isEqualTo: currentFirmaName)
+        .get();
+    final List<String> categories = categoriesQuery.docs
+        .map((doc) => doc.data()['ad'] as String? ?? '')
+        .where((name) => name.isNotEmpty)
+        .toSet()
+        .toList();
+    
+    if (categories.isEmpty) {
+      categories.addAll(['Yem', 'Vitamin', 'İlaç', 'Araç Gereç']);
+    }
+    if (existingData != null) {
+      final existingKat = existingData['kategori'] as String?;
+      if (existingKat != null && !categories.contains(existingKat)) {
+        categories.add(existingKat);
+      }
+    }
+
     final adCtrl = TextEditingController(text: existingData?['ad'] ?? '');
     final birimCtrl = TextEditingController(text: existingData?['birim'] ?? '');
     final fiyatCtrl = TextEditingController(text: existingData != null ? (existingData['fiyat'] as num).toStringAsFixed(2) : '');
-    final stokCtrl = TextEditingController(text: existingData != null ? (existingData['stok'] as num).toStringAsFixed(0) : '100');
     final minStokCtrl = TextEditingController(text: existingData != null ? (existingData['minStok'] as num?)?.toStringAsFixed(0) ?? '10' : '10');
-    String selectedKategori = existingData?['kategori'] ?? 'Yem';
+    String selectedKategori = existingData?['kategori'] ?? (categories.contains('Yem') ? 'Yem' : categories.first);
     final customKatCtrl = TextEditingController();
+
+    if (!mounted) return;
 
     showDialog(
       context: context,
@@ -275,12 +313,9 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
                 DropdownButtonFormField<String>(
                   value: selectedKategori,
                   decoration: const InputDecoration(labelText: 'Kategori *'),
-                  items: const [
-                    DropdownMenuItem(value: 'Yem', child: Text('Yem')),
-                    DropdownMenuItem(value: 'Vitamin', child: Text('Vitamin')),
-                    DropdownMenuItem(value: 'İlaç', child: Text('İlaç')),
-                    DropdownMenuItem(value: 'Araç Gereç', child: Text('Araç Gereç')),
-                    DropdownMenuItem(value: 'Diğer', child: Text('Diğer (Yeni yazın)')),
+                  items: [
+                    ...categories.map((c) => DropdownMenuItem(value: c, child: Text(c))),
+                    const DropdownMenuItem(value: 'Diğer', child: Text('Diğer (Yeni yazın)')),
                   ],
                   onChanged: (val) {
                     if (val != null) {
@@ -312,12 +347,6 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
                 ),
                 const SizedBox(height: 12),
                 TextField(
-                  controller: stokCtrl,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Stok Miktarı', hintText: 'Örn: 100'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
                   controller: minStokCtrl,
                   keyboardType: TextInputType.number,
                   decoration: const InputDecoration(labelText: 'Kritik Stok Limiti *', hintText: 'Örn: 10'),
@@ -335,7 +364,6 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
                 final String ad = adCtrl.text.trim();
                 final String birim = birimCtrl.text.trim();
                 final double? fiyat = double.tryParse(fiyatCtrl.text.replaceAll(',', '.'));
-                final double? stok = double.tryParse(stokCtrl.text);
                 final double? minStok = double.tryParse(minStokCtrl.text);
 
                 if (ad.isEmpty || birim.isEmpty || fiyat == null || fiyat <= 0 || minStok == null) {
@@ -353,16 +381,19 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
                   return;
                 }
 
-                final dataMap = {
+                final Map<String, dynamic> dataMap = {
                   'ad': ad,
                   'kategori': kat,
                   'birim': birim,
                   'fiyat': fiyat,
-                  'stok': stok ?? 0.0,
                   'minStok': minStok,
                   'firma': currentFirmaName,
                   'timestamp': FieldValue.serverTimestamp(),
                 };
+
+                if (docId == null) {
+                  dataMap['stok'] = 0.0;
+                }
 
                 // Add category if not exists
                 if (selectedKategori == 'Diğer') {
@@ -1168,46 +1199,14 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
                             ),
                           ),
                           ElevatedButton(
-                            onPressed: () {
-                              final changeCtrl = TextEditingController(text: stock.toStringAsFixed(0));
-                              showDialog(
-                                context: context,
-                                builder: (ctx) => AlertDialog(
-                                  title: const Text('Stok Güncelle'),
-                                  content: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text('$ad için yeni stok değerini girin:'),
-                                      const SizedBox(height: 10),
-                                      TextField(
-                                        controller: changeCtrl,
-                                        keyboardType: TextInputType.number,
-                                        decoration: InputDecoration(labelText: 'Yeni Stok ($birim)'),
-                                      ),
-                                    ],
-                                  ),
-                                  actions: [
-                                    TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('İptal')),
-                                    ElevatedButton(
-                                      onPressed: () async {
-                                        final double? val = double.tryParse(changeCtrl.text);
-                                        if (val == null) return;
-                                        await doc.reference.update({'stok': val});
-                                        Navigator.pop(ctx);
-                                      },
-                                      child: const Text('Güncelle'),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            },
+                            onPressed: () => _showStockHistoryDialog(context, ad, currentFirmaName),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: AppColors.primary50,
                               foregroundColor: AppColors.primary600,
                               elevation: 0,
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                             ),
-                            child: const Text('Güncelle'),
+                            child: const Text('Stok Geçmişi'),
                           ),
                         ],
                       ),
@@ -1219,6 +1218,99 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
           );
         },
       ),
+    );
+  }
+
+  Widget _buildProgressTracker(String status) {
+    if (status == 'İptal') {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.red.shade50,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.red.shade100),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.cancel_rounded, color: Colors.red, size: 16),
+            const SizedBox(width: 6),
+            Text(
+              'Sipariş İptal Edildi',
+              style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.red.shade700),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final steps = ['Alındı', 'Hazırlandı', 'Yolda', 'Teslim Edildi'];
+    int currentStep = 0;
+    if (status == 'Bekliyor') currentStep = 0;
+    if (status == 'Onaylandı') currentStep = 1;
+    if (status == 'Teslimatta') currentStep = 2;
+    if (status == 'Teslim Edildi') currentStep = 3;
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: List.generate(steps.length, (index) {
+        final stepName = steps[index];
+        final isCompleted = index <= currentStep;
+        final isActive = index == currentStep;
+
+        Color circleColor = AppColors.gray200;
+        Color textColor = AppColors.gray400;
+        IconData icon = Icons.circle_outlined;
+
+        if (isCompleted) {
+          circleColor = AppColors.primary600;
+          textColor = AppColors.gray800;
+          icon = Icons.check_circle_rounded;
+        }
+        if (isActive) {
+          circleColor = Colors.orange;
+          textColor = Colors.orange.shade800;
+          icon = Icons.radio_button_checked_rounded;
+        }
+        if (index == 3 && isCompleted) {
+          circleColor = Colors.green;
+          textColor = Colors.green.shade800;
+          icon = Icons.check_circle_rounded;
+        }
+
+        return Expanded(
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      height: 3,
+                      color: index == 0 ? Colors.transparent : (index <= currentStep ? AppColors.primary500 : AppColors.gray200),
+                    ),
+                  ),
+                  Icon(icon, color: circleColor, size: 18),
+                  Expanded(
+                    child: Container(
+                      height: 3,
+                      color: index == steps.length - 1 ? Colors.transparent : (index < currentStep ? AppColors.primary500 : AppColors.gray200),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                stepName,
+                style: GoogleFonts.inter(
+                  fontSize: 10,
+                  fontWeight: isCompleted ? FontWeight.bold : FontWeight.normal,
+                  color: textColor,
+                ),
+              ),
+            ],
+          ),
+        );
+      }),
     );
   }
 
@@ -1311,10 +1403,27 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
                     final orderId = data['id'] ?? '#ORDERID';
 
                     Color statusColor = Colors.orange;
-                    if (durum == 'Onaylandı') statusColor = Colors.blue;
-                    if (durum == 'Teslimatta') statusColor = Colors.purple;
-                    if (durum == 'Teslim Edildi') statusColor = Colors.green;
-                    if (durum == 'İptal') statusColor = Colors.red;
+                    String statusText = durum;
+                    if (durum == 'Bekliyor') {
+                      statusColor = Colors.orange;
+                      statusText = 'Alındı';
+                    }
+                    if (durum == 'Onaylandı') {
+                      statusColor = Colors.blue;
+                      statusText = 'Hazırlandı';
+                    }
+                    if (durum == 'Teslimatta') {
+                      statusColor = Colors.purple;
+                      statusText = 'Yolda';
+                    }
+                    if (durum == 'Teslim Edildi') {
+                      statusColor = Colors.green;
+                      statusText = 'Teslim Edildi';
+                    }
+                    if (durum == 'İptal') {
+                      statusColor = Colors.red;
+                      statusText = 'İptal';
+                    }
 
                     return Card(
                       elevation: 0,
@@ -1349,7 +1458,7 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
                                     borderRadius: BorderRadius.circular(20),
                                   ),
                                   child: Text(
-                                    durum,
+                                    statusText,
                                     style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.bold, color: statusColor),
                                   ),
                                 ),
@@ -1357,6 +1466,8 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
                             ),
                             const SizedBox(height: 4),
                             Text('Sipariş $orderId • $tarih $saat', style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray400)),
+                            const SizedBox(height: 10),
+                            _buildProgressTracker(durum),
                             const Divider(height: 20),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1393,15 +1504,15 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
                               child: Row(
                                 children: [
                                   if (durum == 'Bekliyor')
-                                    _buildOrderActionButton('Onayla', Colors.green, () async {
+                                    _buildOrderActionButton('Hazırlandı Yap', Colors.green, () async {
                                       await doc.reference.update({'durum': 'Onaylandı'});
                                     }),
                                   if (durum == 'Onaylandı')
-                                    _buildOrderActionButton('Teslimatta Yap', Colors.purple, () async {
+                                    _buildOrderActionButton('Yolda Yap', Colors.purple, () async {
                                       await doc.reference.update({'durum': 'Teslimatta'});
                                     }),
                                   if (durum == 'Teslimatta')
-                                    _buildOrderActionButton('Teslim Et', Colors.green, () async {
+                                    _buildOrderActionButton('Teslim Edildi Yap', Colors.green, () async {
                                       await doc.reference.update({'durum': 'Teslim Edildi'});
                                       
                                       // Subtract stock
@@ -1510,12 +1621,9 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
       appBar: AppBar(
         title: Text('Satış Raporları', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
         leading: _buildBackButton(),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            onPressed: () => setState(() {}),
-          ),
-        ],
+        elevation: 0,
+        backgroundColor: Colors.white,
+        foregroundColor: AppColors.gray900,
       ),
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
@@ -1523,219 +1631,305 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
             .where('firma', isEqualTo: currentFirmaName)
             .where('durum', isEqualTo: 'Teslim Edildi')
             .snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
+        builder: (context, ordersSnap) {
+          if (ordersSnap.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
 
-          final docs = snapshot.data?.docs ?? [];
-
-          // Process Sales Stats
-          double totalCiro = 0.0;
-          double totalProductsSold = 0.0;
-          final Map<String, Map<String, dynamic>> productStats = {};
-
-          for (var doc in docs) {
-            final data = doc.data() as Map<String, dynamic>;
-            final date = _getDocDate(data['timestamp']);
-            
-            // Check Date filter
-            if (date != null && date.isAfter(_startDate.subtract(const Duration(seconds: 1))) && date.isBefore(_endDate.add(const Duration(days: 1)))) {
-              final double miktar = (data['miktar'] as num?)?.toDouble() ?? 0.0;
-              final double toplamVal = (data['toplam'] as num?)?.toDouble() ?? 0.0;
-              final String urun = data['urun'] ?? 'Ürün';
-              final String birim = data['birim'] ?? 'Adet';
-              final double unitPrice = (data['birimFiyat'] as num?)?.toDouble() ?? 0.0;
-
-              totalCiro += toplamVal;
-              totalProductsSold += miktar;
-
-              if (!productStats.containsKey(urun)) {
-                productStats[urun] = {
-                  'miktar': 0.0,
-                  'toplam': 0.0,
-                  'birim': birim,
-                  'birimFiyat': unitPrice,
-                };
+          return StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('urunler')
+                .where('firma', isEqualTo: currentFirmaName)
+                .snapshots(),
+            builder: (context, productsSnap) {
+              if (productsSnap.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
               }
-              productStats[urun]!['miktar'] = (productStats[urun]!['miktar'] as double) + miktar;
-              productStats[urun]!['toplam'] = (productStats[urun]!['toplam'] as double) + toplamVal;
-            }
-          }
 
-          // Sort product stats by sales revenue
-          final sortedProducts = productStats.entries.toList()
-            ..sort((a, b) => (b.value['toplam'] as double).compareTo(a.value['toplam'] as double));
+              return StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('satislar')
+                    .where('firma', isEqualTo: currentFirmaName)
+                    .snapshots(),
+                builder: (context, salesSnap) {
+                  if (salesSnap.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
 
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Date picker row matching mockup
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppColors.gray200),
-                    boxShadow: AppShadows.sm,
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: InkWell(
-                          onTap: () async {
-                            final picked = await showDateRangePicker(
-                              context: context,
-                              firstDate: DateTime(2020),
-                              lastDate: DateTime(2030),
-                              initialDateRange: DateTimeRange(start: _startDate, end: _endDate),
-                            );
-                            if (picked != null) {
-                              setState(() {
-                                _startDate = picked.start;
-                                _endDate = picked.end;
-                              });
-                            }
-                          },
+                  final orderDocs = ordersSnap.data?.docs ?? [];
+                  final productDocs = productsSnap.data?.docs ?? [];
+                  final saleDocs = salesSnap.data?.docs ?? [];
+
+                  // Map of product ad to sonGelisFiyati
+                  final Map<String, double> costMap = {};
+                  for (var doc in productDocs) {
+                    final pData = doc.data() as Map<String, dynamic>;
+                    final String ad = pData['ad'] ?? '';
+                    final double cost = (pData['sonGelisFiyati'] as num?)?.toDouble() ?? 0.0;
+                    costMap[ad.toLowerCase().trim()] = cost;
+                  }
+
+                  // Process Sales Stats
+                  double totalCiro = 0.0;
+                  double totalProductsSold = 0.0;
+                  double totalCostSum = 0.0;
+                  final Map<String, Map<String, dynamic>> productStats = {};
+
+                  void processItem(String urun, double miktar, double toplamVal, String birim, double unitPrice, DateTime? date) {
+                    if (date != null && date.isAfter(_startDate.subtract(const Duration(seconds: 1))) && date.isBefore(_endDate.add(const Duration(days: 1)))) {
+                      final double costPrice = costMap[urun.toLowerCase().trim()] ?? 0.0;
+                      final double itemCost = miktar * costPrice;
+                      final double itemKar = toplamVal - itemCost;
+
+                      totalCiro += toplamVal;
+                      totalProductsSold += miktar;
+                      totalCostSum += itemCost;
+
+                      if (!productStats.containsKey(urun)) {
+                        productStats[urun] = {
+                          'miktar': 0.0,
+                          'toplam': 0.0,
+                          'kar': 0.0,
+                          'birim': birim,
+                          'birimFiyat': unitPrice,
+                        };
+                      }
+                      productStats[urun]!['miktar'] = (productStats[urun]!['miktar'] as double) + miktar;
+                      productStats[urun]!['toplam'] = (productStats[urun]!['toplam'] as double) + toplamVal;
+                      productStats[urun]!['kar'] = (productStats[urun]!['kar'] as double) + itemKar;
+                    }
+                  }
+
+                  // Process orders
+                  for (var doc in orderDocs) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    final date = _getDocDate(data['timestamp']);
+                    final double miktar = (data['miktar'] as num?)?.toDouble() ?? 0.0;
+                    final double toplamVal = (data['toplam'] as num?)?.toDouble() ?? 0.0;
+                    final String urun = data['urun'] ?? 'Ürün';
+                    final String birim = data['birim'] ?? 'Adet';
+                    final double unitPrice = (data['birimFiyat'] as num?)?.toDouble() ?? 0.0;
+                    processItem(urun, miktar, toplamVal, birim, unitPrice, date);
+                  }
+
+                  // Process direct sales
+                  for (var doc in saleDocs) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    final date = _getDocDate(data['timestamp']);
+                    final double miktar = (data['miktar'] as num?)?.toDouble() ?? 0.0;
+                    final double toplamVal = (data['tutar'] as num?)?.toDouble() ?? 0.0;
+                    final String urun = data['urun'] ?? 'Ürün';
+                    const String birim = 'Adet';
+                    final double unitPrice = miktar > 0 ? (toplamVal / miktar) : 0.0;
+                    processItem(urun, miktar, toplamVal, birim, unitPrice, date);
+                  }
+
+                  final double totalKar = totalCiro - totalCostSum;
+
+                  // Sort product stats based on _salesReportTab
+                  final sortedProducts = productStats.entries.toList();
+                  if (_salesReportTab == 'En Çok Satan') {
+                    sortedProducts.sort((a, b) => (b.value['miktar'] as double).compareTo(a.value['miktar'] as double));
+                  } else if (_salesReportTab == 'En Yüksek Ciro' || _salesReportTab == 'En Çok Ciro Yapan') {
+                    sortedProducts.sort((a, b) => (b.value['toplam'] as double).compareTo(a.value['toplam'] as double));
+                  } else if (_salesReportTab == 'En Çok Kar' || _salesReportTab == 'En Çok Kar Yapan') {
+                    sortedProducts.sort((a, b) => (b.value['kar'] as double).compareTo(a.value['kar'] as double));
+                  }
+
+                  return SingleChildScrollView(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Date picker row
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: AppColors.gray200),
+                            boxShadow: AppShadows.sm,
+                          ),
                           child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                             children: [
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('Başlangıç', style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray400)),
-                                  const SizedBox(height: 2),
-                                  Text(startDisplay, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.gray800)),
-                                ],
-                              ),
-                              const Icon(Icons.arrow_forward_rounded, color: AppColors.gray300, size: 16),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('Bitiş', style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray400)),
-                                  const SizedBox(height: 2),
-                                  Text(endDisplay, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.gray800)),
-                                ],
+                              Expanded(
+                                child: InkWell(
+                                  onTap: () async {
+                                    final picked = await showDateRangePicker(
+                                      context: context,
+                                      firstDate: DateTime(2020),
+                                      lastDate: DateTime(2030),
+                                      initialDateRange: DateTimeRange(start: _startDate, end: _endDate),
+                                    );
+                                    if (picked != null) {
+                                      setState(() {
+                                        _startDate = picked.start;
+                                        _endDate = picked.end;
+                                      });
+                                    }
+                                  },
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                    children: [
+                                      Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text('Başlangıç', style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray400)),
+                                          const SizedBox(height: 2),
+                                          Text(startDisplay, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.gray800)),
+                                        ],
+                                      ),
+                                      const Icon(Icons.arrow_forward_rounded, color: AppColors.gray300, size: 16),
+                                      Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text('Bitiş', style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray400)),
+                                          const SizedBox(height: 2),
+                                          Text(endDisplay, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.gray800)),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
                               ),
                             ],
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 20),
+                        const SizedBox(height: 20),
 
-                // Top stats card matching mockup Satış Raporları
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildReportCiroCard('Toplam Ciro', '${formatNumber.format(totalCiro)} ₺', const Color(0xFF4CAF50)),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _buildReportCiroCard('Satılan Ürün', totalProductsSold.toStringAsFixed(0), const Color(0xFF2196F3)),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _buildReportCiroCard('Toplam Kar', '${formatNumber.format(totalCiro)} ₺', const Color(0xFF9C27B0)),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-
-                // Product Rankings Section
-                Text(
-                  'Ürün Sıralaması',
-                  style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.gray900),
-                ),
-                const SizedBox(height: 14),
-
-                if (sortedProducts.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 40),
-                    child: Center(
-                      child: Text('Belirtilen tarihler arasında satış kaydı bulunmuyor.', style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray400)),
-                    ),
-                  )
-                else
-                  ListView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: sortedProducts.length,
-                    itemBuilder: (context, idx) {
-                      final item = sortedProducts[idx];
-                      final name = item.key;
-                      final miktar = item.value['miktar'] as double;
-                      final birim = item.value['birim'] as String;
-                      final double toplam = item.value['toplam'] as double;
-                      final double unitPrice = item.value['birimFiyat'] as double;
-                      final double percent = totalCiro > 0 ? (toplam / totalCiro) * 100 : 0.0;
-
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 10),
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: AppColors.gray200),
-                          boxShadow: AppShadows.sm,
-                        ),
-                        child: Row(
+                        // Top stats cards
+                        Row(
                           children: [
-                            Container(
-                              width: 32,
-                              height: 32,
-                              decoration: BoxDecoration(
-                                color: idx == 0
-                                    ? Colors.orange.withOpacity(0.15)
-                                    : AppColors.gray100,
-                                shape: BoxShape.circle,
-                              ),
-                              child: Center(
-                                child: Text(
-                                  (idx + 1).toString(),
-                                  style: GoogleFonts.inter(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 14,
-                                    color: idx == 0 ? Colors.orange : AppColors.gray600,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 14),
                             Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(name, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.gray800)),
-                                  Text(
-                                    'Birim: ${unitPrice.toStringAsFixed(2)} ₺ • Pay: %${percent.toStringAsFixed(1)}',
-                                    style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray400),
-                                  ),
-                                ],
-                              ),
+                              child: _buildReportCiroCard('Toplam Ciro', '${formatNumber.format(totalCiro)} ₺', const Color(0xFF4CAF50)),
                             ),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                Text('${miktar.toStringAsFixed(0)} $birim', style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray500)),
-                                const SizedBox(height: 2),
-                                Text(
-                                  '${toplam.toStringAsFixed(2)} ₺',
-                                  style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.success),
-                                ),
-                              ],
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _buildReportCiroCard('Satılan Ürün', totalProductsSold.toStringAsFixed(0), const Color(0xFF2196F3)),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _buildReportCiroCard('Toplam Kar', '${formatNumber.format(totalKar)} ₺', const Color(0xFF9C27B0)),
                             ),
                           ],
                         ),
-                      );
-                    },
-                  ),
-              ],
-            ),
+                        const SizedBox(height: 24),
+
+                        // Product Rankings Header and Tabs
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Ürün Sıralaması',
+                              style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.gray900),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        
+                        Row(
+                          children: [
+                            _buildReportSegmentButton('En Çok Satan', 'En Çok Satan'),
+                            _buildReportSegmentButton('En Yüksek Ciro', 'En Çok Ciro yapan'),
+                            _buildReportSegmentButton('En Çok Kar', 'En Çok Kar yapan'),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+
+                        if (sortedProducts.isEmpty)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 40),
+                            child: Center(
+                              child: Text('Belirtilen tarihler arasında satış kaydı bulunmuyor.', style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray400)),
+                            ),
+                          )
+                        else
+                          ListView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: sortedProducts.length,
+                            itemBuilder: (context, idx) {
+                              final item = sortedProducts[idx];
+                              final name = item.key;
+                              final miktar = item.value['miktar'] as double;
+                              final birim = item.value['birim'] as String;
+                              final double toplam = item.value['toplam'] as double;
+                              final double kar = item.value['kar'] as double;
+                              final double unitPrice = item.value['birimFiyat'] as double;
+                              final double percent = totalCiro > 0 ? (toplam / totalCiro) * 100 : 0.0;
+
+                              return Container(
+                                margin: const EdgeInsets.only(bottom: 10),
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: AppColors.gray200),
+                                  boxShadow: AppShadows.sm,
+                                ),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 32,
+                                      height: 32,
+                                      decoration: BoxDecoration(
+                                        color: idx == 0
+                                            ? Colors.orange.withOpacity(0.15)
+                                            : AppColors.gray100,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: Center(
+                                        child: Text(
+                                          (idx + 1).toString(),
+                                          style: GoogleFonts.inter(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 14,
+                                            color: idx == 0 ? Colors.orange : AppColors.gray600,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 14),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(name, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.gray800)),
+                                          Text(
+                                            'Birim: ${unitPrice.toStringAsFixed(2)} ₺ • Pay: %${percent.toStringAsFixed(1)}',
+                                            style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray400),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Column(
+                                      crossAxisAlignment: CrossAxisAlignment.end,
+                                      children: [
+                                        Text('${miktar.toStringAsFixed(0)} $birim', style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray500, fontWeight: FontWeight.w600)),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          _salesReportTab == 'En Çok Kar'
+                                              ? 'Kar: ${kar.toStringAsFixed(2)} ₺'
+                                              : '${toplam.toStringAsFixed(2)} ₺',
+                                          style: GoogleFonts.inter(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.bold,
+                                            color: _salesReportTab == 'En Çok Kar' ? Colors.purple : AppColors.success,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                      ],
+                    ),
+                  );
+                },
+              );
+            },
           );
         },
       ),
@@ -1777,6 +1971,40 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
     );
   }
 
+  Widget _buildReportSegmentButton(String tabName, String label) {
+    final bool isActive = _salesReportTab == tabName;
+    return Expanded(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: InkWell(
+          onTap: () {
+            setState(() {
+              _salesReportTab = tabName;
+            });
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            decoration: BoxDecoration(
+              color: isActive ? AppColors.primary600 : Colors.white,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: isActive ? AppColors.primary600 : AppColors.gray200),
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              label,
+              style: GoogleFonts.inter(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: isActive ? Colors.white : AppColors.gray600,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   // ==========================================
   // 7. PRODUCER STORE VIEW (VIEW & ORDER)
   // ==========================================
@@ -1806,6 +2034,7 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
         }
 
         List<String> connectedFirmalar = ['Kayseri Çiftlik']; // Fallback default
+        bool siparisIzni = true;
         if (producerSnapshot.hasData && producerSnapshot.data!.docs.isNotEmpty) {
           final pDoc = producerSnapshot.data!.docs.first;
           final pData = pDoc.data() as Map<String, dynamic>;
@@ -1813,6 +2042,7 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
           if (fList is List) {
             connectedFirmalar = List<String>.from(fList.map((e) => e.toString()));
           }
+          siparisIzni = pData['siparisIzni'] ?? true;
         }
 
         // If connectedFirmalar is empty, fallback to default
@@ -1832,7 +2062,7 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (ctx) => _ProducerOrdersHistoryPage(
+                      builder: (ctx) => ProducerOrdersHistoryPage(
                         producerName: producerName,
                         firmaName: connectedFirmalar.first,
                       ),
@@ -1842,163 +2072,187 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
               ),
             ],
           ),
-          body: StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance
-                .collection('urunler')
-                .where('firma', whereIn: connectedFirmalar)
-                .snapshots(),
-            builder: (context, snapshot) {
-              if (snapshot.hasError) {
-                return Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Text('Hata oluştu: ${snapshot.error}', style: GoogleFonts.inter(color: Colors.red)),
-                  ),
-                );
-              }
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              final docs = snapshot.data?.docs ?? [];
-              if (docs.isEmpty) {
-                return Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(40.0),
-                    child: Text('Firmaya ait satışta ürün bulunmamaktadır.', style: GoogleFonts.inter(color: AppColors.gray400)),
-                  ),
-                );
-              }
-
-              return ListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: docs.length,
-                itemBuilder: (context, idx) {
-                  final doc = docs[idx];
-                  final data = doc.data() as Map<String, dynamic>;
-                  final ad = data['ad'] ?? '';
-                  final kat = data['kategori'] ?? 'Diğer';
-                  final birim = data['birim'] ?? 'Adet';
-                  final fiyat = (data['fiyat'] as num?)?.toDouble() ?? 0.0;
-                  final stok = (data['stok'] as num?)?.toDouble() ?? 0.0;
-                  final productFirma = data['firma'] ?? connectedFirmalar.first;
-
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppColors.gray200),
-                      boxShadow: AppShadows.sm,
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            color: AppColors.primary50,
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(Icons.shopping_bag_outlined, color: AppColors.primary600, size: 22),
+          body: Column(
+            children: [
+              if (!siparisIzni)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  color: Colors.red[50],
+                  child: Row(
+                    children: [
+                      const Icon(Icons.warning_amber_rounded, color: Colors.red),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Sipariş verme yetkiniz firma tarafından sınırlandırılmıştır.',
+                          style: GoogleFonts.inter(fontSize: 12, color: Colors.red[800], fontWeight: FontWeight.bold),
                         ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                      ),
+                    ],
+                  ),
+                ),
+              Expanded(
+                child: StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection('urunler')
+                      .where('firma', whereIn: connectedFirmalar)
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    if (snapshot.hasError) {
+                      return Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Text('Hata oluştu: ${snapshot.error}', style: GoogleFonts.inter(color: Colors.red)),
+                        ),
+                      );
+                    }
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    final docs = snapshot.data?.docs ?? [];
+                    if (docs.isEmpty) {
+                      return Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(40.0),
+                          child: Text('Firmaya ait satışta ürün bulunmamaktadır.', style: GoogleFonts.inter(color: AppColors.gray400)),
+                        ),
+                      );
+                    }
+
+                    return ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: docs.length,
+                      itemBuilder: (context, idx) {
+                        final doc = docs[idx];
+                        final data = doc.data() as Map<String, dynamic>;
+                        final ad = data['ad'] ?? '';
+                        final kat = data['kategori'] ?? 'Diğer';
+                        final birim = data['birim'] ?? 'Adet';
+                        final fiyat = (data['fiyat'] as num?)?.toDouble() ?? 0.0;
+                        final stok = (data['stok'] as num?)?.toDouble() ?? 0.0;
+                        final productFirma = data['firma'] ?? connectedFirmalar.first;
+
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: AppColors.gray200),
+                            boxShadow: AppShadows.sm,
+                          ),
+                          child: Row(
                             children: [
-                              Text(ad, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.gray800)),
-                              Text('$kat • Stok: ${stok.toStringAsFixed(0)} $birim', style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray400)),
+                              Container(
+                                width: 44,
+                                height: 44,
+                                decoration: BoxDecoration(
+                                  color: AppColors.primary50,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(Icons.shopping_bag_outlined, color: AppColors.primary600, size: 22),
+                              ),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(ad, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.gray800)),
+                                    Text('$kat • Stok: ${stok.toStringAsFixed(0)} $birim', style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray400)),
+                                  ],
+                                ),
+                              ),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Text('${formatNumber.format(fiyat)} ₺', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.primary600)),
+                                  const SizedBox(height: 6),
+                                  ElevatedButton(
+                                    onPressed: (stok <= 0 || !siparisIzni)
+                                        ? null
+                                        : () {
+                                            final miktarCtrl = TextEditingController(text: '1');
+                                            showDialog(
+                                              context: context,
+                                              builder: (ctx) => AlertDialog(
+                                                title: const Text('Ürün Sipariş Et'),
+                                                content: Column(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    Text('$ad sipariş etmek istediğiniz miktarı girin:'),
+                                                    const SizedBox(height: 12),
+                                                    TextField(
+                                                      controller: miktarCtrl,
+                                                      keyboardType: TextInputType.number,
+                                                      decoration: InputDecoration(
+                                                        labelText: 'Miktar ($birim)',
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                                actions: [
+                                                  TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('İptal')),
+                                                  ElevatedButton(
+                                                    onPressed: () async {
+                                                      final double? miktarVal = double.tryParse(miktarCtrl.text);
+                                                      if (miktarVal == null || miktarVal <= 0 || miktarVal > stok) {
+                                                        ScaffoldMessenger.of(context).showSnackBar(
+                                                          const SnackBar(content: Text('Lütfen geçerli/stokta olan bir miktar girin!'), backgroundColor: AppColors.danger),
+                                                        );
+                                                        return;
+                                                      }
+
+                                                      final totalCost = miktarVal * fiyat;
+
+                                                      // Place order in urunler_siparisler
+                                                      await FirebaseFirestore.instance.collection('urunler_siparisler').add({
+                                                        'id': _generateOrderId(),
+                                                        'uretici': producerName,
+                                                        'firma': productFirma,
+                                                        'urun': ad,
+                                                        'miktar': miktarVal,
+                                                        'birim': birim,
+                                                        'birimFiyat': fiyat,
+                                                        'toplam': totalCost,
+                                                        'tarih': DateFormat('dd.MM.yyyy').format(DateTime.now()),
+                                                        'saat': DateFormat('HH:mm').format(DateTime.now()),
+                                                        'durum': 'Bekliyor',
+                                                        'timestamp': FieldValue.serverTimestamp(),
+                                                      });
+
+                                                      Navigator.pop(ctx);
+                                                      ScaffoldMessenger.of(context).showSnackBar(
+                                                        const SnackBar(content: Text('Siparişiniz başarıyla firmaya iletildi!'), backgroundColor: AppColors.success),
+                                                      );
+                                                    },
+                                                    child: const Text('Sipariş Ver'),
+                                                  ),
+                                                ],
+                                              ),
+                                            );
+                                          },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: stok <= 0 ? Colors.grey : AppColors.primary600,
+                                      foregroundColor: Colors.white,
+                                      elevation: 0,
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                      minimumSize: const Size(60, 28),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                    ),
+                                    child: Text(stok <= 0 ? 'Tükendi' : 'Sipariş Et', style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.bold)),
+                                  ),
+                                ],
+                              ),
                             ],
                           ),
-                        ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text('${formatNumber.format(fiyat)} ₺', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.primary600)),
-                            const SizedBox(height: 6),
-                            ElevatedButton(
-                              onPressed: stok <= 0
-                                  ? null
-                                  : () {
-                                      final miktarCtrl = TextEditingController(text: '1');
-                                      showDialog(
-                                        context: context,
-                                        builder: (ctx) => AlertDialog(
-                                          title: const Text('Ürün Sipariş Et'),
-                                          content: Column(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Text('$ad sipariş etmek istediğiniz miktarı girin:'),
-                                              const SizedBox(height: 12),
-                                              TextField(
-                                                controller: miktarCtrl,
-                                                keyboardType: TextInputType.number,
-                                                decoration: InputDecoration(
-                                                  labelText: 'Miktar ($birim)',
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                          actions: [
-                                            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('İptal')),
-                                            ElevatedButton(
-                                              onPressed: () async {
-                                                final double? miktarVal = double.tryParse(miktarCtrl.text);
-                                                if (miktarVal == null || miktarVal <= 0 || miktarVal > stok) {
-                                                  ScaffoldMessenger.of(context).showSnackBar(
-                                                    const SnackBar(content: Text('Lütfen geçerli/stokta olan bir miktar girin!'), backgroundColor: AppColors.danger),
-                                                  );
-                                                  return;
-                                                }
-
-                                                final totalCost = miktarVal * fiyat;
-
-                                                // Place order in urunler_siparisler
-                                                await FirebaseFirestore.instance.collection('urunler_siparisler').add({
-                                                  'id': _generateOrderId(),
-                                                  'uretici': producerName,
-                                                  'firma': productFirma,
-                                                  'urun': ad,
-                                                  'miktar': miktarVal,
-                                                  'birim': birim,
-                                                  'birimFiyat': fiyat,
-                                                  'toplam': totalCost,
-                                                  'tarih': DateFormat('dd.MM.yyyy').format(DateTime.now()),
-                                                  'saat': DateFormat('HH:mm').format(DateTime.now()),
-                                                  'durum': 'Bekliyor',
-                                                  'timestamp': FieldValue.serverTimestamp(),
-                                                });
-
-                                                Navigator.pop(ctx);
-                                                ScaffoldMessenger.of(context).showSnackBar(
-                                                  const SnackBar(content: Text('Siparişiniz başarıyla firmaya iletildi!'), backgroundColor: AppColors.success),
-                                                );
-                                              },
-                                              child: const Text('Sipariş Ver'),
-                                            ),
-                                          ],
-                                        ),
-                                      );
-                                    },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: stok <= 0 ? Colors.grey : AppColors.primary600,
-                                foregroundColor: Colors.white,
-                                elevation: 0,
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                minimumSize: const Size(60, 28),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                              ),
-                              child: Text(stok <= 0 ? 'Tükendi' : 'Sipariş Et', style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.bold)),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              );
-            },
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
           ),
         );
       },
@@ -2012,13 +2266,305 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
     if (field is String) return DateTime.tryParse(field);
     return null;
   }
+
+  void _showStockHistoryDialog(BuildContext context, String productAd, String currentFirmaName) {
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: Container(
+            width: 480,
+            padding: const EdgeInsets.all(20),
+            child: FutureBuilder<List<Map<String, dynamic>>>(
+              future: _loadStockHistory(productAd, currentFirmaName),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const SizedBox(
+                    height: 250,
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                if (snapshot.hasError) {
+                  return SizedBox(
+                    height: 250,
+                    child: Center(child: Text('Hata: ${snapshot.error}')),
+                  );
+                }
+
+                final history = snapshot.data ?? [];
+                double totalIn = 0.0;
+                double totalOut = 0.0;
+                for (var item in history) {
+                  final double qty = item['miktar'] as double;
+                  if (item['tip'] == 'giris') {
+                    totalIn += qty;
+                  } else {
+                    totalOut += qty;
+                  }
+                }
+
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '$productAd Stok Geçmişi',
+                            style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.gray800),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close_rounded, size: 20),
+                          onPressed: () => Navigator.pop(ctx),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Colors.green.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Toplam Giriş', style: GoogleFonts.inter(fontSize: 10, color: Colors.green[700], fontWeight: FontWeight.bold)),
+                                const SizedBox(height: 4),
+                                Text('${totalIn.toStringAsFixed(0)} Adet', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.green[800])),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Colors.red.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Toplam Çıkış', style: GoogleFonts.inter(fontSize: 10, color: Colors.red[700], fontWeight: FontWeight.bold)),
+                                const SizedBox(height: 4),
+                                Text('${totalOut.toStringAsFixed(0)} Adet', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.red[800])),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Hareket Detayları',
+                      style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.gray600),
+                    ),
+                    const SizedBox(height: 8),
+                    if (history.isEmpty)
+                      const SizedBox(
+                        height: 200,
+                        child: Center(
+                          child: Text('Bu ürüne ait henüz stok hareketi bulunmuyor.', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                        ),
+                      )
+                    else
+                      Container(
+                        constraints: const BoxConstraints(maxHeight: 300),
+                        child: ListView.builder(
+                          shrinkWrap: true,
+                          itemCount: history.length,
+                          itemBuilder: (context, index) {
+                            final item = history[index];
+                            final isGiris = item['tip'] == 'giris';
+                            final date = item['tarih'] as String;
+                            final partner = item['partner'] as String;
+                            final desc = item['aciklama'] as String;
+                            final double miktar = item['miktar'] as double;
+
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: AppColors.gray50,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: AppColors.gray200),
+                              ),
+                              child: Row(
+                                children: [
+                                  CircleAvatar(
+                                    radius: 16,
+                                    backgroundColor: isGiris ? Colors.green.withOpacity(0.1) : Colors.red.withOpacity(0.1),
+                                    child: Icon(
+                                      isGiris ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded,
+                                      color: isGiris ? Colors.green : Colors.red,
+                                      size: 16,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          desc,
+                                          style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.gray800),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          isGiris ? 'Tedarikçi: $partner' : 'Üretici: $partner',
+                                          style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray500),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Text(
+                                        '${isGiris ? "+" : "-"}${miktar.toStringAsFixed(0)}',
+                                        style: GoogleFonts.inter(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.bold,
+                                          color: isGiris ? Colors.green : Colors.red,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        date,
+                                        style: GoogleFonts.inter(fontSize: 9, color: AppColors.gray400),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> _loadStockHistory(String productAd, String currentFirmaName) async {
+    final List<Map<String, dynamic>> results = [];
+
+    // 1. Fetch Alış Faturaları
+    final faturalarSnap = await FirebaseFirestore.instance.collection('faturalar')
+        .where('firma', isEqualTo: currentFirmaName)
+        .where('tip', isEqualTo: 'alis')
+        .get();
+
+    for (var doc in faturalarSnap.docs) {
+      final data = doc.data();
+      final status = data['durum'] ?? 'aktif';
+      if (status == 'iptal') continue;
+
+      final faturaNo = data['faturaNo'] ?? '';
+      final tedarikci = data['tedarikci'] ?? '';
+      final tarih = data['tarih'] ?? '';
+      final Timestamp? ts = data['timestamp'] as Timestamp?;
+      final dateVal = ts?.toDate() ?? DateTime.now();
+
+      final kalemler = data['kalemler'] as List? ?? [];
+      for (var item in kalemler) {
+        if (item is Map) {
+          final urun = item['urun'] as String? ?? '';
+          if (urun.toLowerCase().trim() == productAd.toLowerCase().trim()) {
+            final double miktar = (item['miktar'] as num?)?.toDouble() ?? 0.0;
+            results.add({
+              'tip': 'giris',
+              'partner': tedarikci,
+              'miktar': miktar,
+              'tarih': tarih,
+              'aciklama': 'Alış Faturası ($faturaNo)',
+              'timestamp': dateVal,
+            });
+          }
+        }
+      }
+    }
+
+    // 2. Fetch Direct Sales (satislar)
+    final satislarSnap = await FirebaseFirestore.instance.collection('satislar')
+        .where('firma', isEqualTo: currentFirmaName)
+        .where('urun', isEqualTo: productAd)
+        .get();
+
+    for (var doc in satislarSnap.docs) {
+      final data = doc.data();
+      final uretici = data['uretici'] ?? '';
+      final miktar = (data['miktar'] as num?)?.toDouble() ?? 0.0;
+      final tarih = data['tarih'] ?? '';
+      final Timestamp? ts = data['timestamp'] as Timestamp?;
+      final dateVal = ts?.toDate() ?? DateTime.now();
+
+      results.add({
+        'tip': 'cikis',
+        'partner': uretici,
+        'miktar': miktar,
+        'tarih': tarih,
+        'aciklama': 'Direkt Satış',
+        'timestamp': dateVal,
+      });
+    }
+
+    // 3. Fetch Delivered Producer Orders (urunler_siparisler)
+    final siparislerSnap = await FirebaseFirestore.instance.collection('urunler_siparisler')
+        .where('firma', isEqualTo: currentFirmaName)
+        .where('urun', isEqualTo: productAd)
+        .where('durum', isEqualTo: 'Teslim Edildi')
+        .get();
+
+    for (var doc in siparislerSnap.docs) {
+      final data = doc.data();
+      final uretici = data['uretici'] ?? '';
+      final miktar = (data['miktar'] as num?)?.toDouble() ?? 0.0;
+      final tarih = data['tarih'] ?? '';
+      final Timestamp? ts = data['timestamp'] as Timestamp?;
+      final dateVal = ts?.toDate() ?? DateTime.now();
+
+      results.add({
+        'tip': 'cikis',
+        'partner': uretici,
+        'miktar': miktar,
+        'tarih': tarih,
+        'aciklama': 'Sipariş Teslimatı',
+        'timestamp': dateVal,
+      });
+    }
+
+    // Sort results by timestamp descending
+    results.sort((a, b) {
+      final DateTime tA = a['timestamp'] as DateTime;
+      final DateTime tB = b['timestamp'] as DateTime;
+      return tB.compareTo(tA);
+    });
+
+    return results;
+  }
 }
 
 // --- PRODUCER ORDERS HISTORY PAGE ---
-class _ProducerOrdersHistoryPage extends StatelessWidget {
+class ProducerOrdersHistoryPage extends StatelessWidget {
   final String producerName;
   final String firmaName;
-  const _ProducerOrdersHistoryPage({required this.producerName, required this.firmaName});
+  const ProducerOrdersHistoryPage({required this.producerName, required this.firmaName});
 
   @override
   Widget build(BuildContext context) {

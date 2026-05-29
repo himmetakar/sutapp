@@ -267,7 +267,7 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
           }
         }
         if (dynamicColumns.isEmpty) {
-          dynamicColumns.addAll(['Bağkur', 'keyfi kesinti', 'Stopaj']);
+          dynamicColumns.addAll(['Bağkur', 'Stopaj', 'Borsa']);
         }
 
         Map<String, dynamic>? kesintiAyarlari;

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/firestore_service.dart';
 import '../../config/theme.dart';
@@ -42,6 +44,17 @@ class _FirmaDuyuruGonderScreenState extends State<FirmaDuyuruGonderScreen> {
     try {
       final user = auth.user;
       final firmaName = user?.displayName ?? 'Kayseri Çiftlik'; // fallback
+
+      // Get firm message limits
+      final firmSnap = await FirebaseFirestore.instance.collection('firmalar').where('ad', isEqualTo: firmaName).limit(1).get();
+      if (firmSnap.docs.isNotEmpty) {
+        final firmData = firmSnap.docs.first.data();
+        final int maxMesaj = (firmData['maxMesaj'] as num?)?.toInt() ?? 20;
+        final countSnap = await FirebaseFirestore.instance.collection('duyurular').where('senderFirma', isEqualTo: firmaName).get();
+        if (countSnap.docs.length >= maxMesaj) {
+          throw Exception('Firma maksimum mesaj limitine ($maxMesaj) ulaştınız. Daha fazla mesaj gönderemezsiniz.');
+        }
+      }
 
       await FirestoreService().sendAnnouncement(
         senderId: user?.uid ?? 'demo_firma',
@@ -253,6 +266,7 @@ class _AdminDuyuruGonderScreenState extends State<AdminDuyuruGonderScreen> {
   bool _sendToFirma = true;
   bool _sendToSurucu = true;
   bool _sendToUretici = true;
+  bool _isPopUp = false;
   bool _sending = false;
 
   @override
@@ -291,6 +305,7 @@ class _AdminDuyuruGonderScreenState extends State<AdminDuyuruGonderScreen> {
         targetProducers: false,
         isGlobal: true,
         targetRoles: targetRoles,
+        isPopUp: _isPopUp,
       );
 
       if (mounted) {
@@ -438,6 +453,16 @@ class _AdminDuyuruGonderScreenState extends State<AdminDuyuruGonderScreen> {
                         contentPadding: EdgeInsets.zero,
                         controlAffinity: ListTileControlAffinity.leading,
                       ),
+                      const SizedBox(height: 12),
+                      CheckboxListTile(
+                        value: _isPopUp,
+                        onChanged: (val) => setState(() => _isPopUp = val ?? false),
+                        title: Text('Pop-up Reklam Bildirimi', style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.bold, color: Colors.blueAccent)),
+                        subtitle: Text('Kullanıcılar uygulamaya girdiğinde tam ekran pop-up olarak gösterilir', style: GoogleFonts.inter(fontSize: 10.5, color: AppColors.gray400)),
+                        activeColor: Colors.blueAccent,
+                        contentPadding: EdgeInsets.zero,
+                        controlAffinity: ListTileControlAffinity.leading,
+                      ),
                       const SizedBox(height: 24),
 
                       // Submit Button
@@ -468,6 +493,140 @@ class _AdminDuyuruGonderScreenState extends State<AdminDuyuruGonderScreen> {
                                   ),
                                 ),
                         ),
+                      ),
+                      const SizedBox(height: 32),
+                      const Divider(height: 32),
+                      Text(
+                        'Gönderilen Sistem Duyuruları',
+                        style: GoogleFonts.inter(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.gray800,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      StreamBuilder<QuerySnapshot>(
+                        stream: FirebaseFirestore.instance
+                            .collection('duyurular')
+                            .where('isGlobal', isEqualTo: true)
+                            .orderBy('timestamp', descending: true)
+                            .snapshots(),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState == ConnectionState.waiting) {
+                            return const Center(child: CircularProgressIndicator());
+                          }
+                          final docs = snapshot.data?.docs ?? [];
+                          if (docs.isEmpty) {
+                            return Center(
+                              child: Text(
+                                'Henüz sistem duyurusu gönderilmemiş.',
+                                style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray400),
+                              ),
+                            );
+                          }
+                          return ListView.separated(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: docs.length,
+                            separatorBuilder: (context, index) => const Divider(height: 24),
+                            itemBuilder: (context, index) {
+                              final data = docs[index].data() as Map<String, dynamic>;
+                              final baslik = data['baslik'] ?? '';
+                              final icerik = data['icerik'] ?? '';
+                              final timestamp = data['timestamp'] as Timestamp?;
+                              final dateStr = timestamp != null
+                                  ? DateFormat('dd.MM.yyyy HH:mm').format(timestamp.toDate())
+                                  : '-';
+                              final isPopUp = data['isPopUp'] as bool? ?? false;
+                              final iletilen = data['iletilenCount'] ?? 0;
+                              final iletilemeyen = data['iletilemeyenCount'] ?? 0;
+                              final List<dynamic>? roles = data['targetRoles'] as List<dynamic>?;
+                              final rolesStr = roles?.join(', ') ?? 'Hepsi';
+
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          baslik,
+                                          style: GoogleFonts.inter(
+                                            fontSize: 13.5,
+                                            fontWeight: FontWeight.bold,
+                                            color: AppColors.gray900,
+                                          ),
+                                        ),
+                                      ),
+                                      Text(
+                                        dateStr,
+                                        style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray400),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    icerik,
+                                    style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray600),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Wrap(
+                                    spacing: 6,
+                                    runSpacing: 4,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.gray100,
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: Text(
+                                          'Roller: $rolesStr',
+                                          style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray600, fontWeight: FontWeight.w500),
+                                        ),
+                                      ),
+                                      if (isPopUp)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: Colors.blue.shade50,
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: Text(
+                                            'Pop-up Reklam',
+                                            style: GoogleFonts.inter(fontSize: 10, color: Colors.blue.shade700, fontWeight: FontWeight.bold),
+                                          ),
+                                        ),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.success.withValues(alpha: 0.1),
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: Text(
+                                          'İletilen: $iletilen',
+                                          style: GoogleFonts.inter(fontSize: 10, color: AppColors.success, fontWeight: FontWeight.w600),
+                                        ),
+                                      ),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.danger.withValues(alpha: 0.1),
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: Text(
+                                          'İletilemeyen: $iletilemeyen',
+                                          style: GoogleFonts.inter(fontSize: 10, color: AppColors.danger, fontWeight: FontWeight.w600),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              );
+                            },
+                          );
+                        },
                       ),
                     ],
                   ),

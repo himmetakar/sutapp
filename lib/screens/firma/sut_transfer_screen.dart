@@ -8,7 +8,8 @@ import '../../config/theme.dart';
 import '../../providers/auth_provider.dart';
 
 class SutTransferScreen extends StatefulWidget {
-  const SutTransferScreen({super.key});
+  final String? action;
+  const SutTransferScreen({super.key, this.action});
 
   @override
   State<SutTransferScreen> createState() => _SutTransferScreenState();
@@ -17,6 +18,20 @@ class SutTransferScreen extends StatefulWidget {
 class _SutTransferScreenState extends State<SutTransferScreen> {
   bool _isRefreshing = false;
   String _searchQuery = '';
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.action == 'addSale') {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final auth = Provider.of<AuthProvider>(context, listen: false);
+        final currentFirmaName = auth.user?.displayName ?? '';
+        if (currentFirmaName.isNotEmpty) {
+          _showCreateTransferDialog(currentFirmaName);
+        }
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

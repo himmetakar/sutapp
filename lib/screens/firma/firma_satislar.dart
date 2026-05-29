@@ -99,6 +99,18 @@ class _FirmaSatislarScreenState extends State<FirmaSatislarScreen> {
                       'timestamp': FieldValue.serverTimestamp(),
                     });
 
+                    // Decrement stock in urunler
+                    final urunSnap = await _db.collection('urunler')
+                        .where('firma', isEqualTo: currentFirmaName)
+                        .where('ad', isEqualTo: product)
+                        .limit(1)
+                        .get();
+                    if (urunSnap.docs.isNotEmpty) {
+                      await urunSnap.docs.first.reference.update({
+                        'stok': FieldValue.increment(-amount),
+                      });
+                    }
+
                     Navigator.pop(ctx);
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('Satış başarıyla kaydedildi! Üretici hesabına borç olarak yansıtıldı.'), backgroundColor: AppColors.success),
@@ -129,7 +141,27 @@ class _FirmaSatislarScreenState extends State<FirmaSatislarScreen> {
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Vazgeç')),
           ElevatedButton(
             onPressed: () async {
+              final data = doc.data() as Map<String, dynamic>;
+              final product = data['urun'] as String? ?? '';
+              final amount = (data['miktar'] as num?)?.toDouble() ?? 0.0;
+              final currentFirmaName = data['firma'] as String? ?? '';
+
               await doc.reference.delete();
+
+              // Increment stock back
+              if (product.isNotEmpty && amount > 0) {
+                final urunSnap = await _db.collection('urunler')
+                    .where('firma', isEqualTo: currentFirmaName)
+                    .where('ad', isEqualTo: product)
+                    .limit(1)
+                    .get();
+                if (urunSnap.docs.isNotEmpty) {
+                  await urunSnap.docs.first.reference.update({
+                    'stok': FieldValue.increment(amount),
+                  });
+                }
+              }
+
               Navigator.pop(ctx);
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('Satış kaydı silindi!'), backgroundColor: AppColors.success),
@@ -154,7 +186,7 @@ class _FirmaSatislarScreenState extends State<FirmaSatislarScreen> {
         title: Text('Üretici Satışları (Yem vb.)', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.go('/firma/ureticiler'),
+          onPressed: () => context.go('/firma/urunler'),
         ),
       ),
       backgroundColor: AppColors.gray50,

@@ -74,20 +74,22 @@ class _FirmaRaporlarState extends State<FirmaRaporlar> {
 
             switch (_selectedFilter) {
               case 'Günlük':
-                return date.year == _selectedDate.year &&
-                    date.month == _selectedDate.month &&
-                    date.day == _selectedDate.day;
-              case 'Aylık':
+                // For Günlük, the selected period is a whole month (31 days base)
                 return date.year == _selectedDate.year &&
                     date.month == _selectedDate.month;
-              case 'Yıllık':
+              case 'Aylık':
+                // For Aylık, the selected period is a whole year (12 months base)
                 return date.year == _selectedDate.year;
+              case 'Yıllık':
+                // For Yıllık, we show the last 5 years up to selected year
+                final int startYear = _selectedDate.year - 4;
+                return date.year >= startYear && date.year <= _selectedDate.year;
               default:
                 return true;
             }
           }).toList();
 
-          // Calculate total milk
+          // Calculate total milk and producer totals
           double totalMilk = 0.0;
           final Map<String, double> producerTotals = {};
 
@@ -105,17 +107,75 @@ class _FirmaRaporlarState extends State<FirmaRaporlar> {
           final sortedProducers = producerTotals.entries.toList()
             ..sort((a, b) => b.value.compareTo(a.value));
 
+          // Calculate grouped breakdown
+          final Map<String, double> breakdownMap = {};
+          final turkishMonths = [
+            'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
+            'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'
+          ];
+
+          if (_selectedFilter == 'Günlük') {
+            final daysCount = DateTime(_selectedDate.year, _selectedDate.month + 1, 0).day;
+            final monthName = turkishMonths[_selectedDate.month - 1];
+            for (int i = 1; i <= daysCount; i++) {
+              breakdownMap['$i $monthName'] = 0.0;
+            }
+            for (var doc in filteredDocs) {
+              final data = doc.data() as Map<String, dynamic>;
+              final ts = data['timestamp'] as Timestamp?;
+              if (ts != null) {
+                final date = ts.toDate();
+                final mVal = data['m'] ?? 0;
+                final double m = mVal is num ? mVal.toDouble() : (double.tryParse(mVal.toString()) ?? 0.0);
+                final key = '${date.day} $monthName';
+                breakdownMap[key] = (breakdownMap[key] ?? 0.0) + m;
+              }
+            }
+          } else if (_selectedFilter == 'Aylık') {
+            for (int i = 1; i <= 12; i++) {
+              breakdownMap[turkishMonths[i - 1]] = 0.0;
+            }
+            for (var doc in filteredDocs) {
+              final data = doc.data() as Map<String, dynamic>;
+              final ts = data['timestamp'] as Timestamp?;
+              if (ts != null) {
+                final date = ts.toDate();
+                final mVal = data['m'] ?? 0;
+                final double m = mVal is num ? mVal.toDouble() : (double.tryParse(mVal.toString()) ?? 0.0);
+                final key = turkishMonths[date.month - 1];
+                breakdownMap[key] = (breakdownMap[key] ?? 0.0) + m;
+              }
+            }
+          } else { // Yıllık
+            final int startYear = _selectedDate.year - 4;
+            for (int i = startYear; i <= _selectedDate.year; i++) {
+              breakdownMap['$i'] = 0.0;
+            }
+            for (var doc in filteredDocs) {
+              final data = doc.data() as Map<String, dynamic>;
+              final ts = data['timestamp'] as Timestamp?;
+              if (ts != null) {
+                final date = ts.toDate();
+                final mVal = data['m'] ?? 0;
+                final double m = mVal is num ? mVal.toDouble() : (double.tryParse(mVal.toString()) ?? 0.0);
+                final key = '${date.year}';
+                breakdownMap[key] = (breakdownMap[key] ?? 0.0) + m;
+              }
+            }
+          }
+
           // Format period label
           String periodLabel;
           switch (_selectedFilter) {
             case 'Günlük':
-              periodLabel = DateFormat('d MMMM yyyy', 'tr_TR').format(_selectedDate);
-              break;
-            case 'Aylık':
               periodLabel = DateFormat('MMMM yyyy', 'tr_TR').format(_selectedDate);
               break;
+            case 'Aylık':
+              periodLabel = DateFormat('yyyy', 'tr_TR').format(_selectedDate);
+              break;
             case 'Yıllık':
-              periodLabel = _selectedDate.year.toString();
+              final int startYear = _selectedDate.year - 4;
+              periodLabel = '$startYear - ${_selectedDate.year}';
               break;
             default:
               periodLabel = '';
@@ -134,6 +194,10 @@ class _FirmaRaporlarState extends State<FirmaRaporlar> {
 
               // Total milk summary card
               _buildTotalSummaryCard(totalMilk, filteredDocs.length),
+              const SizedBox(height: 16),
+
+              // Grouped breakdown
+              _buildGroupedBreakdownCard(breakdownMap),
               const SizedBox(height: 16),
 
               // Top producers
@@ -207,13 +271,13 @@ class _FirmaRaporlarState extends State<FirmaRaporlar> {
             setState(() {
               switch (_selectedFilter) {
                 case 'Günlük':
-                  _selectedDate = _selectedDate.subtract(const Duration(days: 1));
-                  break;
-                case 'Aylık':
                   _selectedDate = DateTime(_selectedDate.year, _selectedDate.month - 1, 1);
                   break;
-                case 'Yıllık':
+                case 'Aylık':
                   _selectedDate = DateTime(_selectedDate.year - 1, 1, 1);
+                  break;
+                case 'Yıllık':
+                  _selectedDate = DateTime(_selectedDate.year - 5, 1, 1);
                   break;
               }
             });
@@ -232,9 +296,21 @@ class _FirmaRaporlarState extends State<FirmaRaporlar> {
                 initialDate: _selectedDate,
                 firstDate: DateTime(2020),
                 lastDate: DateTime(2030),
+                initialDatePickerMode: DatePickerMode.year,
               );
               if (picked != null) {
-                setState(() => _selectedDate = picked);
+                setState(() => _selectedDate = DateTime(picked.year, picked.month, 1));
+              }
+            } else if (_selectedFilter == 'Aylık') {
+              final picked = await showDatePicker(
+                context: context,
+                initialDate: _selectedDate,
+                firstDate: DateTime(2020),
+                lastDate: DateTime(2030),
+                initialDatePickerMode: DatePickerMode.year,
+              );
+              if (picked != null) {
+                setState(() => _selectedDate = DateTime(picked.year, 1, 1));
               }
             }
           },
@@ -267,13 +343,13 @@ class _FirmaRaporlarState extends State<FirmaRaporlar> {
             setState(() {
               switch (_selectedFilter) {
                 case 'Günlük':
-                  _selectedDate = _selectedDate.add(const Duration(days: 1));
-                  break;
-                case 'Aylık':
                   _selectedDate = DateTime(_selectedDate.year, _selectedDate.month + 1, 1);
                   break;
-                case 'Yıllık':
+                case 'Aylık':
                   _selectedDate = DateTime(_selectedDate.year + 1, 1, 1);
+                  break;
+                case 'Yıllık':
+                  _selectedDate = DateTime(_selectedDate.year + 5, 1, 1);
                   break;
               }
             });
@@ -522,6 +598,107 @@ class _FirmaRaporlarState extends State<FirmaRaporlar> {
                 ),
               );
             }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGroupedBreakdownCard(Map<String, double> totals) {
+    final double maxVal = totals.values.isNotEmpty
+        ? totals.values.reduce((a, b) => a > b ? a : b)
+        : 1.0;
+    final maxValAdjusted = maxVal == 0 ? 1.0 : maxVal;
+
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.analytics_rounded, color: Color(0xFF0284C7), size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'Toplanan Süt Detayı',
+                style: GoogleFonts.inter(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.gray800,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '$_selectedFilter bazında süt toplama miktarları',
+            style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray400),
+          ),
+          const SizedBox(height: 16),
+          if (totals.values.every((v) => v == 0.0))
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: Center(
+                child: Column(
+                  children: [
+                    const Icon(Icons.bar_chart_rounded, size: 40, color: AppColors.gray300),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Bu dönemde süt toplama kaydı bulunmuyor.',
+                      style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray500),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: totals.length,
+              itemBuilder: (context, index) {
+                final key = totals.keys.elementAt(index);
+                final val = totals[key] ?? 0.0;
+                final percent = (val / maxValAdjusted).clamp(0.0, 1.0);
+
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6.0),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            key,
+                            style: GoogleFonts.inter(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.gray700,
+                            ),
+                          ),
+                          Text(
+                            '${val.toStringAsFixed(0)} LT',
+                            style: GoogleFonts.inter(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.primary600,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(
+                          value: percent,
+                          backgroundColor: AppColors.gray100,
+                          valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF0284C7)),
+                          minHeight: 6,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
         ],
       ),
     );

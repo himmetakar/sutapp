@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 import '../../providers/auth_provider.dart';
 import '../../config/theme.dart';
 
@@ -14,6 +16,82 @@ class FirmaHomeScreen extends StatefulWidget {
 
 class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
   String _currentMenu = 'main'; // 'main', 'personel', 'sut_tank'
+  static final Set<String> _shownPopups = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _checkForPopUpAds();
+  }
+
+  void _checkForPopUpAds() {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        final query = await FirebaseFirestore.instance
+            .collection('duyurular')
+            .where('isGlobal', isEqualTo: true)
+            .where('isPopUp', isEqualTo: true)
+            .where('targetRoles', arrayContains: 'firma')
+            .get();
+
+        if (query.docs.isNotEmpty) {
+          final docs = List<QueryDocumentSnapshot>.from(query.docs);
+          docs.sort((a, b) {
+            final aTime = (a.data() as Map<String, dynamic>)['timestamp'] as Timestamp?;
+            final bTime = (b.data() as Map<String, dynamic>)['timestamp'] as Timestamp?;
+            if (aTime == null) return 1;
+            if (bTime == null) return -1;
+            return bTime.compareTo(aTime);
+          });
+          final doc = docs.first;
+          final docId = doc.id;
+          
+          if (_shownPopups.contains(docId)) return;
+          _shownPopups.add(docId);
+
+          final data = doc.data() as Map<String, dynamic>?;
+          final baslik = data?['baslik'] ?? '';
+          final icerik = data?['icerik'] ?? '';
+
+          if (!mounted) return;
+
+          showDialog(
+            context: context,
+            barrierDismissible: true,
+            builder: (ctx) {
+              return AlertDialog(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                title: Row(
+                  children: [
+                    const Icon(Icons.campaign_rounded, color: Colors.blueAccent),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        baslik,
+                        style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                    ),
+                  ],
+                ),
+                content: Text(
+                  icerik,
+                  style: GoogleFonts.inter(fontSize: 13, color: AppColors.gray700),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: Text('Kapat', style: GoogleFonts.inter(fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              );
+            },
+          );
+        }
+      } catch (e) {
+        print('Error checking pop-up ads: $e');
+      }
+    });
+  }
 
   void _onCardTap(String target) {
     if (target == 'personel' || target == 'sut_tank' || target == 'firma_yonetimi') {
@@ -35,14 +113,120 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
   Widget build(BuildContext context) {
     final auth = Provider.of<AuthProvider>(context);
     final user = auth.user;
+    final String currentFirma = user?.displayName ?? '';
 
-    return Scaffold(
-      backgroundColor: AppColors.gray50,
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-          children: [
-            if (_currentMenu == 'main') ...[
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('firmalar')
+          .where('ad', isEqualTo: currentFirma)
+          .snapshots(),
+      builder: (context, firmSnap) {
+        bool isExpired = false;
+        bool isNearExpiration = false;
+        DateTime? expiryDate;
+
+        if (firmSnap.hasData && firmSnap.data!.docs.isNotEmpty) {
+          final firmData = firmSnap.data!.docs.first.data() as Map<String, dynamic>;
+          final Timestamp? expiryTs = firmData['abonelikBitis'] as Timestamp?;
+          if (expiryTs != null) {
+            expiryDate = expiryTs.toDate();
+            final now = DateTime.now();
+            if (now.isAfter(expiryDate)) {
+              isExpired = true;
+            } else if (expiryDate.difference(now).inDays <= 30) {
+              isNearExpiration = true;
+            }
+          }
+        }
+
+        if (isExpired) {
+          return Scaffold(
+            backgroundColor: AppColors.gray50,
+            body: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 400),
+                child: Card(
+                  margin: const EdgeInsets.all(24),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    side: const BorderSide(color: Colors.redAccent, width: 1.5),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.lock_clock_rounded, size: 64, color: Colors.red),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Abonelik Süreniz Doldu!',
+                          style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.gray900),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Sistem kullanımınız askıya alınmıştır. Verileriniz silinmemiştir fakat işlem yapamazsınız. Lütfen sistem yöneticisi ile iletişime geçin.',
+                          style: GoogleFonts.inter(fontSize: 13, color: AppColors.gray500),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 24),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 48,
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primary600,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              elevation: 0,
+                            ),
+                            onPressed: () {
+                              auth.logout();
+                              context.go('/login');
+                            },
+                            icon: const Icon(Icons.logout_rounded, size: 16),
+                            label: const Text('Çıkış Yap'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        }
+
+        return Scaffold(
+          backgroundColor: AppColors.gray50,
+          body: SafeArea(
+            child: ListView(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+              children: [
+                if (isNearExpiration && expiryDate != null) ...[
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 16),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEF2F2),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFFCA5A5)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 20),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Abonelik süreniz doluyor! Son tarih: ${DateFormat('dd.MM.yyyy').format(expiryDate)}',
+                            style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.bold, color: const Color(0xFF991B1B)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                if (_currentMenu == 'main') ...[
               // Screen Description / Welcome Title
               Row(
                 children: [
@@ -101,10 +285,10 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
                     onTap: () => context.push('/firma/personel'),
                   ),
 
-                  // Süt ve Tank
+                   // Süt Yönetimi
                   _buildMenuCard(
                     icon: Icons.water_drop_rounded,
-                    title: 'Süt ve Tank',
+                    title: 'Süt Yönetimi',
                     subtitle: 'Süt toplama ve tanklar',
                     iconColor: Colors.white,
                     bgColor: const Color(0xFF008AAE),
@@ -176,10 +360,10 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
               ),
             ] else if (_currentMenu == 'sut_tank') ...[
               // Centered Submenu Header with Water Drop Icon
-              _buildCenteredSubmenuHeader('Süt ve Tank Yönetimi'),
+              _buildCenteredSubmenuHeader('Süt Yönetimi'),
               const SizedBox(height: 24),
 
-              // Submenu Grid (3 columns for 10 cards)
+              // Submenu Grid (3 columns for 11 cards)
               GridView.count(
                 crossAxisCount: 3,
                 crossAxisSpacing: 10,
@@ -193,6 +377,12 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
                     title: 'Aylık Süt Kayıtları',
                     color: const Color(0xFF2563EB),
                     onTap: () => context.push('/firma/aylik-sut'),
+                  ),
+                  _buildSubmenuCard(
+                    icon: Icons.water_drop_rounded,
+                    title: 'Süt Toplamalar',
+                    color: const Color(0xFF10B981),
+                    onTap: () => context.push('/firma/toplamalar'),
                   ),
                   _buildSubmenuCard(
                     icon: Icons.speed_rounded,
@@ -287,7 +477,9 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
         ),
       ),
     );
-  }
+    },
+  );
+}
 
   Widget _buildCenteredSubmenuHeader(String title) {
     return Column(

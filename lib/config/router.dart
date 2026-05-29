@@ -124,7 +124,14 @@ GoRouter createRouter(AuthProvider auth) {
           GoRoute(path: '/firma/dashboard', builder: (_, __) => const FirmaDashboard()),
           GoRoute(path: '/firma/profil', builder: (_, __) => const FirmaProfilScreen()),
           GoRoute(path: '/firma/ureticiler', builder: (_, __) => const FirmaUreticiler()),
-          GoRoute(path: '/firma/ureticiler/liste', builder: (_, __) => const FirmaUreticiListesiScreen()),
+          GoRoute(
+            path: '/firma/ureticiler/liste',
+            builder: (context, state) {
+              final group = state.uri.queryParameters['group'];
+              final birlik = state.uri.queryParameters['birlik'];
+              return FirmaUreticiListesiScreen(groupFilter: group, birlikFilter: birlik);
+            },
+          ),
           GoRoute(path: '/firma/tahsilat', builder: (_, __) => const FirmaTahsilatScreen()),
           GoRoute(path: '/firma/gruplar', builder: (_, __) => const FirmaGruplarScreen()),
           GoRoute(path: '/firma/birlikler', builder: (_, __) => const FirmaBirliklerScreen()),
@@ -170,7 +177,13 @@ GoRouter createRouter(AuthProvider auth) {
           GoRoute(path: '/firma/tanklar/detay', builder: (_, __) => const TankDetayScreen()),
           GoRoute(path: '/firma/tanklar/atama', builder: (_, __) => const FirmaTankAtamaScreen()),
           GoRoute(path: '/firma/sut-kabul', builder: (_, __) => const SutKabulScreen()),
-          GoRoute(path: '/firma/sut-transferleri', builder: (_, __) => const SutTransferScreen()),
+          GoRoute(
+            path: '/firma/sut-transferleri',
+            builder: (context, state) {
+              final action = state.uri.queryParameters['action'];
+              return SutTransferScreen(action: action);
+            },
+          ),
           GoRoute(path: '/firma/sut-analiz', builder: (_, __) => const SutAnalizScreen()),
           GoRoute(path: '/firma/toplamalar', builder: (_, __) => const FirmaToplamalar()),
           GoRoute(path: '/firma/teslimatlar', builder: (_, __) => const FirmaTeslimatlar()),
@@ -201,8 +214,8 @@ GoRouter createRouter(AuthProvider auth) {
           GoRoute(path: '/firma/finans/odeme-gecmisi', builder: (_, __) => const OdemeGecmisiScreen()),
           GoRoute(path: '/firma/finans/cezalar', builder: (_, __) => const MusteriCezalariScreen()),
           GoRoute(path: '/firma/finans/cezalar/ekle', builder: (_, __) => const CezaKesScreen()),
-          GoRoute(path: '/firma/finans/kesintiler', builder: (_, __) => const MusteriKesintileriScreen()),
-          GoRoute(path: '/firma/finans/oranlar', builder: (_, __) => const KesintiOranlariScreen()),
+          GoRoute(path: '/firma/finans/kesintiler', builder: (_, __) => const MusteriKesintileriScreen(initialTab: 0)),
+          GoRoute(path: '/firma/finans/oranlar', builder: (_, __) => const MusteriKesintileriScreen(initialTab: 1)),
         ],
       ),
 

@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import '../../providers/auth_provider.dart';
 import '../../config/theme.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 
 class FirmaProfilScreen extends StatefulWidget {
   const FirmaProfilScreen({super.key});
@@ -286,17 +287,62 @@ class _FirmaProfilScreenState extends State<FirmaProfilScreen> {
   Widget build(BuildContext context) {
     final auth = Provider.of<AuthProvider>(context);
     final user = auth.user;
+    final String currentFirma = user?.displayName ?? '';
 
     final avatarChar = user?.displayName.isNotEmpty == true 
         ? user!.displayName.substring(0, 1).toUpperCase() 
         : 'F';
 
-    return Scaffold(
-      backgroundColor: AppColors.gray50,
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-          children: [
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('firmalar')
+          .where('ad', isEqualTo: currentFirma)
+          .snapshots(),
+      builder: (context, firmSnap) {
+        bool isNearExpiration = false;
+        DateTime? expiryDate;
+
+        if (firmSnap.hasData && firmSnap.data!.docs.isNotEmpty) {
+          final firmData = firmSnap.data!.docs.first.data() as Map<String, dynamic>;
+          final Timestamp? expiryTs = firmData['abonelikBitis'] as Timestamp?;
+          if (expiryTs != null) {
+            expiryDate = expiryTs.toDate();
+            final now = DateTime.now();
+            if (expiryDate.difference(now).inDays <= 30 && expiryDate.isAfter(now)) {
+              isNearExpiration = true;
+            }
+          }
+        }
+
+        return Scaffold(
+          backgroundColor: AppColors.gray50,
+          body: SafeArea(
+            child: ListView(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+              children: [
+                if (isNearExpiration && expiryDate != null) ...[
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 16),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEF2F2),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFFCA5A5)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 20),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Abonelik süreniz doluyor! Son tarih: ${DateFormat('dd.MM.yyyy').format(expiryDate)}',
+                            style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.bold, color: const Color(0xFF991B1B)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
             // Title
             Text(
               'Profil',
@@ -707,11 +753,13 @@ class _FirmaProfilScreenState extends State<FirmaProfilScreen> {
                 ),
               ),
             ),
-          ],
+            ],
+          ),
         ),
-      ),
-    );
-  }
+      );
+    },
+  );
+}
 
   Widget _buildDetailItem(IconData icon, String label, String value) {
     return Padding(

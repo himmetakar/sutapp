@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
 import '../config/theme.dart';
+
 
 // ─────────────────────────────────────────────────────────────
 // STAT CARD — Premium istatistik kartı
@@ -751,3 +753,215 @@ class _SearchableDropdownState extends State<SearchableDropdown> {
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────
+// MONTH PERIOD PICKER
+// ─────────────────────────────────────────────────────────────
+class MonthPeriodPicker extends StatelessWidget {
+  final DateTime selectedDate;
+  final ValueChanged<DateTime> onDateChanged;
+
+  const MonthPeriodPicker({
+    super.key,
+    required this.selectedDate,
+    required this.onDateChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final monthStr = DateFormat('MMMM yyyy', 'tr_TR').format(selectedDate);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.gray200),
+        boxShadow: AppShadows.sm,
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          IconButton(
+            icon: const Icon(Icons.chevron_left_rounded, color: AppColors.gray600),
+            onPressed: () {
+              onDateChanged(DateTime(selectedDate.year, selectedDate.month - 1));
+            },
+          ),
+          InkWell(
+            onTap: () async {
+              final now = DateTime.now();
+              int tempYear = selectedDate.year;
+              int tempMonth = selectedDate.month;
+              final result = await showDialog<DateTime>(
+                context: context,
+                builder: (ctx) {
+                  return AlertDialog(
+                    title: const Text('Dönem Seçin'),
+                    content: StatefulBuilder(
+                      builder: (context, setDlgState) {
+                        return Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            DropdownButtonFormField<int>(
+                              value: tempYear,
+                              decoration: const InputDecoration(labelText: 'Yıl'),
+                              items: List.generate(11, (i) => now.year - 5 + i)
+                                  .map((y) => DropdownMenuItem(value: y, child: Text(y.toString())))
+                                  .toList(),
+                              onChanged: (val) {
+                                if (val != null) {
+                                  setDlgState(() => tempYear = val);
+                                }
+                              },
+                            ),
+                            const SizedBox(height: 12),
+                            DropdownButtonFormField<int>(
+                              value: tempMonth,
+                              decoration: const InputDecoration(labelText: 'Ay'),
+                              items: List.generate(12, (i) => i + 1)
+                                  .map((m) => DropdownMenuItem(
+                                        value: m,
+                                        child: Text(DateFormat('MMMM', 'tr_TR').format(DateTime(2000, m))),
+                                      ))
+                                  .toList(),
+                              onChanged: (val) {
+                                if (val != null) {
+                                  setDlgState(() => tempMonth = val);
+                                }
+                              },
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text('Vazgeç'),
+                      ),
+                      ElevatedButton(
+                        onPressed: () => Navigator.pop(ctx, DateTime(tempYear, tempMonth)),
+                        child: const Text('Seç'),
+                      ),
+                    ],
+                  );
+                },
+              );
+              if (result != null) {
+                onDateChanged(result);
+              }
+            },
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.calendar_month_rounded, color: AppColors.primary600, size: 16),
+                const SizedBox(width: 8),
+                Text(
+                  monthStr,
+                  style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.gray800),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.chevron_right_rounded, color: AppColors.gray600),
+            onPressed: () {
+              onDateChanged(DateTime(selectedDate.year, selectedDate.month + 1));
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// PREMIUM DATE RANGE FILTER
+// ─────────────────────────────────────────────────────────────
+class PremiumDateRangeFilter extends StatelessWidget {
+  final DateTimeRange? selectedRange;
+  final ValueChanged<DateTimeRange?> onRangeChanged;
+  final String label;
+
+  const PremiumDateRangeFilter({
+    super.key,
+    required this.selectedRange,
+    required this.onRangeChanged,
+    this.label = 'Tüm Dönemler',
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () async {
+        final DateTimeRange? picked = await showDateRangePicker(
+          context: context,
+          initialDateRange: selectedRange ??
+              DateTimeRange(
+                start: DateTime.now().subtract(const Duration(days: 30)),
+                end: DateTime.now(),
+              ),
+          firstDate: DateTime(2020),
+          lastDate: DateTime(2030),
+          locale: const Locale('tr', 'TR'),
+          builder: (context, child) {
+            return Theme(
+              data: Theme.of(context).copyWith(
+                colorScheme: const ColorScheme.light(
+                  primary: AppColors.primary600,
+                  onPrimary: Colors.white,
+                  onSurface: AppColors.gray800,
+                ),
+              ),
+              child: child!,
+            );
+          },
+        );
+        if (picked != null) {
+          onRangeChanged(picked);
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: selectedRange != null ? AppColors.primary50 : Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: selectedRange != null ? AppColors.primary200 : AppColors.gray200),
+          boxShadow: AppShadows.sm,
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.date_range_rounded,
+              color: selectedRange != null ? AppColors.primary600 : AppColors.gray500,
+              size: 16,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                selectedRange != null
+                    ? '${DateFormat('dd.MM.yyyy').format(selectedRange!.start)} - ${DateFormat('dd.MM.yyyy').format(selectedRange!.end)}'
+                    : label,
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  fontWeight: selectedRange != null ? FontWeight.bold : FontWeight.w500,
+                  color: selectedRange != null ? AppColors.primary700 : AppColors.gray700,
+                ),
+              ),
+            ),
+            if (selectedRange != null)
+              IconButton(
+                constraints: const BoxConstraints(),
+                padding: EdgeInsets.zero,
+                icon: const Icon(Icons.clear_rounded, size: 14, color: AppColors.danger),
+                onPressed: () => onRangeChanged(null),
+              )
+            else
+              const Icon(Icons.chevron_right_rounded, size: 16, color: AppColors.gray400),
+          ],
+        ),
+      ),
+    );
+  }
+}
+

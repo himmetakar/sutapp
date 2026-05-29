@@ -11,7 +11,8 @@ import '../../services/firestore_service.dart';
 
 // --- MÜŞTERİ KESİNTİLERİ GRID SCREEN ---
 class MusteriKesintileriScreen extends StatefulWidget {
-  const MusteriKesintileriScreen({super.key});
+  final int initialTab;
+  const MusteriKesintileriScreen({super.key, this.initialTab = 0});
 
   @override
   State<MusteriKesintileriScreen> createState() => _MusteriKesintileriScreenState();
@@ -25,9 +26,18 @@ class _MusteriKesintileriScreenState extends State<MusteriKesintileriScreen> {
   DateTimeRange? _selectedDateRange;
   String _quickPeriod = 'Tümü';
 
+  final _oranlarFormKey = GlobalKey<FormState>();
+  final _bagkurCtrl = TextEditingController();
+  final _stopajCtrl = TextEditingController();
+  final _borsaCtrl = TextEditingController();
+  bool _oranlarLoading = false;
+
   @override
   void dispose() {
     _searchCtrl.dispose();
+    _bagkurCtrl.dispose();
+    _stopajCtrl.dispose();
+    _borsaCtrl.dispose();
     super.dispose();
   }
 
@@ -750,7 +760,7 @@ class _MusteriKesintileriScreenState extends State<MusteriKesintileriScreen> {
           }
         }
         if (dynamicColumns.isEmpty) {
-          dynamicColumns.addAll(['Bağkur', 'keyfi kesinti', 'Stopaj']);
+          dynamicColumns.addAll(['Bağkur', 'Stopaj', 'Borsa']);
         }
 
         final Map<String, double> defaultRates = {
@@ -793,24 +803,46 @@ class _MusteriKesintileriScreenState extends State<MusteriKesintileriScreen> {
               return matchSearch && matchRegion && matchGroup;
             }).toList();
 
-            return Scaffold(
-              appBar: AppBar(
-                title: Text('Müşteri Kesintileri', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
-                leading: IconButton(
-                  icon: const Icon(Icons.arrow_back_rounded),
-                  onPressed: () => context.go('/firma/finans'),
-                ),
-                actions: [
-                  IconButton(
-                    icon: const Icon(Icons.settings_rounded, color: AppColors.gray700),
-                    tooltip: 'Sütunları Yönet',
-                    onPressed: () => _showColumnManagerDialog(context, currentFirmaName, dynamicColumns),
+            // Initialize controllers if they are empty
+            if (_bagkurCtrl.text.isEmpty && !_oranlarLoading) {
+              _bagkurCtrl.text = defaultBagkur.toStringAsFixed(2);
+              _stopajCtrl.text = defaultStopaj.toStringAsFixed(2);
+              _borsaCtrl.text = defaultBorsa.toStringAsFixed(2);
+            }
+
+            return DefaultTabController(
+              length: 2,
+              initialIndex: widget.initialTab,
+              child: Scaffold(
+                appBar: AppBar(
+                  title: Text('Kesintiler', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
+                  leading: IconButton(
+                    icon: const Icon(Icons.arrow_back_rounded),
+                    onPressed: () => context.go('/firma/finans'),
                   ),
-                ],
-              ),
-              backgroundColor: AppColors.gray50,
-              body: Column(
-                children: [
+                  actions: [
+                    IconButton(
+                      icon: const Icon(Icons.settings_rounded, color: AppColors.gray700),
+                      tooltip: 'Sütunları Yönet',
+                      onPressed: () => _showColumnManagerDialog(context, currentFirmaName, dynamicColumns),
+                    ),
+                  ],
+                  bottom: const TabBar(
+                    tabs: [
+                      Tab(text: 'Müşteri Kesintileri'),
+                      Tab(text: 'Kesinti Oranları'),
+                    ],
+                    indicatorColor: AppColors.primary600,
+                    labelColor: AppColors.primary600,
+                    unselectedLabelColor: AppColors.gray500,
+                  ),
+                ),
+                backgroundColor: AppColors.gray50,
+                body: TabBarView(
+                  children: [
+                    // Tab 1: Müşteri Kesintileri Grid
+                    Column(
+                      children: [
                   // Filter bar Card
                   Container(
                     padding: const EdgeInsets.all(16),
@@ -942,41 +974,15 @@ class _MusteriKesintileriScreenState extends State<MusteriKesintileriScreen> {
                         const SizedBox(height: 12),
 
                         // Date range filter
-                        InkWell(
-                          onTap: () => _selectDateRange(context),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: AppColors.primary50,
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: AppColors.primary100),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.date_range_rounded, color: AppColors.primary600, size: 16),
-                                const SizedBox(width: 8),
-                                Text(
-                                  _selectedDateRange != null
-                                      ? '${DateFormat('dd.MM.yyyy').format(_selectedDateRange!.start)} - ${DateFormat('dd.MM.yyyy').format(_selectedDateRange!.end)} tarihleri arasındaki kesintiler'
-                                      : 'Tüm Dönemler (Kesinti dönemsellik filtresi uygula)',
-                                  style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.primary700),
-                                ),
-                                const Spacer(),
-                                if (_selectedDateRange != null)
-                                  IconButton(
-                                    constraints: const BoxConstraints(),
-                                    padding: EdgeInsets.zero,
-                                    icon: const Icon(Icons.clear, size: 14, color: AppColors.danger),
-                                    onPressed: () => setState(() {
-                                      _selectedDateRange = null;
-                                      _quickPeriod = 'Tümü';
-                                    }),
-                                  )
-                                else
-                                  const Icon(Icons.chevron_right_rounded, size: 16, color: AppColors.primary400),
-                              ],
-                            ),
-                          ),
+                        PremiumDateRangeFilter(
+                          selectedRange: _selectedDateRange,
+                          onRangeChanged: (range) {
+                            setState(() {
+                              _selectedDateRange = range;
+                              _quickPeriod = range != null ? 'Özel' : 'Tümü';
+                            });
+                          },
+                          label: 'Tüm Dönemler (Kesinti dönemsellik filtresi uygula)',
                         ),
                       ],
                     ),
@@ -1152,13 +1158,117 @@ class _MusteriKesintileriScreenState extends State<MusteriKesintileriScreen> {
                               ),
                             ),
                           ),
-                  ),
-                ],
+                    ),
+                    ],
+                    ),
+                    // Tab 2: Kesinti Oranları
+                    _buildKesintiOranlariTab(currentFirmaName),
+                  ],
+                ),
               ),
             );
           },
         );
       },
+    );
+  }
+
+  Widget _buildKesintiOranlariTab(String currentFirmaName) {
+    return Form(
+      key: _oranlarFormKey,
+      child: ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
+          Text(
+            'Yasal Kesinti Yüzdeleri',
+            style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.gray800),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Üretici süt hak edişlerinden (süt geliri üzerinden) kesilecek yasal oranları ayarlayın. Boş bırakırsanız veya hatalı değer girilirse varsayılan yasal oranlar geçerli olur.',
+            style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray500),
+          ),
+          const SizedBox(height: 24),
+          
+          TextFormField(
+            controller: _bagkurCtrl,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(
+              labelText: 'Bağkur Kesinti Oranı (%)',
+              suffixText: '%',
+              hintText: 'Örn: 2.10',
+            ),
+            validator: (val) {
+              if (val == null || val.trim().isEmpty) return 'Oran giriniz';
+              if (double.tryParse(val.replaceAll(',', '.')) == null) return 'Geçerli bir sayı giriniz';
+              return null;
+            },
+          ),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _stopajCtrl,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(
+              labelText: 'Stopaj Kesinti Oranı (%)',
+              suffixText: '%',
+              hintText: 'Örn: 1.00',
+            ),
+            validator: (val) {
+              if (val == null || val.trim().isEmpty) return 'Oran giriniz';
+              if (double.tryParse(val.replaceAll(',', '.')) == null) return 'Geçerli bir sayı giriniz';
+              return null;
+            },
+          ),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _borsaCtrl,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(
+              labelText: 'Borsa Kesinti Oranı (%)',
+              suffixText: '%',
+              hintText: 'Örn: 0.20',
+            ),
+            validator: (val) {
+              if (val == null || val.trim().isEmpty) return 'Oran giriniz';
+              if (double.tryParse(val.replaceAll(',', '.')) == null) return 'Geçerli bir sayı giriniz';
+              return null;
+            },
+          ),
+          const SizedBox(height: 32),
+          
+          ElevatedButton(
+            onPressed: _oranlarLoading ? null : () async {
+              if (_oranlarFormKey.currentState!.validate()) {
+                setState(() => _oranlarLoading = true);
+                final bk = double.parse(_bagkurCtrl.text.replaceAll(',', '.'));
+                final st = double.parse(_stopajCtrl.text.replaceAll(',', '.'));
+                final bs = double.parse(_borsaCtrl.text.replaceAll(',', '.'));
+
+                await FirebaseFirestore.instance.collection('finans_ayarlari').doc(currentFirmaName).set({
+                  'bagkurOran': bk,
+                  'stopajOran': st,
+                  'borsaOran': bs,
+                  'timestamp': FieldValue.serverTimestamp(),
+                }, SetOptions(merge: true));
+
+                setState(() => _oranlarLoading = false);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Kesinti oranları başarıyla kaydedildi!'), backgroundColor: AppColors.success),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary600,
+              foregroundColor: Colors.white,
+              minimumSize: const Size(double.infinity, 48),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            child: _oranlarLoading 
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                : const Text('Oranları Kaydet'),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -787,6 +787,7 @@ class FirmaCariEkstreScreen extends StatefulWidget {
 
 class _FirmaCariEkstreScreenState extends State<FirmaCariEkstreScreen> {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
+  DateTimeRange? _selectedDateRange;
 
   Future<void> _deleteCariIslem(DocumentSnapshot doc) async {
     showDialog(
@@ -1134,10 +1135,27 @@ class _FirmaCariEkstreScreenState extends State<FirmaCariEkstreScreen> {
           tx['runningBalance'] = running;
         }
 
-        final double netBakiye = running;
+        final double overallBakiye = running;
+
+        // Apply date filter
+        final List<Map<String, dynamic>> filteredTransactions = [];
+        for (var tx in transactions) {
+          bool isInRange = true;
+          if (_selectedDateRange != null) {
+            final txDate = (tx['timestamp'] as Timestamp).toDate();
+            final start = DateTime(_selectedDateRange!.start.year, _selectedDateRange!.start.month, _selectedDateRange!.start.day);
+            final end = DateTime(_selectedDateRange!.end.year, _selectedDateRange!.end.month, _selectedDateRange!.end.day, 23, 59, 59);
+            isInRange = txDate.isAfter(start.subtract(const Duration(seconds: 1))) && txDate.isBefore(end.add(const Duration(seconds: 1)));
+          }
+          if (isInRange) {
+            filteredTransactions.add(tx);
+          }
+        }
+
+        final double netBakiye = filteredTransactions.isNotEmpty ? filteredTransactions.last['runningBalance'] : 0.0;
 
         // Reverse to display newest first
-        final displayTransactions = transactions.reversed.toList();
+        final displayTransactions = filteredTransactions.reversed.toList();
 
         return Scaffold(
           backgroundColor: AppColors.gray50,
@@ -1154,7 +1172,7 @@ class _FirmaCariEkstreScreenState extends State<FirmaCariEkstreScreen> {
                   companyName,
                   companyTip,
                   netBakiye,
-                  transactions, // chronological is best for printing table
+                  filteredTransactions, // chronological filtered for printing table
                   tenantFirma,
                 ),
               ),
@@ -1192,33 +1210,33 @@ class _FirmaCariEkstreScreenState extends State<FirmaCariEkstreScreen> {
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
-                              Text('Net Bakiye',
+                              Text('Cari Hesap Bakiye',
                                   style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray400, fontWeight: FontWeight.w500)),
                               const SizedBox(height: 2),
                               Text(
-                                '${formatNumber.format(netBakiye.abs())} ₺',
+                                '${formatNumber.format(overallBakiye.abs())} ₺',
                                 style: GoogleFonts.inter(
                                   fontSize: 17,
                                   fontWeight: FontWeight.bold,
-                                  color: netBakiye > 0
+                                  color: overallBakiye > 0
                                       ? Colors.green[700]
-                                      : netBakiye < 0
+                                      : overallBakiye < 0
                                           ? Colors.red[700]
                                           : AppColors.gray800,
                                 ),
                               ),
                               Text(
-                                netBakiye > 0
+                                overallBakiye > 0
                                     ? 'Bize Borçlu'
-                                    : netBakiye < 0
+                                    : overallBakiye < 0
                                         ? 'Bizden Alacaklı'
                                         : 'Hesap Dengede',
                                 style: GoogleFonts.inter(
                                   fontSize: 10,
                                   fontWeight: FontWeight.bold,
-                                  color: netBakiye > 0
+                                  color: overallBakiye > 0
                                       ? Colors.green[600]
-                                      : netBakiye < 0
+                                      : overallBakiye < 0
                                           ? Colors.red[600]
                                           : AppColors.gray400,
                                 ),
@@ -1255,6 +1273,18 @@ class _FirmaCariEkstreScreenState extends State<FirmaCariEkstreScreen> {
                       ],
                     ],
                   ),
+                ),
+              ),
+
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                child: PremiumDateRangeFilter(
+                  selectedRange: _selectedDateRange,
+                  onRangeChanged: (range) {
+                    setState(() {
+                      _selectedDateRange = range;
+                    });
+                  },
                 ),
               ),
 

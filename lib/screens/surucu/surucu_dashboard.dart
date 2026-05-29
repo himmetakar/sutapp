@@ -32,6 +32,93 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
   String? _selectedQualityForm;
   String? _selectedTankForm;
   String _searchQuery = '';
+  bool _isSaving = false;
+
+  Stream<QuerySnapshot>? _profileStream;
+  Stream<QuerySnapshot>? _vehicleStream;
+  Stream<QuerySnapshot>? _collectionsStream;
+  Stream<QuerySnapshot>? _producersStream;
+  Stream<DocumentSnapshot>? _savedRotaStream;
+  String? _cachedDriverName;
+  String? _cachedEmail;
+  String? _cachedFirma;
+
+  static final Set<String> _shownPopups = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _checkForPopUpAds();
+  }
+
+  void _checkForPopUpAds() {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        final query = await FirebaseFirestore.instance
+            .collection('duyurular')
+            .where('isGlobal', isEqualTo: true)
+            .where('isPopUp', isEqualTo: true)
+            .where('targetRoles', arrayContains: 'surucu')
+            .get();
+
+        if (query.docs.isNotEmpty) {
+          final docs = List<QueryDocumentSnapshot>.from(query.docs);
+          docs.sort((a, b) {
+            final aTime = (a.data() as Map<String, dynamic>)['timestamp'] as Timestamp?;
+            final bTime = (b.data() as Map<String, dynamic>)['timestamp'] as Timestamp?;
+            if (aTime == null) return 1;
+            if (bTime == null) return -1;
+            return bTime.compareTo(aTime);
+          });
+          final doc = docs.first;
+          final docId = doc.id;
+          
+          if (_shownPopups.contains(docId)) return;
+          _shownPopups.add(docId);
+
+          final data = doc.data() as Map<String, dynamic>?;
+          final baslik = data?['baslik'] ?? '';
+          final icerik = data?['icerik'] ?? '';
+
+          if (!mounted) return;
+
+          showDialog(
+            context: context,
+            barrierDismissible: true,
+            builder: (ctx) {
+              return AlertDialog(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                title: Row(
+                  children: [
+                    const Icon(Icons.campaign_rounded, color: Colors.blueAccent),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        baslik,
+                        style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                    ),
+                  ],
+                ),
+                content: Text(
+                  icerik,
+                  style: GoogleFonts.inter(fontSize: 13, color: AppColors.gray700),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: Text('Kapat', style: GoogleFonts.inter(fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              );
+            },
+          );
+        }
+      } catch (e) {
+        print('Error checking pop-up ads: $e');
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -805,11 +892,11 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
     final startOfYesterday = DateTime(yesterday.year, yesterday.month, yesterday.day, 0, 0, 0);
     final endOfYesterday = DateTime(yesterday.year, yesterday.month, yesterday.day, 23, 59, 59);
     
+    final dateStr = DateFormat('dd.MM.yyyy').format(yesterday);
     final collectionsQuery = await FirebaseFirestore.instance
         .collection('toplamalar')
         .where('sr', isEqualTo: driverName)
-        .where('timestamp', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfYesterday))
-        .where('timestamp', isLessThanOrEqualTo: Timestamp.fromDate(endOfYesterday))
+        .where('tarih', isEqualTo: dateStr)
         .limit(1)
         .get();
         
@@ -817,7 +904,6 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
       return true;
     }
     
-    final dateStr = DateFormat('dd.MM.yyyy').format(yesterday);
     final deliveriesQuery = await FirebaseFirestore.instance
         .collection('teslimatlar')
         .where('plaka', isEqualTo: plate)
@@ -882,14 +968,17 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
     final driverName = authProvider.user?.displayName ?? 'Ahmet Kara';
     final userEmail = authProvider.user?.email ?? '';
 
-    final profileStream = FirebaseFirestore.instance
-        .collection('suruculer')
-        .where('email', isEqualTo: userEmail)
-        .limit(1)
-        .snapshots();
+    if (_cachedEmail != userEmail || _profileStream == null) {
+      _cachedEmail = userEmail;
+      _profileStream = FirebaseFirestore.instance
+          .collection('suruculer')
+          .where('email', isEqualTo: userEmail)
+          .limit(1)
+          .snapshots();
+    }
 
     return StreamBuilder<QuerySnapshot>(
-      stream: profileStream,
+      stream: _profileStream!,
       builder: (context, profileSnapshot) {
         bool canAddCustomer = true;
         bool canEditCustomer = true;
@@ -910,8 +999,17 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
           }
         }
 
+        if (_cachedDriverName != resolvedDriverName || _vehicleStream == null) {
+          _cachedDriverName = resolvedDriverName;
+          _vehicleStream = _firestoreService.getDriverVehicleStream(resolvedDriverName);
+          _savedRotaStream = FirebaseFirestore.instance
+              .collection('surucu_rota_siralamalari')
+              .doc(resolvedDriverName)
+              .snapshots();
+        }
+
         return StreamBuilder<QuerySnapshot>(
-          stream: _firestoreService.getDriverVehicleStream(resolvedDriverName),
+          stream: _vehicleStream!,
           builder: (context, vehicleSnapshot) {
         if (vehicleSnapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
@@ -1110,7 +1208,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                   Column(
                     children: [
                       if (!widget.showSutAlDirectly) ...[
-                        _buildResponsiveLayout(isDesktop, isTablet, plate, resolvedDriverName, tankList),
+                        _buildResponsiveLayout(isDesktop, isTablet, plate, resolvedDriverName, tankList, currentFirmaName),
                         const SizedBox(height: 16),
                       ],
                       _buildSutAlFormView(isDesktop, plate, tankName, currentStock, capacity, resolvedDriverName, currentFirmaName, canAddCustomer, tankList),
@@ -1147,11 +1245,20 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
   }
 
   Widget _buildMusteriZiyaretListesi(String driverName, String firma, bool canAddCustomer) {
+    if (_cachedDriverName != driverName || _collectionsStream == null) {
+      _cachedDriverName = driverName;
+      _collectionsStream = _firestoreService.getDriverCollectionsStream(driverName);
+    }
+    if (_cachedFirma != firma || _producersStream == null) {
+      _cachedFirma = firma;
+      _producersStream = _firestoreService.getProducersStream(firma: firma);
+    }
+
     return StreamBuilder<QuerySnapshot>(
-      stream: _firestoreService.getDriverCollectionsStream(driverName),
+      stream: _collectionsStream!,
       builder: (context, collectionsSnapshot) {
         return StreamBuilder<QuerySnapshot>(
-          stream: _firestoreService.getProducersStream(firma: firma),
+          stream: _producersStream!,
           builder: (context, producersSnapshot) {
             if (!producersSnapshot.hasData || !collectionsSnapshot.hasData) {
               return const Center(
@@ -1190,128 +1297,173 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
               return visitedProducersToday.contains(name);
             }).length;
 
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Header card with statistics and controls
-                AppCard(
-                  shadow: AppShadows.sm,
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Ziyaret İlerlemesi',
-                              style: GoogleFonts.inter(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.gray500,
-                              ),
+            return StreamBuilder<DocumentSnapshot>(
+              stream: _savedRotaStream!,
+              builder: (context, rotaSnapshot) {
+                if (rotaSnapshot.hasData && rotaSnapshot.data!.exists) {
+                  final rotaData = rotaSnapshot.data!.data() as Map<String, dynamic>?;
+                  final List<dynamic>? orderedNames = rotaData?['sirali_ureticiler'] as List<dynamic>?;
+                  if (orderedNames != null) {
+                    filteredProducers.sort((a, b) {
+                      final aName = (a.data() as Map)['name'] ?? '';
+                      final bName = (b.data() as Map)['name'] ?? '';
+                      int aIndex = orderedNames.indexOf(aName);
+                      int bIndex = orderedNames.indexOf(bName);
+                      if (aIndex == -1) aIndex = 999999;
+                      if (bIndex == -1) bIndex = 999999;
+                      return aIndex.compareTo(bIndex);
+                    });
+                  }
+                }
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Header card with statistics and controls
+                    AppCard(
+                      shadow: AppShadows.sm,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Ziyaret İlerlemesi',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.gray500,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  'Bugün Tamamlanan: $visitedCount / $totalProducers',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.gray900,
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(height: 6),
-                            Text(
-                              'Bugün Tamamlanan: $visitedCount / $totalProducers',
-                              style: GoogleFonts.inter(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.gray900,
-                              ),
-                            ),
-                          ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Search Bar
+                    TextField(
+                      onChanged: (val) {
+                        setState(() {
+                          _searchQuery = val;
+                        });
+                      },
+                      decoration: InputDecoration(
+                        hintText: 'Müşteri veya bölge ara...',
+                        prefixIcon: const Icon(Icons.search_rounded, color: AppColors.gray400),
+                        suffixIcon: _searchQuery.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.close, size: 18),
+                                onPressed: () {
+                                  setState(() {
+                                    _searchQuery = '';
+                                  });
+                                },
+                              )
+                            : null,
+                        fillColor: Colors.white,
+                        filled: true,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: AppColors.gray200),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: AppColors.gray200),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: AppColors.primary500, width: 1.5),
                         ),
                       ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
+                    ),
+                    const SizedBox(height: 16),
 
-                // Search Bar
-                TextField(
-                  onChanged: (val) {
-                    setState(() {
-                      _searchQuery = val;
-                    });
-                  },
-                  decoration: InputDecoration(
-                    hintText: 'Müşteri veya bölge ara...',
-                    prefixIcon: const Icon(Icons.search_rounded, color: AppColors.gray400),
-                    suffixIcon: _searchQuery.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.close, size: 18),
-                            onPressed: () {
-                              setState(() {
-                                _searchQuery = '';
-                              });
-                            },
-                          )
-                        : null,
-                    fillColor: Colors.white,
-                    filled: true,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 10),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: AppColors.gray200),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: AppColors.gray200),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: AppColors.primary500, width: 1.5),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                // Customer list
-                if (filteredProducers.isEmpty)
-                  Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(32.0),
-                      child: Text(
-                        'Aramanızla eşleşen müşteri bulunamadı.',
-                        style: GoogleFonts.inter(color: AppColors.gray500),
-                      ),
-                    ),
-                  )
-                else
-                  ListView.separated(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: filteredProducers.length,
-                    separatorBuilder: (context, index) => const SizedBox(height: 8),
-                    itemBuilder: (context, index) {
-                      final doc = filteredProducers[index];
-                      final data = doc.data() as Map<String, dynamic>;
-                      final name = data['name'] ?? '';
-                      final group = data['group'] ?? 'Bilinmeyen Bölge';
-                      final avg = (data['avg'] as num?)?.toDouble() ?? 0.0;
-                      final lastMilkType = data['lastMilkType'] ?? 'Soğuk süt';
-                      final hasBeenVisited = visitedProducersToday.contains(name);
-
-                      return _buildProducerItemTile(
-                        name: name,
-                        group: group,
-                        avg: avg,
-                        lastMilkType: lastMilkType,
-                        hasBeenVisited: hasBeenVisited,
-                        onTap: () {
+                    // Customer list
+                    if (filteredProducers.isEmpty)
+                      Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(32.0),
+                          child: Text(
+                            'Aramanızla eşleşen müşteri bulunamadı.',
+                            style: GoogleFonts.inter(color: AppColors.gray500),
+                          ),
+                        ),
+                      )
+                    else
+                      ReorderableListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: filteredProducers.length,
+                        onReorder: (oldIndex, newIndex) async {
+                          if (newIndex > oldIndex) {
+                            newIndex -= 1;
+                          }
                           setState(() {
-                            _selectedUreticiForSutAl = name;
-                            _selectedUreticiForm = name;
-                            _selectedMilkTypeForm = lastMilkType;
-                            _selectedCustomerTypeForm = data['customerType'] ?? 'sut';
-                            _selectedQualityForm = lastMilkType; // Default quality matches last milk type
-                            _miktarFormCtrl.clear();
+                            final item = filteredProducers.removeAt(oldIndex);
+                            filteredProducers.insert(newIndex, item);
+                          });
+
+                          final namesList = filteredProducers
+                              .map((doc) => (doc.data() as Map)['name'] as String)
+                              .toList();
+
+                          await FirebaseFirestore.instance
+                              .collection('surucu_rota_siralamalari')
+                              .doc(driverName)
+                              .set({
+                            'sirali_ureticiler': namesList,
+                            'lastUpdated': FieldValue.serverTimestamp(),
                           });
                         },
-                      );
-                    },
-                  ),
-              ],
+                        itemBuilder: (context, index) {
+                          final doc = filteredProducers[index];
+                          final data = doc.data() as Map<String, dynamic>;
+                          final name = data['name'] ?? '';
+                          final group = data['group'] ?? 'Bilinmeyen Bölge';
+                          final avg = (data['avg'] as num?)?.toDouble() ?? 0.0;
+                          final lastMilkType = data['lastMilkType'] ?? 'Soğuk süt';
+                          final hasBeenVisited = visitedProducersToday.contains(name);
+
+                          return Container(
+                            key: ValueKey(name),
+                            margin: const EdgeInsets.only(bottom: 8),
+                            child: _buildProducerItemTile(
+                              name: name,
+                              group: group,
+                              avg: avg,
+                              lastMilkType: lastMilkType,
+                              hasBeenVisited: hasBeenVisited,
+                              onTap: () {
+                                setState(() {
+                                  _selectedUreticiForSutAl = name;
+                                  _selectedUreticiForm = name;
+                                  _selectedMilkTypeForm = lastMilkType;
+                                  _selectedCustomerTypeForm = data['customerType'] ?? 'sut';
+                                  _selectedQualityForm = lastMilkType;
+                                  _miktarFormCtrl.clear();
+                                });
+                              },
+                            ),
+                          );
+                        },
+                      ),
+                  ],
+                );
+              },
             );
           },
         );
@@ -1527,7 +1679,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                     ),
                   ),
                   ElevatedButton(
-                    onPressed: () => _saveCustomSutGirisi(plate, tankName, currentStock, capacity, driverName, firma, tankList),
+                    onPressed: _isSaving ? null : () => _saveCustomSutGirisi(plate, tankName, currentStock, capacity, driverName, firma, tankList),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primary600,
                       foregroundColor: Colors.white,
@@ -1535,10 +1687,16 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                       elevation: 0,
                     ),
-                    child: Text(
-                      'Kaydet',
-                      style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 13),
-                    ),
+                    child: _isSaving
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                          )
+                        : Text(
+                            'Kaydet',
+                            style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 13),
+                          ),
                   ),
                 ],
               ),
@@ -1848,76 +2006,99 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
       return;
     }
 
-    final targetTank = _selectedTankForm ?? defaultTankName;
-
-    // Find capacity and stock of the selected tank
-    double tCapacity = defaultCapacity;
-    double tCurrentStock = defaultCurrentStock;
-    try {
-      final tankInfo = tankList.firstWhere((t) => (t as Map)['ad'] == targetTank);
-      tCapacity = (tankInfo['kap'] as num?)?.toDouble() ?? defaultCapacity;
-      tCurrentStock = (tankInfo['stok'] as num?)?.toDouble() ?? defaultCurrentStock;
-    } catch (_) {}
-
-    final bool isOverflow = tCurrentStock + miktar > tCapacity;
-
-    // Get producer group/region
-    String region = 'Merkez';
-    try {
-      final prodQuery = await FirebaseFirestore.instance
-          .collection('ureticiler')
-          .where('name', isEqualTo: _selectedUreticiForSutAl)
-          .limit(1)
-          .get();
-
-      if (prodQuery.docs.isNotEmpty) {
-        region = prodQuery.docs.first['group'] ?? 'Merkez';
-      }
-    } catch (_) {}
-
-    await _firestoreService.recordMilkCollection(
-      producerName: _selectedUreticiForSutAl!,
-      tankName: targetTank,
-      miktar: miktar,
-      driverName: driverName,
-      vehiclePlate: plate,
-      region: region,
-      sutTipi: _selectedMilkTypeForm ?? 'Soğuk süt',
-      customerType: _selectedCustomerTypeForm ?? 'sut',
-      kalite: _selectedQualityForm ?? 'A Kalite',
-    );
-
-    _miktarFormCtrl.clear();
-    final savedProducer = _selectedUreticiForSutAl;
-
     setState(() {
-      _selectedUreticiForSutAl = null;
-      _selectedQualityForm = null;
-      _selectedTankForm = null;
+      _isSaving = true;
     });
 
-    if (isOverflow) {
-      _showLimitExceededDialog(
-        context,
-        targetTank,
-        onDismiss: () {
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('$savedProducer üreticisinden ${miktar.toStringAsFixed(0)} LT süt alındı!'),
-                backgroundColor: AppColors.success,
-              ),
-            );
-          }
-        },
+    try {
+      final targetTank = _selectedTankForm ?? defaultTankName;
+
+      // Find capacity and stock of the selected tank
+      double tCapacity = defaultCapacity;
+      double tCurrentStock = defaultCurrentStock;
+      try {
+        final tankInfo = tankList.firstWhere((t) => (t as Map)['ad'] == targetTank);
+        tCapacity = (tankInfo['kap'] as num?)?.toDouble() ?? defaultCapacity;
+        tCurrentStock = (tankInfo['stok'] as num?)?.toDouble() ?? defaultCurrentStock;
+      } catch (_) {}
+
+      final bool isOverflow = tCurrentStock + miktar > tCapacity;
+
+      // Get producer group/region
+      String region = 'Merkez';
+      try {
+        final prodQuery = await FirebaseFirestore.instance
+            .collection('ureticiler')
+            .where('name', isEqualTo: _selectedUreticiForSutAl)
+            .limit(1)
+            .get();
+
+        if (prodQuery.docs.isNotEmpty) {
+          region = prodQuery.docs.first['group'] ?? 'Merkez';
+        }
+      } catch (_) {}
+
+      await _firestoreService.recordMilkCollection(
+        producerName: _selectedUreticiForSutAl!,
+        tankName: targetTank,
+        miktar: miktar,
+        driverName: driverName,
+        vehiclePlate: plate,
+        region: region,
+        sutTipi: _selectedMilkTypeForm ?? 'Soğuk süt',
+        customerType: _selectedCustomerTypeForm ?? 'sut',
+        kalite: _selectedQualityForm ?? 'A Kalite',
       );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('$savedProducer üreticisinden ${miktar.toStringAsFixed(0)} LT süt alındı!'),
-          backgroundColor: AppColors.success,
-        ),
-      );
+
+      _miktarFormCtrl.clear();
+      final savedProducer = _selectedUreticiForSutAl;
+
+      setState(() {
+        _selectedUreticiForSutAl = null;
+        _selectedQualityForm = null;
+        _selectedTankForm = null;
+      });
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle_outline_rounded, color: Colors.white, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '$savedProducer: ${miktar.toStringAsFixed(1)} LT Kayıt Başarıyla Alındı!',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: AppColors.success,
+            duration: const Duration(milliseconds: 1500),
+          ),
+        );
+      }
+
+      if (isOverflow && context.mounted) {
+        _showLimitExceededDialog(
+          context,
+          targetTank,
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Kayıt sırasında hata oluştu: $e'),
+            backgroundColor: AppColors.danger,
+          ),
+        );
+      }
+    } finally {
+      setState(() {
+        _isSaving = false;
+      });
     }
   }
 
@@ -1927,18 +2108,19 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
     String plate,
     String driverName,
     List<dynamic> assignedTanks,
+    String currentFirmaName,
   ) {
     if (assignedTanks.isEmpty) return const SizedBox();
-    return _buildVerticalDriverTankList(assignedTanks, plate);
+    return _buildVerticalDriverTankList(assignedTanks, plate, currentFirmaName);
   }
 
-  Widget _buildVerticalDriverTankList(List<dynamic> tanks, String plate) {
-    final double cardHeight = 88.0;
+  Widget _buildVerticalDriverTankList(List<dynamic> tanks, String plate, String currentFirmaName) {
+    final double cardHeight = 112.0;
     final double spacing = 8.0;
     final double totalItemHeight = cardHeight + spacing;
-    final double containerHeight = tanks.length <= 4 
+    final double containerHeight = tanks.length <= 3 
         ? (tanks.length * totalItemHeight) 
-        : (4 * totalItemHeight);
+        : (3 * totalItemHeight);
 
     return SizedBox(
       height: containerHeight,
@@ -1972,139 +2154,353 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
               border: Border.all(color: isOverflow ? Colors.red : AppColors.gray200, width: isOverflow ? 1.5 : 1.0),
               boxShadow: AppShadows.sm,
             ),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                // Left: Shipping Icon
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEFF6FF),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Center(
-                    child: Icon(
-                      Icons.local_shipping_rounded,
-                      color: Color(0xFF3B82F6),
-                      size: 20,
+                Row(
+                  children: [
+                    // Left: Shipping Icon
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEFF6FF),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Center(
+                        child: Icon(
+                          Icons.local_shipping_rounded,
+                          color: Color(0xFF3B82F6),
+                          size: 20,
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-                const SizedBox(width: 12),
+                    const SizedBox(width: 12),
 
-                // Middle: Name & Vehicle Info
-                Expanded(
-                  flex: 3,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        ad,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.inter(
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.gray800,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        plate.isNotEmpty ? plate : 'Araç Tankı',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.inter(
-                          fontSize: 10,
-                          color: AppColors.gray400,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${stok.toStringAsFixed(0)} / ${kap.toStringAsFixed(0)} LT',
-                        style: GoogleFonts.inter(
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.bold,
-                          color: isOverflow ? Colors.red : AppColors.gray600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-
-                // Right: Horizontal Progress Bar & Details
-                Expanded(
-                  flex: 4,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    // Middle: Name & Vehicle Info
+                    Expanded(
+                      flex: 3,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Text(
-                            'Doluluk',
-                            style: GoogleFonts.inter(fontSize: 9, fontWeight: FontWeight.bold, color: AppColors.gray400),
-                          ),
-                          Text(
-                            '%${(fillPercent * 100).toStringAsFixed(0)}',
+                            ad,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: GoogleFonts.inter(
-                              fontSize: 10.5,
+                              fontSize: 13,
                               fontWeight: FontWeight.bold,
-                              color: isOverflow ? Colors.red : AppColors.gray800,
+                              color: AppColors.gray800,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            plate.isNotEmpty ? plate : 'Araç Tankı',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.inter(
+                              fontSize: 10,
+                              color: AppColors.gray400,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 5),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
-                        child: LinearProgressIndicator(
-                          value: fillPercent.clamp(0.0, 1.0),
-                          minHeight: 8,
-                          backgroundColor: AppColors.gray100,
-                          valueColor: AlwaysStoppedAnimation<Color>(gaugeColor),
+                    ),
+                    const SizedBox(width: 12),
+
+                    // Right: Horizontal Progress Bar & Details
+                    Expanded(
+                      flex: 4,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                '${stok.toStringAsFixed(0)} / ${kap.toStringAsFixed(0)} LT',
+                                style: GoogleFonts.inter(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: isOverflow ? Colors.red : AppColors.gray600,
+                                ),
+                              ),
+                              Text(
+                                '%${(fillPercent * 100).toStringAsFixed(0)}',
+                                style: GoogleFonts.inter(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: isOverflow ? Colors.red : AppColors.gray800,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 5),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(4),
+                            child: LinearProgressIndicator(
+                              value: fillPercent.clamp(0.0, 1.0),
+                              minHeight: 6,
+                              backgroundColor: AppColors.gray100,
+                              valueColor: AlwaysStoppedAnimation<Color>(gaugeColor),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    // Action Button: Detay
+                    GestureDetector(
+                      onTap: () => _showDriverTankIcerik(context, ad),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: AppColors.gray50,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: AppColors.gray200),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.visibility_rounded, size: 12, color: AppColors.gray600),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Detay',
+                              style: GoogleFonts.inter(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.gray600,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-
-                // Action Button: Detay
-                GestureDetector(
-                  onTap: () => _showDriverTankIcerik(context, ad),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: AppColors.gray50,
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: AppColors.gray200),
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.visibility_rounded, size: 12, color: AppColors.gray600),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Detay',
-                          style: GoogleFonts.inter(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.gray600,
-                          ),
+                    const SizedBox(width: 8),
+                    // Action Button: Boşalt
+                    GestureDetector(
+                      onTap: () => _showTankUnloadDialog(context, ad, stok, plate, currentFirmaName),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEFF6FF),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: const Color(0xFFBFDBFE)),
                         ),
-                      ],
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.outbox_rounded, size: 12, color: Color(0xFF2563EB)),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Tank Boşalt',
+                              style: GoogleFonts.inter(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: const Color(0xFF2563EB),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                  ),
+                  ],
                 ),
               ],
             ),
           );
         },
       ),
+    );
+  }
+
+  void _showTankUnloadDialog(
+    BuildContext context,
+    String sourceTankName,
+    double currentStock,
+    String vehiclePlate,
+    String currentFirmaName,
+  ) async {
+    final db = FirebaseFirestore.instance;
+    final query = await db.collection('tanklar')
+        .where('firma', isEqualTo: currentFirmaName)
+        .get();
+
+    final List<Map<String, dynamic>> otherTanks = query.docs
+        .where((doc) => doc['ad'] != sourceTankName)
+        .map((doc) => {
+              'ad': doc['ad'] as String,
+              'tip': doc['tip'] as String,
+              'stok': (doc['stok'] as num?)?.toDouble() ?? 0.0,
+              'kap': (doc['kap'] as num?)?.toDouble() ?? 5000.0,
+            })
+        .toList();
+
+    if (otherTanks.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Boşaltılabilecek başka tank bulunamadı!')),
+        );
+      }
+      return;
+    }
+
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final driverName = authProvider.user?.displayName ?? 'Ahmet Kara';
+    final driverEmail = authProvider.user?.email ?? '';
+
+    final amountCtrl = TextEditingController(text: currentStock.toStringAsFixed(0));
+    String? selectedTargetTank = otherTanks.first['ad'];
+
+    if (!context.mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final targetInfo = otherTanks.firstWhere((t) => t['ad'] == selectedTargetTank);
+            final double tStok = targetInfo['stok'];
+            final double tKap = targetInfo['kap'];
+
+            return AlertDialog(
+              title: Text('Tank Boşaltma Talebi', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Kaynak: $sourceTankName (${currentStock.toStringAsFixed(0)} LT)',
+                    style: GoogleFonts.inter(fontSize: 13, color: AppColors.gray600, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<String>(
+                    value: selectedTargetTank,
+                    decoration: const InputDecoration(labelText: 'Boşaltılacak Hedef Tank'),
+                    items: otherTanks.map((t) {
+                      final label = t['tip'] == 'merkez' ? '${t['ad']} (Merkez)' : '${t['ad']} (Araç)';
+                      return DropdownMenuItem(
+                        value: t['ad'] as String,
+                        child: Text(label, style: const TextStyle(fontSize: 13)),
+                      );
+                    }).toList(),
+                    onChanged: (val) {
+                      if (val != null) {
+                        setDialogState(() {
+                          selectedTargetTank = val;
+                        });
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: amountCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Boşaltılacak Miktar (LT)',
+                      suffixText: 'LT',
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Hedef Doluluk: ${tStok.toStringAsFixed(0)} / ${tKap.toStringAsFixed(0)} LT',
+                    style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: Text('İptal', style: GoogleFonts.inter(color: AppColors.gray500)),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    final double? amount = double.tryParse(amountCtrl.text);
+                    if (amount == null || amount <= 0 || amount > currentStock) {
+                      ScaffoldMessenger.of(ctx).showSnackBar(
+                        const SnackBar(content: Text('Geçerli bir miktar girin! (Kaynak stokunu aşamaz)')),
+                      );
+                      return;
+                    }
+
+                    final timeStr = DateFormat('dd MMM yyyy, HH:mm', 'tr_TR').format(DateTime.now());
+                    final docRef = await db.collection('sut_kabul').add({
+                      'email': driverEmail,
+                      'tarih': timeStr,
+                      'kaynak': sourceTankName,
+                      'hedef': selectedTargetTank,
+                      'miktar': amount,
+                      'durum': 'Bekliyor',
+                      'aciklama': '$vehiclePlate plakalı araçtan boşaltma talebi',
+                      'plaka': vehiclePlate,
+                      'surucuName': driverName,
+                      'firma': currentFirmaName,
+                      'timestamp': FieldValue.serverTimestamp(),
+                    });
+
+                    try {
+                      final firmaUsers = await db.collection('users')
+                          .where('role', isEqualTo: 'firma')
+                          .where('firmaName', isEqualTo: currentFirmaName)
+                          .get();
+
+                      final userIds = firmaUsers.docs.map((doc) => doc.id).toList();
+                      if (userIds.isEmpty) {
+                        userIds.add('demo_firma_${currentFirmaName.hashCode}');
+                      }
+
+                      for (var uid in userIds) {
+                        await db.collection('bildirimler').add({
+                          'userId': uid,
+                          'baslik': 'Tank Boşaltma Talebi',
+                          'icerik': '$driverName isimli personel, $vehiclePlate plakalı araçtaki $sourceTankName tankından $selectedTargetTank tankına $amount LT süt boşaltmak istiyor.',
+                          'timestamp': FieldValue.serverTimestamp(),
+                          'read': false,
+                          'type': 'tank_bosaltma_talebi',
+                          'sutKabulId': docRef.id,
+                          'sourceTankName': sourceTankName,
+                          'targetTankName': selectedTargetTank,
+                          'miktar': amount,
+                          'vehiclePlate': vehiclePlate,
+                          'driverName': driverName,
+                        });
+                      }
+                    } catch (e) {
+                      print('Unload notification sending failed: $e');
+                    }
+
+                    if (ctx.mounted) Navigator.pop(ctx);
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Boşaltma talebi merkeze iletildi! Merkez onayından sonra tank stoku güncellenecektir.'),
+                          backgroundColor: AppColors.success,
+                        ),
+                      );
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary600,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  child: const Text('Boşalt'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 

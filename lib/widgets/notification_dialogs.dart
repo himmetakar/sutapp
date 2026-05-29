@@ -201,6 +201,10 @@ class NotificationDrawerDialog extends StatelessWidget {
                           iconData = Icons.admin_panel_settings_rounded;
                           iconColor = const Color(0xFF7C3AED);
                           iconBgColor = const Color(0xFFF3E5F5);
+                        } else if (type == 'tank_bosaltma_talebi') {
+                          iconData = Icons.outbox_rounded;
+                          iconColor = Colors.blue;
+                          iconBgColor = const Color(0xFFEFF6FF);
                         }
 
                         String dateStr = '';
@@ -281,6 +285,119 @@ class NotificationDrawerDialog extends StatelessWidget {
                                             color: AppColors.gray400,
                                             fontWeight: FontWeight.w400,
                                           ),
+                                        ),
+                                      ],
+                                      if (type == 'tank_bosaltma_talebi' && data['sutKabulId'] != null) ...[
+                                        const SizedBox(height: 10),
+                                        StreamBuilder<DocumentSnapshot>(
+                                          stream: FirebaseFirestore.instance
+                                              .collection('sut_kabul')
+                                              .doc(data['sutKabulId'])
+                                              .snapshots(),
+                                          builder: (context, kabulSnap) {
+                                            if (!kabulSnap.hasData || !kabulSnap.data!.exists) {
+                                              return const SizedBox.shrink();
+                                            }
+                                            final kabulData = kabulSnap.data!.data() as Map<String, dynamic>;
+                                            final durum = kabulData['durum'] ?? 'Bekliyor';
+
+                                            if (durum == 'Bekliyor') {
+                                              return Row(
+                                                children: [
+                                                  Expanded(
+                                                    child: OutlinedButton(
+                                                      onPressed: () async {
+                                                        try {
+                                                          await firestoreService.rejectTankUnload(
+                                                            data['sutKabulId'],
+                                                            data['driverName'] ?? '',
+                                                            data['sourceTankName'] ?? '',
+                                                            data['targetTankName'] ?? '',
+                                                          );
+                                                          await firestoreService.markNotificationRead(doc.id);
+                                                        } catch (e) {
+                                                          if (context.mounted) {
+                                                            ScaffoldMessenger.of(context).showSnackBar(
+                                                              SnackBar(content: Text('Hata: $e')),
+                                                            );
+                                                          }
+                                                        }
+                                                      },
+                                                      style: OutlinedButton.styleFrom(
+                                                        padding: const EdgeInsets.symmetric(vertical: 4),
+                                                        side: const BorderSide(color: AppColors.gray300),
+                                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                                      ),
+                                                      child: Text(
+                                                        'Reddet',
+                                                        style: GoogleFonts.inter(
+                                                          fontSize: 11,
+                                                          fontWeight: FontWeight.bold,
+                                                          color: AppColors.danger,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 8),
+                                                  Expanded(
+                                                    child: ElevatedButton(
+                                                      onPressed: () async {
+                                                        try {
+                                                          await firestoreService.transferTankStock(
+                                                            sutKabulId: data['sutKabulId'],
+                                                            sourceTankName: data['sourceTankName'] ?? '',
+                                                            targetTankName: data['targetTankName'] ?? '',
+                                                            miktar: (data['miktar'] as num).toDouble(),
+                                                            vehiclePlate: data['vehiclePlate'] ?? '',
+                                                            driverName: data['driverName'] ?? '',
+                                                          );
+                                                          await firestoreService.markNotificationRead(doc.id);
+                                                        } catch (e) {
+                                                          if (context.mounted) {
+                                                            ScaffoldMessenger.of(context).showSnackBar(
+                                                              SnackBar(content: Text('Hata: $e')),
+                                                            );
+                                                          }
+                                                        }
+                                                      },
+                                                      style: ElevatedButton.styleFrom(
+                                                        padding: const EdgeInsets.symmetric(vertical: 4),
+                                                        backgroundColor: const Color(0xFF10B981),
+                                                        foregroundColor: Colors.white,
+                                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                                        elevation: 0,
+                                                      ),
+                                                      child: Text(
+                                                        'Kabul Et',
+                                                        style: GoogleFonts.inter(
+                                                          fontSize: 11,
+                                                          fontWeight: FontWeight.bold,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              );
+                                            } else {
+                                              final Color badgeBg = durum == 'Kabul Edildi' ? const Color(0xFFE0F2FE) : const Color(0xFFFEE2E2);
+                                              final Color badgeText = durum == 'Kabul Edildi' ? const Color(0xFF0369A1) : const Color(0xFFB91C1C);
+                                              return Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                decoration: BoxDecoration(
+                                                  color: badgeBg,
+                                                  borderRadius: BorderRadius.circular(6),
+                                                ),
+                                                child: Text(
+                                                  'Durum: $durum',
+                                                  style: GoogleFonts.inter(
+                                                    fontSize: 10,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: badgeText,
+                                                  ),
+                                                ),
+                                              );
+                                            }
+                                          },
                                         ),
                                       ],
                                     ],

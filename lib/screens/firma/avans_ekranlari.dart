@@ -21,7 +21,6 @@ class _MusteriAvanslariScreenState extends State<MusteriAvanslariScreen> {
   DateTime _selectedDate = DateTime.now();
   String _searchQuery = '';
   final _searchCtrl = TextEditingController();
-  String _selectedStatus = 'tumu'; // tumu, aktif, odendi, iptal
 
   @override
   void dispose() {
@@ -33,30 +32,6 @@ class _MusteriAvanslariScreenState extends State<MusteriAvanslariScreen> {
     setState(() {
       _selectedDate = DateTime(_selectedDate.year, _selectedDate.month + delta);
     });
-  }
-
-  Widget _buildStatusTab(String statusKey, String label, int count) {
-    final isSelected = _selectedStatus == statusKey;
-    return GestureDetector(
-      onTap: () => setState(() => _selectedStatus = statusKey),
-      child: Container(
-        margin: const EdgeInsets.only(right: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected ? AppColors.primary600 : Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: isSelected ? AppColors.primary600 : AppColors.gray300),
-        ),
-        child: Text(
-          '$label ($count)',
-          style: GoogleFonts.inter(
-            fontSize: 11,
-            fontWeight: FontWeight.bold,
-            color: isSelected ? Colors.white : AppColors.gray700,
-          ),
-        ),
-      ),
-    );
   }
 
   void _showAvansIslemleriDialog(BuildContext context, String docId, String uretici, double tutar, String currentDurum) {
@@ -137,23 +112,12 @@ class _MusteriAvanslariScreenState extends State<MusteriAvanslariScreen> {
           int monthlyCount = 0;
           final List<QueryDocumentSnapshot> filteredAvanslar = [];
 
-          int totalCount = 0;
-          int aktifCount = 0;
-          int odendiCount = 0;
-          int iptalCount = 0;
-
           for (var doc in allDocs) {
             final data = doc.data() as Map<String, dynamic>;
             final timestamp = data['timestamp'] as Timestamp?;
             final date = timestamp?.toDate() ?? DateTime.now();
 
             if (date.year == _selectedDate.year && date.month == _selectedDate.month) {
-              final durum = data['durum'] as String? ?? 'aktif';
-              if (durum == 'aktif') aktifCount++;
-              else if (durum == 'odendi') odendiCount++;
-              else if (durum == 'iptal') iptalCount++;
-              totalCount++;
-
               final uretici = data['uretici'] as String? ?? '';
               final aciklama = data['aciklama'] as String? ?? '';
               final tutarVal = data['tutar'] ?? 0.0;
@@ -164,9 +128,7 @@ class _MusteriAvanslariScreenState extends State<MusteriAvanslariScreen> {
                   aciklama.toLowerCase().contains(_searchQuery.toLowerCase()) ||
                   tutar.toString().contains(_searchQuery);
 
-              final matchesStatus = _selectedStatus == 'tumu' || durum == _selectedStatus;
-
-              if (matchesSearch && matchesStatus) {
+              if (matchesSearch) {
                 filteredAvanslar.add(doc);
                 monthlyTotal += tutar;
                 monthlyCount++;
@@ -235,20 +197,6 @@ class _MusteriAvanslariScreenState extends State<MusteriAvanslariScreen> {
                     border: InputBorder.none,
                     contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   ),
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // Status Tabs
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    _buildStatusTab('tumu', 'Tümü', totalCount),
-                    _buildStatusTab('aktif', 'Aktif', aktifCount),
-                    _buildStatusTab('odendi', 'Ödenen', odendiCount),
-                    _buildStatusTab('iptal', 'İptal', iptalCount),
-                  ],
                 ),
               ),
               const SizedBox(height: 16),
@@ -442,7 +390,7 @@ class _AvansVerScreenState extends State<AvansVerScreen> {
   final _aciklamaCtrl = TextEditingController();
   String _odemeYontemi = 'Nakit'; // Nakit, Banka, Çek
   DateTime _verildigiTarih = DateTime.now();
-  DateTime _tahsilEdilecegiTarih = DateTime.now().add(const Duration(days: 30));
+  DateTime _tahsilEdilecegiTarih = DateTime.now();
 
   @override
   void dispose() {
@@ -463,8 +411,7 @@ class _AvansVerScreenState extends State<AvansVerScreen> {
       setState(() {
         if (isVerildigi) {
           _verildigiTarih = picked;
-          // Otomatik tahsilat tarihini 30 gün sonrasına güncelle
-          _tahsilEdilecegiTarih = picked.add(const Duration(days: 30));
+          _tahsilEdilecegiTarih = picked;
         } else {
           _tahsilEdilecegiTarih = picked;
         }

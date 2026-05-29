@@ -18,6 +18,13 @@ class FirmaToplamalar extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: AppColors.gray50,
+      appBar: AppBar(
+        title: Text('Süt Toplamalar', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
       body: StreamBuilder<QuerySnapshot>(
         stream: firestoreService.getCollectionsStream(firma: currentFirmaName),
         builder: (context, snapshot) {

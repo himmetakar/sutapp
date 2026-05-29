@@ -35,6 +35,9 @@ class _GelirlerScreenState extends State<GelirlerScreen> {
   double _operatingExpenses = 0.0;
   int _expensesCount = 0;
 
+  double _totalAvans = 0.0;
+  int _avansCount = 0;
+
   // Categorized breakdown
   double _sutSalesTotal = 0.0;
   int _sutSalesCount = 0;
@@ -248,6 +251,28 @@ class _GelirlerScreenState extends State<GelirlerScreen> {
         }
       }
 
+      // Fetch Avanslar (Producer advances / payments)
+      final avansSnap = await FirebaseFirestore.instance
+          .collection('avanslar')
+          .where('firma', isEqualTo: currentFirmaName)
+          .get();
+
+      double tempAvans = 0.0;
+      int tempAvansCount = 0;
+
+      for (var doc in avansSnap.docs) {
+        final data = doc.data();
+        final durum = data['durum'] as String? ?? 'aktif';
+        if (durum == 'aktif') {
+          final date = _getDocDate(data['timestamp']);
+          if (_isWithinFilter(date)) {
+            final double tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
+            tempAvans += tutar;
+            tempAvansCount++;
+          }
+        }
+      }
+
       setState(() {
         _sutSalesTotal = tempSutSales;
         _sutSalesCount = tempSutSalesCount;
@@ -272,6 +297,9 @@ class _GelirlerScreenState extends State<GelirlerScreen> {
         _operatingExpenses = tempExpenses;
         _expensesCount = tempExpensesCount;
 
+        _totalAvans = tempAvans;
+        _avansCount = tempAvansCount;
+
         _isLoading = false;
       });
     } catch (e) {
@@ -286,11 +314,11 @@ class _GelirlerScreenState extends State<GelirlerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Total Revenue (Sales + Deductions)
-    final double totalRevenue = _totalSales + _totalDeductions;
-    // Total Expenses (Milk Purchase Cost + Operating Expenses)
-    final double totalExpenses = _milkCost + _operatingExpenses;
-    // Net profit or loss
+    // Gelirler = Firmalardan gelen süt ödemeleri (tahsilatlar) + Üreticiye satılan ürünler (kesintiler)
+    final double totalRevenue = _totalCollected + _totalDeductions;
+    // Giderler = Üretici hesap ödemeleri (avanslar) + Genel giderler / tedarikçi ödemeleri (giderler)
+    final double totalExpenses = _totalAvans + _operatingExpenses;
+    // Net profit or loss (Gelirler - Giderler)
     final double netProfitLoss = totalRevenue - totalExpenses;
     final bool isProfit = netProfitLoss >= 0;
 

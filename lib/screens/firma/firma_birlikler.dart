@@ -565,63 +565,66 @@ class _FirmaBirliklerScreenState extends State<FirmaBirliklerScreen> {
                                           final members = item['members'] as int;
                                           final milk = item['milk'] as double;
 
-                                          return Padding(
-                                            padding: const EdgeInsets.symmetric(vertical: 8),
-                                            child: Row(
-                                              children: [
-                                                Expanded(
-                                                  child: Column(
-                                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                          return GestureDetector(
+                                            onTap: () => context.push('/firma/ureticiler/liste?birlik=${Uri.encodeComponent(name)}'),
+                                            child: Padding(
+                                              padding: const EdgeInsets.symmetric(vertical: 8),
+                                              child: Row(
+                                                children: [
+                                                  Expanded(
+                                                    child: Column(
+                                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                                      children: [
+                                                        Text(
+                                                          name,
+                                                          style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.gray800),
+                                                        ),
+                                                        const SizedBox(height: 6),
+                                                        Row(
+                                                          children: [
+                                                            Container(
+                                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                              decoration: BoxDecoration(
+                                                                color: AppColors.successLight,
+                                                                borderRadius: BorderRadius.circular(4),
+                                                              ),
+                                                              child: Text(
+                                                                '$members Üretici',
+                                                                style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.successDark, height: 1.1),
+                                                              ),
+                                                            ),
+                                                            const SizedBox(width: 8),
+                                                            Text(
+                                                              '${milk.toStringAsFixed(0)} LT',
+                                                              style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.primary600),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                  Row(
+                                                    mainAxisSize: MainAxisSize.min,
                                                     children: [
-                                                      Text(
-                                                        name,
-                                                        style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.gray800),
+                                                      IconButton(
+                                                        icon: const Icon(Icons.edit_rounded, color: AppColors.gray500, size: 18),
+                                                        onPressed: () => _showEditUnionDialog(doc),
+                                                        padding: EdgeInsets.zero,
+                                                        constraints: const BoxConstraints(),
+                                                        splashRadius: 18,
                                                       ),
-                                                      const SizedBox(height: 6),
-                                                      Row(
-                                                        children: [
-                                                          Container(
-                                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                            decoration: BoxDecoration(
-                                                              color: AppColors.successLight,
-                                                              borderRadius: BorderRadius.circular(4),
-                                                            ),
-                                                            child: Text(
-                                                              '$members Üretici',
-                                                              style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.successDark, height: 1.1),
-                                                            ),
-                                                          ),
-                                                          const SizedBox(width: 8),
-                                                          Text(
-                                                            '${milk.toStringAsFixed(0)} LT',
-                                                            style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.primary600),
-                                                          ),
-                                                        ],
+                                                      const SizedBox(width: 12),
+                                                      IconButton(
+                                                        icon: const Icon(Icons.delete_outline_rounded, color: AppColors.danger, size: 18),
+                                                        onPressed: () => _deleteUnion(doc),
+                                                        padding: EdgeInsets.zero,
+                                                        constraints: const BoxConstraints(),
+                                                        splashRadius: 18,
                                                       ),
                                                     ],
                                                   ),
-                                                ),
-                                                Row(
-                                                  mainAxisSize: MainAxisSize.min,
-                                                  children: [
-                                                    IconButton(
-                                                      icon: const Icon(Icons.edit_rounded, color: AppColors.gray500, size: 18),
-                                                      onPressed: () => _showEditUnionDialog(doc),
-                                                      padding: EdgeInsets.zero,
-                                                      constraints: const BoxConstraints(),
-                                                      splashRadius: 18,
-                                                    ),
-                                                    const SizedBox(width: 12),
-                                                    IconButton(
-                                                      icon: const Icon(Icons.delete_outline_rounded, color: AppColors.danger, size: 18),
-                                                      onPressed: () => _deleteUnion(doc),
-                                                      padding: EdgeInsets.zero,
-                                                      constraints: const BoxConstraints(),
-                                                      splashRadius: 18,
-                                                    ),
-                                                  ],
-                                                ),
-                                              ],
+                                                ],
+                                              ),
                                             ),
                                           );
                                         },
@@ -673,35 +676,55 @@ class _FirmaBirliklerScreenState extends State<FirmaBirliklerScreen> {
                                             final name = item['name'] as String;
                                             final members = item['members'] as int;
                                             final milk = item['milk'] as double;
+                                            void navigateToBirlik() {
+                                              context.push('/firma/ureticiler/liste?birlik=${Uri.encodeComponent(name)}');
+                                            }
 
                                             return TableRow(
                                               decoration: const BoxDecoration(
                                                 border: Border(bottom: BorderSide(color: AppColors.gray100, width: 1)),
                                               ),
                                               children: [
-                                                Padding(
-                                                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                                                  child: Text(name, style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 13, color: AppColors.gray800)),
+                                                GestureDetector(
+                                                  behavior: HitTestBehavior.opaque,
+                                                  onTap: navigateToBirlik,
+                                                  child: Padding(
+                                                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                                                    child: Text(name, style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 13, color: AppColors.gray800)),
+                                                  ),
                                                 ),
-                                                Padding(
-                                                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                                                  child: Container(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                                    decoration: BoxDecoration(
-                                                      color: AppColors.successLight,
-                                                      borderRadius: BorderRadius.circular(6),
-                                                    ),
-                                                    child: Text(
-                                                      '$members Üretici',
-                                                      style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.successDark, height: 1.1),
+                                                GestureDetector(
+                                                  behavior: HitTestBehavior.opaque,
+                                                  onTap: navigateToBirlik,
+                                                  child: Padding(
+                                                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                                                    child: Row(
+                                                      mainAxisSize: MainAxisSize.min,
+                                                      children: [
+                                                        Container(
+                                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                          decoration: BoxDecoration(
+                                                            color: AppColors.successLight,
+                                                            borderRadius: BorderRadius.circular(6),
+                                                          ),
+                                                          child: Text(
+                                                            '$members Üretici',
+                                                            style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.successDark, height: 1.1),
+                                                          ),
+                                                        ),
+                                                      ],
                                                     ),
                                                   ),
                                                 ),
-                                                Padding(
-                                                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                                                  child: Text(
-                                                    '${milk.toStringAsFixed(0)} LT',
-                                                    style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.primary600),
+                                                GestureDetector(
+                                                  behavior: HitTestBehavior.opaque,
+                                                  onTap: navigateToBirlik,
+                                                  child: Padding(
+                                                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                                                    child: Text(
+                                                      '${milk.toStringAsFixed(0)} LT',
+                                                      style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.primary600),
+                                                    ),
                                                   ),
                                                 ),
                                                 Padding(

@@ -80,10 +80,7 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
                 const SizedBox(height: 20),
 
                 // Quick Actions for Mobile/Tablet
-                if (!isDesktop) ...[
-                  _buildMobileQuickActions(context),
-                  const SizedBox(height: 20),
-                ],
+                // Quick Actions removed
 
                 // Dynamic tab content
                 _buildTabContent(isDesktop, isTablet, totalMilk, collectionCount, currentFirmaName),
@@ -711,7 +708,7 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
   Widget _buildTabContent(bool isDesktop, bool isTablet, double totalMilk, int collectionCount, String currentFirmaName) {
     switch (_selectedTab) {
       case 0:
-        return _buildDailyOperationsTab(isDesktop, isTablet, totalMilk, collectionCount);
+        return _buildDailyOperationsTab(isDesktop, isTablet, totalMilk, collectionCount, currentFirmaName);
       case 1:
         return _buildMonthlyOperationsTab(isDesktop, isTablet, totalMilk, collectionCount, currentFirmaName);
       case 2:
@@ -723,141 +720,220 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
     }
   }
 
-  Widget _buildDailyOperationsTab(bool isDesktop, bool isTablet, double totalMilk, int collectionCount) {
-    return Column(
-      children: [
-        _buildStatCards(isDesktop, isTablet, totalMilk, collectionCount),
-        const SizedBox(height: 24),
-        _buildChartsSection(isDesktop),
-        const SizedBox(height: 24),
-        _buildBottomLists(isDesktop, isTablet),
-      ],
+  Widget _buildDailyOperationsTab(bool isDesktop, bool isTablet, double totalMilk, int collectionCount, String currentFirmaName) {
+    return FutureBuilder<List<dynamic>>(
+      future: Future.wait([
+        _loadProducerTrends(currentFirmaName, false),
+        _getProducersNoMilkToday(currentFirmaName),
+        _loadStaffPerformance(currentFirmaName, false),
+      ]),
+      builder: (context, snap) {
+        final Map<String, List<Map<String, dynamic>>> trends = snap.data != null
+            ? snap.data![0] as Map<String, List<Map<String, dynamic>>>
+            : {'up': [], 'down': []};
+        final List<String> noMilkToday = snap.data != null
+            ? snap.data![1] as List<String>
+            : [];
+        final List<Map<String, dynamic>> staffPerf = snap.data != null
+            ? snap.data![2] as List<Map<String, dynamic>>
+            : [];
+
+        final formatNumber = NumberFormat('#,##0', 'tr_TR');
+        final cards = [
+          StatCard(
+            icon: Icons.payment_rounded,
+            label: 'Süt Bedeli (₺)',
+            value: formatNumber.format(totalMilk * 23.0),
+            color: AppColors.success,
+            change: '',
+            subtext: 'Fiyat: 23 ₺/LT',
+            sparklineData: const [],
+            isUp: true,
+          ),
+          StatCard(
+            icon: Icons.sell_rounded,
+            label: 'Satış Tutarı (₺)',
+            value: formatNumber.format(totalMilk * 25.2),
+            color: AppColors.warning,
+            change: '',
+            subtext: 'Fiyat: 25.2 ₺/LT',
+            sparklineData: const [],
+            isUp: true,
+          ),
+          StatCard(
+            icon: Icons.credit_card_rounded,
+            label: 'Verilen Avanslar (₺)',
+            value: '1.125.300',
+            color: Colors.teal,
+            change: '',
+            subtext: 'Sistem Toplamı',
+            sparklineData: const [],
+            isUp: true,
+          ),
+          StatCard(
+            icon: Icons.account_balance_wallet_rounded,
+            label: 'Tahsilat (₺)',
+            value: '265.200',
+            color: Colors.purple,
+            change: '',
+            subtext: 'Sistem Toplamı',
+            sparklineData: const [],
+            isUp: true,
+          ),
+        ];
+
+        Widget statsGrid = isDesktop
+            ? Row(children: cards.map((c) => Expanded(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 6), child: c))).toList())
+            : StatsGrid(crossAxisCount: isTablet ? 4 : 2, spacing: isTablet ? 12 : 10, children: cards);
+
+        final donutChartWidget = _buildDonutChartWidget();
+        final barChartWidget = _buildBarChartWidget(totalMilk);
+        final listProducersUp = _buildProducersTrendCard('Sütü En Çok Artanlar (Son 5 Gün)', trends['up'] ?? [], AppColors.success);
+        final listProducersDown = _buildProducersTrendCard('Sütü En Çok Azalanlar (Son 5 Gün)', trends['down'] ?? [], AppColors.danger);
+        final listNoMilkToday = _buildNoMilkTodayCard(noMilkToday);
+        final listStaffDailyPerformance = _buildStaffPerformanceCard('Personel Günlük Performans', staffPerf);
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            donutChartWidget,
+            const SizedBox(height: 24),
+            barChartWidget,
+            const SizedBox(height: 24),
+            statsGrid,
+            const SizedBox(height: 24),
+            if (isDesktop) ...[
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: listProducersUp),
+                  const SizedBox(width: 16),
+                  Expanded(child: listProducersDown),
+                ],
+              ),
+              const SizedBox(height: 24),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: listNoMilkToday),
+                  const SizedBox(width: 16),
+                  Expanded(child: listStaffDailyPerformance),
+                ],
+              ),
+            ] else ...[
+              listProducersUp,
+              const SizedBox(height: 16),
+              listProducersDown,
+              const SizedBox(height: 16),
+              listNoMilkToday,
+              const SizedBox(height: 16),
+              listStaffDailyPerformance,
+            ]
+          ],
+        );
+      },
     );
   }
 
   Widget _buildMonthlyOperationsTab(bool isDesktop, bool isTablet, double totalMilk, int collectionCount, String currentFirmaName) {
-    final formatNumber = NumberFormat('#,##0', 'tr_TR');
     final monthlyMilk = totalMilk * 4.2;
-    final cards = [
-      StatCard(
-        icon: Icons.calendar_month_rounded,
-        label: 'Aylık Toplam Süt (LT)',
-        value: formatNumber.format(monthlyMilk),
-        color: AppColors.primary600,
-        change: '+%8,2',
-        subtext: 'Geçen Ay: ${formatNumber.format(monthlyMilk * 0.93)} LT',
-        sparklineData: const [40, 42, 45, 43, 44, 46, 48],
-        isUp: true,
-      ),
-      StatCard(
-        icon: Icons.payments_rounded,
-        label: 'Aylık Süt Bedeli (₺)',
-        value: formatNumber.format(monthlyMilk * 23.0),
-        color: AppColors.success,
-        change: '+%11,5',
-        subtext: 'Birim Fiyat: 23 ₺/LT',
-        sparklineData: const [920, 966, 1035, 989, 1012, 1058, 1104],
-        isUp: true,
-      ),
-      StatCard(
-        icon: Icons.shopping_bag_rounded,
-        label: 'Aylık Satış Tutarı (₺)',
-        value: formatNumber.format(monthlyMilk * 25.2),
-        color: AppColors.warning,
-        change: '+%9,1',
-        subtext: 'Birim Satış: 25.2 ₺/LT',
-        sparklineData: const [1000, 1050, 1130, 1080, 1100, 1150, 1200],
-        isUp: true,
-      ),
-      StatCard(
-        icon: Icons.analytics_rounded,
-        label: 'Aylık Toplama Adedi',
-        value: '${(collectionCount * 4.2).toStringAsFixed(0)}',
-        color: Colors.indigo,
-        change: '+%5,4',
-        subtext: 'Ort. Günlük: ${(collectionCount / 7).toStringAsFixed(1)}',
-        sparklineData: const [25, 27, 28, 26, 29, 31, 32],
-        isUp: true,
-      ),
-    ];
+    return FutureBuilder<List<dynamic>>(
+      future: Future.wait([
+        _loadProducerTrends(currentFirmaName, true),
+        _loadStaffPerformance(currentFirmaName, true),
+      ]),
+      builder: (context, snap) {
+        final Map<String, List<Map<String, dynamic>>> trends = snap.data != null
+            ? snap.data![0] as Map<String, List<Map<String, dynamic>>>
+            : {'up': [], 'down': []};
+        final List<Map<String, dynamic>> staffPerf = snap.data != null
+            ? snap.data![1] as List<Map<String, dynamic>>
+            : [];
 
-    Widget statsGrid;
-    if (isDesktop) {
-      statsGrid = Row(
-        children: cards.map((c) => Expanded(child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 6),
-          child: c,
-        ))).toList(),
-      );
-    } else if (isTablet) {
-      statsGrid = StatsGrid(
-        crossAxisCount: 2,
-        spacing: 12,
-        children: cards,
-      );
-    } else {
-      statsGrid = StatsGrid(
-        crossAxisCount: 2,
-        spacing: 10,
-        children: cards,
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        statsGrid,
-        const SizedBox(height: 24),
-        AppCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Aylık Süt Toplama Analizi (Haftalık)',
-                style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.gray800),
-              ),
-              const SizedBox(height: 20),
-              SizedBox(
-                height: 200,
-                child: BarChart(
-                  BarChartData(
-                    gridData: FlGridData(show: false),
-                    borderData: FlBorderData(show: false),
-                    titlesData: FlTitlesData(
-                      leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                      topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                      rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                      bottomTitles: AxisTitles(
-                        sideTitles: SideTitles(
-                          showTitles: true,
-                          getTitlesWidget: (v, _) {
-                            const weeks = ['1. Hafta', '2. Hafta', '3. Hafta', '4. Hafta'];
-                            if (v.toInt() >= 0 && v.toInt() < weeks.length) {
-                              return Padding(
-                                padding: const EdgeInsets.only(top: 8),
-                                child: Text(weeks[v.toInt()], style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray400)),
-                              );
-                            }
-                            return const SizedBox();
-                          },
-                        ),
-                      ),
-                    ),
-                    barGroups: [
-                      BarChartGroupData(x: 0, barRods: [BarChartRodData(toY: monthlyMilk * 0.22, color: AppColors.primary500, width: 24, borderRadius: BorderRadius.circular(4))]),
-                      BarChartGroupData(x: 1, barRods: [BarChartRodData(toY: monthlyMilk * 0.26, color: AppColors.primary500, width: 24, borderRadius: BorderRadius.circular(4))]),
-                      BarChartGroupData(x: 2, barRods: [BarChartRodData(toY: monthlyMilk * 0.24, color: AppColors.primary500, width: 24, borderRadius: BorderRadius.circular(4))]),
-                      BarChartGroupData(x: 3, barRods: [BarChartRodData(toY: monthlyMilk * 0.28, color: AppColors.primary600, width: 24, borderRadius: BorderRadius.circular(4))]),
-                    ],
-                  ),
-                ),
-              ),
-            ],
+        final formatNumber = NumberFormat('#,##0', 'tr_TR');
+        final cards = [
+          StatCard(
+            icon: Icons.payments_rounded,
+            label: 'Aylık Süt Bedeli (₺)',
+            value: formatNumber.format(monthlyMilk * 23.0),
+            color: AppColors.success,
+            change: '',
+            subtext: 'Birim Fiyat: 23 ₺/LT',
+            sparklineData: const [],
+            isUp: true,
           ),
-        ),
-        const SizedBox(height: 24),
-        _buildBottomLists(isDesktop, isTablet),
-      ],
+          StatCard(
+            icon: Icons.shopping_bag_rounded,
+            label: 'Aylık Satış Tutarı (₺)',
+            value: formatNumber.format(monthlyMilk * 25.2),
+            color: AppColors.warning,
+            change: '',
+            subtext: 'Birim Satış: 25.2 ₺/LT',
+            sparklineData: const [],
+            isUp: true,
+          ),
+          StatCard(
+            icon: Icons.credit_card_rounded,
+            label: 'Aylık Avans (₺)',
+            value: formatNumber.format(monthlyMilk * 12.0),
+            color: Colors.teal,
+            change: '',
+            subtext: 'Sistem Toplamı',
+            sparklineData: const [],
+            isUp: true,
+          ),
+          StatCard(
+            icon: Icons.account_balance_wallet_rounded,
+            label: 'Aylık Tahsilat (₺)',
+            value: formatNumber.format(monthlyMilk * 11.5),
+            color: Colors.purple,
+            change: '',
+            subtext: 'Sistem Toplamı',
+            sparklineData: const [],
+            isUp: true,
+          ),
+        ];
+
+        Widget statsGrid = isDesktop
+            ? Row(children: cards.map((c) => Expanded(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 6), child: c))).toList())
+            : StatsGrid(crossAxisCount: isTablet ? 4 : 2, spacing: isTablet ? 12 : 10, children: cards);
+
+        final donutChartWidget = _buildDonutChartWidget();
+        final barChartWidget = _buildMonthlyBarChartWidget(monthlyMilk);
+        final listProducersUp = _buildProducersTrendCard('Aylık Sütü En Çok Artanlar (Önceki Ayın Ort.)', trends['up'] ?? [], AppColors.success);
+        final listProducersDown = _buildProducersTrendCard('Aylık Sütü En Çok Azalanlar (Önceki Ayın Ort.)', trends['down'] ?? [], AppColors.danger);
+        final listStaffMonthlyPerformance = _buildStaffPerformanceCard('Personel Aylık Performans', staffPerf);
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            donutChartWidget,
+            const SizedBox(height: 24),
+            barChartWidget,
+            const SizedBox(height: 24),
+            statsGrid,
+            const SizedBox(height: 24),
+            if (isDesktop) ...[
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: listProducersUp),
+                  const SizedBox(width: 16),
+                  Expanded(child: listProducersDown),
+                ],
+              ),
+              const SizedBox(height: 24),
+              listStaffMonthlyPerformance,
+            ] else ...[
+              listProducersUp,
+              const SizedBox(height: 16),
+              listProducersDown,
+              const SizedBox(height: 16),
+              listStaffMonthlyPerformance,
+            ]
+          ],
+        );
+      },
     );
   }
 
@@ -1606,102 +1682,697 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
     );
   }
 
-  Widget _buildMobileQuickActions(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Hızlı İşlemler',
-          style: GoogleFonts.inter(
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
-            color: AppColors.gray800,
+  DateTime parseDateStr(String dateStr) {
+    try {
+      final parts = dateStr.split('.');
+      if (parts.length == 3) {
+        final day = int.parse(parts[0]);
+        final month = int.parse(parts[1]);
+        final year = int.parse(parts[2]);
+        return DateTime(year, month, day);
+      }
+    } catch (_) {}
+    return DateTime(1970);
+  }
+
+  DateTime getDocDate(Map<String, dynamic> data) {
+    final ts = data['timestamp'];
+    if (ts is Timestamp) {
+      return ts.toDate();
+    }
+    final tarih = data['tarih'];
+    if (tarih is String) {
+      return parseDateStr(tarih);
+    }
+    return DateTime(1970);
+  }
+
+  Future<Map<String, List<Map<String, dynamic>>>> _loadProducerTrends(String currentFirmaName, bool isMonthly) async {
+    try {
+      final collectionsSnap = await FirebaseFirestore.instance
+          .collection('toplamalar')
+          .where('firma', isEqualTo: currentFirmaName)
+          .get();
+
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+
+      final Map<String, List<Map<String, dynamic>>> collectionsByProducer = {};
+      for (var doc in collectionsSnap.docs) {
+        final data = doc.data();
+        final String uretici = data['u'] ?? '';
+        if (uretici.isEmpty) continue;
+
+        final double litres = (data['m'] as num?)?.toDouble() ?? 0.0;
+        final DateTime date = getDocDate(data);
+
+        collectionsByProducer.putIfAbsent(uretici, () => []).add({
+          'litres': litres,
+          'date': date,
+        });
+      }
+
+      final List<Map<String, dynamic>> computedTrends = [];
+
+      if (!isMonthly) {
+        final fiveDaysAgo = today.subtract(const Duration(days: 5));
+
+        collectionsByProducer.forEach((uretici, list) {
+          double todayVol = 0.0;
+          double prev5DaysVol = 0.0;
+
+          for (var col in list) {
+            final DateTime colDate = col['date'];
+            final double litres = col['litres'];
+            final DateTime colDay = DateTime(colDate.year, colDate.month, colDate.day);
+
+            if (colDay.isAtSameMomentAs(today)) {
+              todayVol += litres;
+            } else if (colDay.isAfter(fiveDaysAgo.subtract(const Duration(microseconds: 1))) &&
+                       colDay.isBefore(today)) {
+              prev5DaysVol += litres;
+            }
+          }
+
+          final double avg5Days = prev5DaysVol / 5.0;
+
+          double percentChange = 0.0;
+          if (avg5Days > 0) {
+            percentChange = ((todayVol - avg5Days) / avg5Days) * 100.0;
+          } else if (todayVol > 0) {
+            percentChange = 100.0;
+          }
+
+          if (todayVol != 0.0 || avg5Days != 0.0) {
+            computedTrends.add({
+              'name': uretici,
+              'value': '${todayVol.toStringAsFixed(1)} L',
+              'change': percentChange,
+            });
+          }
+        });
+      } else {
+        final thisMonthStart = DateTime(today.year, today.month, 1);
+        final prevMonthStart = DateTime(today.year, today.month - 1, 1);
+
+        collectionsByProducer.forEach((uretici, list) {
+          double thisMonthVol = 0.0;
+          double prevMonthVol = 0.0;
+
+          for (var col in list) {
+            final DateTime colDate = col['date'];
+            final double litres = col['litres'];
+
+            if (colDate.isAfter(thisMonthStart.subtract(const Duration(microseconds: 1)))) {
+              thisMonthVol += litres;
+            } else if (colDate.isAfter(prevMonthStart.subtract(const Duration(microseconds: 1))) &&
+                       colDate.isBefore(thisMonthStart)) {
+              prevMonthVol += litres;
+            }
+          }
+
+          double percentChange = 0.0;
+          if (prevMonthVol > 0) {
+            percentChange = ((thisMonthVol - prevMonthVol) / prevMonthVol) * 100.0;
+          } else if (thisMonthVol > 0) {
+            percentChange = 100.0;
+          }
+
+          if (thisMonthVol != 0.0 || prevMonthVol != 0.0) {
+            computedTrends.add({
+              'name': uretici,
+              'value': '${thisMonthVol.toStringAsFixed(1)} L',
+              'change': percentChange,
+            });
+          }
+        });
+      }
+
+      final List<Map<String, dynamic>> up = [];
+      final List<Map<String, dynamic>> down = [];
+
+      for (var t in computedTrends) {
+        final double change = t['change'];
+        final String changeStr = '${change >= 0 ? "+" : ""}${change.toStringAsFixed(1)}%';
+        final Map<String, dynamic> item = {
+          'n': t['name'],
+          'v': t['value'],
+          'c': changeStr,
+          'changeVal': change,
+        };
+
+        if (change > 0) {
+          up.add(item);
+        } else if (change < 0) {
+          down.add(item);
+        }
+      }
+
+      up.sort((a, b) => b['changeVal'].compareTo(a['changeVal']));
+      down.sort((a, b) => a['changeVal'].compareTo(b['changeVal']));
+
+      return {
+        'up': up.take(5).toList(),
+        'down': down.take(5).toList(),
+      };
+    } catch (e) {
+      print("Error loading trends: $e");
+      return {'up': [], 'down': []};
+    }
+  }
+
+  Future<List<String>> _getProducersNoMilkToday(String currentFirmaName) async {
+    try {
+      final ureticiSnap = await FirebaseFirestore.instance
+          .collection('ureticiler')
+          .where('firmalar', arrayContains: currentFirmaName)
+          .get();
+
+      final List<String> allProducers = ureticiSnap.docs
+          .map((d) => (d.data()['name'] as String? ?? '').trim())
+          .where((name) => name.isNotEmpty)
+          .toList();
+
+      final collectionsSnap = await FirebaseFirestore.instance
+          .collection('toplamalar')
+          .where('firma', isEqualTo: currentFirmaName)
+          .get();
+
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+
+      final Set<String> activeToday = {};
+      for (var doc in collectionsSnap.docs) {
+        final data = doc.data();
+        final DateTime date = getDocDate(data);
+        final DateTime colDay = DateTime(date.year, date.month, date.day);
+        if (colDay.isAtSameMomentAs(today)) {
+          final String uretici = (data['u'] as String? ?? '').trim();
+          if (uretici.isNotEmpty) {
+            activeToday.add(uretici);
+          }
+        }
+      }
+
+      final List<String> noMilk = allProducers
+          .where((p) => !activeToday.contains(p))
+          .toList();
+
+      return noMilk;
+    } catch (e) {
+      print("Error in no milk today: $e");
+      return [];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _loadStaffPerformance(String currentFirmaName, bool isMonthly) async {
+    try {
+      final driversSnap = await FirebaseFirestore.instance
+          .collection('suruculer')
+          .where('firma', isEqualTo: currentFirmaName)
+          .get();
+
+      final collectionsSnap = await FirebaseFirestore.instance
+          .collection('toplamalar')
+          .where('firma', isEqualTo: currentFirmaName)
+          .get();
+
+      final deliveriesSnap = await FirebaseFirestore.instance
+          .collection('teslimatlar')
+          .where('firma', isEqualTo: currentFirmaName)
+          .get();
+
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final thisMonthStart = DateTime(today.year, today.month, 1);
+
+      final List<Map<String, dynamic>> results = [];
+
+      for (var doc in driversSnap.docs) {
+        final data = doc.data();
+        final String name = '${data['ad'] ?? ''} ${data['soyad'] ?? ''}'.trim();
+        if (name.isEmpty) continue;
+
+        double totalMilk = 0.0;
+        for (var col in collectionsSnap.docs) {
+          final cData = col.data();
+          final String sr = cData['sr'] ?? '';
+          if (sr != name) continue;
+
+          final DateTime date = getDocDate(cData);
+          if (!isMonthly) {
+            final DateTime colDay = DateTime(date.year, date.month, date.day);
+            if (colDay.isAtSameMomentAs(today)) {
+              totalMilk += (cData['m'] as num?)?.toDouble() ?? 0.0;
+            }
+          } else {
+            if (date.isAfter(thisMonthStart.subtract(const Duration(microseconds: 1)))) {
+              totalMilk += (cData['m'] as num?)?.toDouble() ?? 0.0;
+            }
+          }
+        }
+
+        double shortage = 0.0;
+        for (var del in deliveriesSnap.docs) {
+          final dData = del.data();
+          final String sr = dData['sr'] ?? dData['surucu'] ?? '';
+          if (sr != name) continue;
+
+          final DateTime date = getDocDate(dData);
+          bool inPeriod = false;
+          if (!isMonthly) {
+            final DateTime colDay = DateTime(date.year, date.month, date.day);
+            if (colDay.isAtSameMomentAs(today)) {
+              inPeriod = true;
+            }
+          } else {
+            if (date.isAfter(thisMonthStart.subtract(const Duration(microseconds: 1)))) {
+              inPeriod = true;
+            }
+          }
+
+          if (inPeriod) {
+            shortage += (dData['fark'] ?? 0.0).toDouble();
+          }
+        }
+
+        results.add({
+          'n': name,
+          'p': name.isNotEmpty ? name[0].toUpperCase() : '',
+          'milk': totalMilk,
+          'shortage': shortage,
+        });
+      }
+
+      return results;
+    } catch (e) {
+      print("Error in staff performance: $e");
+      return [];
+    }
+  }
+
+  Widget _buildProducersTrendCard(String title, List<Map<String, dynamic>> list, Color trendColor) {
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.gray800),
           ),
-        ),
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            Expanded(
-              child: _buildQuickActionCard(
-                context,
-                title: 'Süt Girişi',
-                icon: Icons.add_rounded,
-                color: AppColors.primary600,
-                bgColor: AppColors.primary50,
-                onTap: () => QuickActionsDialogs.showSutGirisiDialog(context),
+          const SizedBox(height: 12),
+          if (list.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Center(
+                child: Text(
+                  'Veri bulunamadı.',
+                  style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray400),
+                ),
               ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _buildQuickActionCard(
-                context,
-                title: 'Süt Kabul',
-                icon: Icons.input_rounded,
-                color: const Color(0xFF7C3AED),
-                bgColor: const Color(0xFFEDE9FE),
-                onTap: () => QuickActionsDialogs.showSutKabulDialog(context),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _buildQuickActionCard(
-                context,
-                title: 'Tahsilat Yap',
-                icon: Icons.monetization_on_rounded,
-                color: Colors.teal,
-                bgColor: const Color(0xFFE6F4EA),
-                onTap: () => QuickActionsDialogs.showTahsilatDialog(context),
-              ),
-            ),
-          ],
-        ),
-      ],
+            )
+          else
+            ...list.asMap().entries.map((e) {
+              final idx = e.key + 1;
+              final map = e.value;
+              return _buildListItemRow(idx, map['n']!, map['v']!, map['c']!, trendColor);
+            }),
+        ],
+      ),
     );
   }
 
-  Widget _buildQuickActionCard(
-    BuildContext context, {
-    required String title,
-    required IconData icon,
-    required Color color,
-    required Color bgColor,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.gray200, width: 1),
-          boxShadow: AppShadows.sm,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: bgColor,
-                shape: BoxShape.circle,
+  Widget _buildNoMilkTodayCard(List<String> list) {
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Bugün Süt Vermeyenler',
+            style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.gray800),
+          ),
+          const SizedBox(height: 12),
+          if (list.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Center(
+                child: Text(
+                  'Bugün tüm üreticiler süt verdi.',
+                  style: GoogleFonts.inter(fontSize: 11, color: AppColors.success, fontWeight: FontWeight.w500),
+                ),
               ),
-              child: Icon(icon, color: color, size: 18),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.inter(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: AppColors.gray800,
+            )
+          else
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 180),
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: list.length,
+                itemBuilder: (context, idx) {
+                  final name = list[idx];
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 5),
+                    child: Row(
+                      children: [
+                        Icon(Icons.remove_circle_outline_rounded, color: AppColors.danger, size: 14),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            name,
+                            style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w500, color: AppColors.gray700),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
               ),
             ),
-          ],
-        ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStaffPerformanceCard(String title, List<Map<String, dynamic>> list) {
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.gray800),
+          ),
+          const SizedBox(height: 12),
+          if (list.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Center(
+                child: Text(
+                  'Veri bulunamadı.',
+                  style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray400),
+                ),
+              ),
+            )
+          else
+            ...list.asMap().entries.map((e) {
+              final idx = e.key + 1;
+              final map = e.value;
+              final double milk = map['milk'];
+              final double shortage = map['shortage'];
+              final String shortStr = shortage == 0 ? '0 L' : '${shortage > 0 ? "+" : ""}${shortage.toStringAsFixed(1)} L';
+              final Color shortColor = shortage > 0 ? AppColors.danger : (shortage < 0 ? AppColors.success : AppColors.gray600);
+
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(
+                  children: [
+                    Text(
+                      '$idx',
+                      style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.gray400),
+                    ),
+                    const SizedBox(width: 12),
+                    CircleAvatar(
+                      radius: 12,
+                      backgroundColor: AppColors.primary100,
+                      child: Text(
+                        map['p']!,
+                        style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.primary600),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        map['n']!,
+                        style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w500, color: AppColors.gray700),
+                      ),
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          '${milk.toStringAsFixed(0)} L',
+                          style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.gray800),
+                        ),
+                        Text(
+                          'Fark: $shortStr',
+                          style: GoogleFonts.inter(fontSize: 9, fontWeight: FontWeight.w500, color: shortColor),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDonutChartWidget() {
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Süt Kalite Dağılımı',
+            style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.gray800),
+          ),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              SizedBox(
+                width: 120,
+                height: 120,
+                child: PieChart(
+                  PieChartData(
+                    sectionsSpace: 2,
+                    centerSpaceRadius: 36,
+                    startDegreeOffset: -90,
+                    sections: [
+                      PieChartSectionData(color: AppColors.primary600, value: 45, showTitle: false, radius: 18),
+                      PieChartSectionData(color: AppColors.success, value: 35, showTitle: false, radius: 18),
+                      PieChartSectionData(color: AppColors.warning, value: 15, showTitle: false, radius: 18),
+                      PieChartSectionData(color: AppColors.danger, value: 5, showTitle: false, radius: 18),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  children: [
+                    _buildDonutLegend('A Kalite', '%45', '5.600 L', AppColors.primary600),
+                    _buildDonutLegend('B Kalite', '%35', '4.350 L', AppColors.success),
+                    _buildDonutLegend('C kalite', '%15', '1.850 L', AppColors.warning),
+                    _buildDonutLegend('D kalite', '%5', '650 L', AppColors.danger),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBarChartWidget(double totalMilk) {
+    final formatNumber = NumberFormat('#,##0', 'tr_TR');
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '7 Günlük Süt Miktarı (Litre)',
+                    style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.gray800),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Text(
+                        'Toplam ${formatNumber.format(totalMilk)} Litre',
+                        style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500, fontWeight: FontWeight.w500),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '+%18,42',
+                        style: GoogleFonts.inter(fontSize: 11, color: AppColors.success, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            height: 180,
+            child: BarChart(
+              BarChartData(
+                gridData: const FlGridData(show: false),
+                borderData: FlBorderData(show: false),
+                titlesData: FlTitlesData(
+                  leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      getTitlesWidget: (v, _) {
+                        const d = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
+                        if (v.toInt() >= 0 && v.toInt() < d.length) {
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Text(d[v.toInt()], style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray400)),
+                          );
+                        }
+                        return const SizedBox();
+                      },
+                    ),
+                  ),
+                ),
+                barTouchData: BarTouchData(
+                  touchTooltipData: BarTouchTooltipData(
+                    getTooltipItem: (_, __, rod, ___) => BarTooltipItem(
+                      '${rod.toY.toInt()} LT',
+                      GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white),
+                    ),
+                  ),
+                ),
+                barGroups: [totalMilk * 0.8, totalMilk * 0.9, totalMilk * 1.1, totalMilk * 0.95, totalMilk * 1.0, totalMilk * 0.85, totalMilk].asMap().entries.map((e) =>
+                  BarChartGroupData(
+                    x: e.key,
+                    barRods: [
+                      BarChartRodData(
+                        toY: e.value.toDouble(),
+                        gradient: const LinearGradient(
+                          colors: [AppColors.primary400, AppColors.primary600],
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                        ),
+                        width: 16,
+                        borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+                        backDrawRodData: BackgroundBarChartRodData(
+                          show: true,
+                          toY: totalMilk * 1.5,
+                          color: AppColors.gray50,
+                        ),
+                      ),
+                    ],
+                  ),
+                ).toList(),
+              ),
+              duration: const Duration(milliseconds: 800),
+              curve: Curves.easeOutCubic,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMonthlyBarChartWidget(double monthlyMilk) {
+    final formatNumber = NumberFormat('#,##0', 'tr_TR');
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '7 Aylık Süt Miktarı (Litre)',
+                    style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.gray800),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Text(
+                        'Aylık Toplam ${formatNumber.format(monthlyMilk)} Litre',
+                        style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500, fontWeight: FontWeight.w500),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '+%12,18',
+                        style: GoogleFonts.inter(fontSize: 11, color: AppColors.success, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            height: 180,
+            child: BarChart(
+              BarChartData(
+                gridData: const FlGridData(show: false),
+                borderData: FlBorderData(show: false),
+                titlesData: FlTitlesData(
+                  leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      getTitlesWidget: (v, _) {
+                        const d = ['Kas', 'Ara', 'Oca', 'Şub', 'Mar', 'Nis', 'May'];
+                        if (v.toInt() >= 0 && v.toInt() < d.length) {
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Text(d[v.toInt()], style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray400)),
+                          );
+                        }
+                        return const SizedBox();
+                      },
+                    ),
+                  ),
+                ),
+                barTouchData: BarTouchData(
+                  touchTooltipData: BarTouchTooltipData(
+                    getTooltipItem: (_, __, rod, ___) => BarTooltipItem(
+                      '${rod.toY.toInt()} LT',
+                      GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white),
+                    ),
+                  ),
+                ),
+                barGroups: [monthlyMilk * 0.85, monthlyMilk * 0.9, monthlyMilk * 0.88, monthlyMilk * 0.92, monthlyMilk * 0.95, monthlyMilk * 0.98, monthlyMilk].asMap().entries.map((e) =>
+                  BarChartGroupData(
+                    x: e.key,
+                    barRods: [
+                      BarChartRodData(
+                        toY: e.value.toDouble(),
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF8B5CF6), Color(0xFF6D28D9)],
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                        ),
+                        width: 16,
+                        borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+                        backDrawRodData: BackgroundBarChartRodData(
+                          show: true,
+                          toY: monthlyMilk * 1.5,
+                          color: AppColors.gray50,
+                        ),
+                      ),
+                    ],
+                  ),
+                ).toList(),
+              ),
+              duration: const Duration(milliseconds: 800),
+              curve: Curves.easeOutCubic,
+            ),
+          ),
+        ],
       ),
     );
   }

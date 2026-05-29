@@ -54,6 +54,7 @@ class FinansYonetimiScreen extends StatelessWidget {
       {'title': 'Giderler', 'icon': Icons.credit_card_rounded, 'color': Colors.red, 'path': '/firma/finans/giderler'},
       {'title': 'Gelirler', 'icon': Icons.monetization_on_rounded, 'color': Colors.green, 'path': '/firma/finans/gelirler'},
       {'title': 'Avanslar', 'icon': Icons.handshake_rounded, 'color': Colors.orange, 'path': '/firma/finans/avanslar'},
+      {'title': 'Tahsilat Yap', 'icon': Icons.credit_card_rounded, 'color': Colors.indigo, 'path': '/firma/tahsilat'},
       {'title': 'Devir İşlemleri', 'icon': Icons.sync_alt_rounded, 'color': Colors.purple, 'path': '/firma/finans/devir'},
       {'title': 'Süt Ödemeleri', 'icon': Icons.people_rounded, 'color': Colors.blue, 'path': '/firma/finans/sut-odemeleri'},
       {'title': 'Ödeme Geçmişi', 'icon': Icons.history_rounded, 'color': Colors.purple, 'path': '/firma/finans/odeme-gecmisi'},
@@ -177,206 +178,230 @@ class _FinansalGenelBakisScreenState extends State<FinansalGenelBakisScreen> {
                 builder: (context, tahsilatSnapshot) {
                   return StreamBuilder<QuerySnapshot>(
                     stream: FirebaseFirestore.instance
-                        .collection('avanslar')
+                        .collection('kesintiler')
                         .where('firma', isEqualTo: currentFirmaName)
                         .snapshots(),
-                    builder: (context, avansSnapshot) {
-                      double totalFatura = 0.0;
-                      int faturaCount = 0;
-                      double totalGider = 0.0;
-                      int giderCount = 0;
-                      double totalGelir = 0.0;
-                      int gelirCount = 0;
-                      double totalAvans = 0.0;
-                      int avansCount = 0;
+                    builder: (context, kesintiSnapshot) {
+                      return StreamBuilder<QuerySnapshot>(
+                        stream: FirebaseFirestore.instance
+                            .collection('avanslar')
+                            .where('firma', isEqualTo: currentFirmaName)
+                            .snapshots(),
+                        builder: (context, avansSnapshot) {
+                          double totalFatura = 0.0;
+                          int faturaCount = 0;
+                          double totalGider = 0.0;
+                          int giderCount = 0;
+                          double totalGelir = 0.0;
+                          int gelirCount = 0;
+                          double totalAvans = 0.0;
+                          int avansCount = 0;
+                          double totalKesinti = 0.0;
 
-                      // Parse invoices
-                      if (faturaSnapshot.hasData) {
-                        final docs = faturaSnapshot.data!.docs;
-                        for (var doc in docs) {
-                          final data = doc.data() as Map<String, dynamic>;
-                          final t = (data['timestamp'] as Timestamp?)?.toDate();
-                          if (t != null && t.year == _selectedDate.year && t.month == _selectedDate.month) {
-                            faturaCount++;
-                            final double val = (data['toplam'] as num?)?.toDouble() ?? 0.0;
-                            totalFatura += val;
+                          // Parse invoices
+                          if (faturaSnapshot.hasData) {
+                            final docs = faturaSnapshot.data!.docs;
+                            for (var doc in docs) {
+                              final data = doc.data() as Map<String, dynamic>;
+                              final t = (data['timestamp'] as Timestamp?)?.toDate();
+                              if (t != null && t.year == _selectedDate.year && t.month == _selectedDate.month) {
+                                faturaCount++;
+                                final double val = (data['toplam'] as num?)?.toDouble() ?? 0.0;
+                                totalFatura += val;
+                              }
+                            }
                           }
-                        }
-                      }
 
-                      // Parse expenses
-                      if (giderSnapshot.hasData) {
-                        final docs = giderSnapshot.data!.docs;
-                        for (var doc in docs) {
-                          final data = doc.data() as Map<String, dynamic>;
-                          final t = (data['timestamp'] as Timestamp?)?.toDate();
-                          if (t != null && t.year == _selectedDate.year && t.month == _selectedDate.month) {
-                            giderCount++;
-                            final double val = (data['tutar'] as num?)?.toDouble() ?? 0.0;
-                            totalGider += val;
+                          // Parse expenses
+                          if (giderSnapshot.hasData) {
+                            final docs = giderSnapshot.data!.docs;
+                            for (var doc in docs) {
+                              final data = doc.data() as Map<String, dynamic>;
+                              final t = (data['timestamp'] as Timestamp?)?.toDate();
+                              if (t != null && t.year == _selectedDate.year && t.month == _selectedDate.month) {
+                                giderCount++;
+                                final double val = (data['tutar'] as num?)?.toDouble() ?? 0.0;
+                                totalGider += val;
+                              }
+                            }
                           }
-                        }
-                      }
 
-                      // Parse collections/revenue
-                      if (tahsilatSnapshot.hasData) {
-                        final docs = tahsilatSnapshot.data!.docs;
-                        for (var doc in docs) {
-                          final data = doc.data() as Map<String, dynamic>;
-                          final t = (data['timestamp'] as Timestamp?)?.toDate();
-                          if (t != null && t.year == _selectedDate.year && t.month == _selectedDate.month) {
-                            gelirCount++;
-                            final double val = (data['tutar'] as num?)?.toDouble() ?? 0.0;
-                            totalGelir += val;
+                          // Parse collections/revenue
+                          if (tahsilatSnapshot.hasData) {
+                            final docs = tahsilatSnapshot.data!.docs;
+                            for (var doc in docs) {
+                              final data = doc.data() as Map<String, dynamic>;
+                              final t = (data['timestamp'] as Timestamp?)?.toDate();
+                              if (t != null && t.year == _selectedDate.year && t.month == _selectedDate.month) {
+                                gelirCount++;
+                                final double val = (data['tutar'] as num?)?.toDouble() ?? 0.0;
+                                totalGelir += val;
+                              }
+                            }
                           }
-                        }
-                      }
 
-                      // Parse avanslar
-                      if (avansSnapshot.hasData) {
-                        final docs = avansSnapshot.data!.docs;
-                        for (var doc in docs) {
-                          final data = doc.data() as Map<String, dynamic>;
-                          final t = (data['timestamp'] as Timestamp?)?.toDate();
-                          if (t != null && t.year == _selectedDate.year && t.month == _selectedDate.month) {
-                            avansCount++;
-                            final double val = (data['tutar'] as num?)?.toDouble() ?? 0.0;
-                            totalAvans += val;
+                          // Parse kesintiler
+                          if (kesintiSnapshot.hasData) {
+                            final docs = kesintiSnapshot.data!.docs;
+                            for (var doc in docs) {
+                              final data = doc.data() as Map<String, dynamic>;
+                              final durum = data['durum'] as String? ?? 'aktif';
+                              if (durum == 'iptal') continue;
+                              final t = (data['timestamp'] as Timestamp?)?.toDate();
+                              if (t != null && t.year == _selectedDate.year && t.month == _selectedDate.month) {
+                                final double val = (data['tutar'] as num?)?.toDouble() ?? 0.0;
+                                totalKesinti += val;
+                              }
+                            }
                           }
-                        }
-                      }
 
-                      final formatNumber = NumberFormat('#,##0', 'tr_TR');
-                      final double netDurum = totalGelir - totalGider - totalAvans;
+                          // Parse avanslar
+                          if (avansSnapshot.hasData) {
+                            final docs = avansSnapshot.data!.docs;
+                            for (var doc in docs) {
+                              final data = doc.data() as Map<String, dynamic>;
+                              final t = (data['timestamp'] as Timestamp?)?.toDate();
+                              if (t != null && t.year == _selectedDate.year && t.month == _selectedDate.month) {
+                                avansCount++;
+                                final double val = (data['tutar'] as num?)?.toDouble() ?? 0.0;
+                                totalAvans += val;
+                              }
+                            }
+                          }
 
-                  return ListView(
-                    padding: const EdgeInsets.all(16),
-                    children: [
-                      // Date Selector
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.chevron_left_rounded),
-                            onPressed: () => setState(() => _selectedDate = DateTime(_selectedDate.year, _selectedDate.month - 1)),
-                          ),
-                          const SizedBox(width: 12),
-                          Text(
-                            monthStr,
-                            style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.gray800),
-                          ),
-                          const SizedBox(width: 12),
-                          IconButton(
-                            icon: const Icon(Icons.chevron_right_rounded),
-                            onPressed: () => setState(() => _selectedDate = DateTime(_selectedDate.year, _selectedDate.month + 1)),
-                          ),
-                          const Spacer(),
-                          IconButton(
-                            icon: const Icon(Icons.refresh_rounded, color: AppColors.primary600),
-                            onPressed: () => setState(() {}),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
+                          final formatNumber = NumberFormat('#,##0', 'tr_TR');
+                          final double totalGelirCalculated = totalGelir + totalKesinti;
+                          final double totalGiderCalculated = totalGider + totalAvans;
+                          final double netDurum = totalGelirCalculated - totalGiderCalculated;
 
-                      // Grid of 5 Cards
-                      GridView.count(
-                        crossAxisCount: MediaQuery.of(context).size.width >= 600 ? 3 : 2,
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        crossAxisSpacing: 12,
-                        mainAxisSpacing: 12,
-                        childAspectRatio: 1.15,
-                        children: [
-                          _buildBakisCard(
-                            title: 'Faturalar',
-                            subtext: '$faturaCount fatura',
-                            value: '${formatNumber.format(totalFatura)} ₺',
-                            icon: Icons.description_rounded,
-                            color: Colors.blue,
-                            onTap: () => context.go('/firma/finans/faturalar'),
-                          ),
-                          _buildBakisCard(
-                            title: 'Giderler',
-                            subtext: '$giderCount gider',
-                            value: '${formatNumber.format(totalGider)} ₺',
-                            icon: Icons.credit_card_rounded,
-                            color: Colors.red,
-                            onTap: () => context.go('/firma/finans/giderler'),
-                          ),
-                          _buildBakisCard(
-                            title: 'Gelirler',
-                            subtext: '$gelirCount gelir',
-                            value: '${formatNumber.format(totalGelir)} ₺',
-                            icon: Icons.monetization_on_rounded,
-                            color: Colors.green,
-                            onTap: () => context.go('/firma/finans/gelirler'),
-                          ),
-                          _buildBakisCard(
-                            title: 'Ödeme Geçmişi',
-                            subtext: 'Mali raporlar',
-                            value: 'Analiz',
-                            icon: Icons.history_rounded,
-                            color: Colors.purple,
-                            onTap: () => context.go('/firma/finans/odeme-gecmisi'),
-                          ),
-                          _buildBakisCard(
-                            title: 'Devir',
-                            subtext: 'Ödeme devri',
-                            value: 'Yönetim',
-                            icon: Icons.sync_alt_rounded,
-                            color: Colors.purple,
-                            onTap: () => context.go('/firma/finans/devir'),
-                          ),
-                          _buildBakisCard(
-                            title: 'Avanslar',
-                            subtext: '$avansCount avans',
-                            value: '${formatNumber.format(totalAvans)} ₺',
-                            icon: Icons.money_off_rounded,
-                            color: Colors.orange,
-                            onTap: () => context.go('/firma/finans/avanslar'),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
+                          return ListView(
+                            padding: const EdgeInsets.all(16),
+                            children: [
+                              // Date Selector
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.chevron_left_rounded),
+                                    onPressed: () => setState(() => _selectedDate = DateTime(_selectedDate.year, _selectedDate.month - 1)),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Text(
+                                    monthStr,
+                                    style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.gray800),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  IconButton(
+                                    icon: const Icon(Icons.chevron_right_rounded),
+                                    onPressed: () => setState(() => _selectedDate = DateTime(_selectedDate.year, _selectedDate.month + 1)),
+                                  ),
+                                  const Spacer(),
+                                  IconButton(
+                                    icon: const Icon(Icons.refresh_rounded, color: AppColors.primary600),
+                                    onPressed: () => setState(() {}),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 16),
 
-                      // Summary Card
-                      AppCard(
-                        shadow: AppShadows.md,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '$monthStr Özeti',
-                              style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.gray800),
-                            ),
-                            const SizedBox(height: 16),
-                            _buildSummaryRow('Toplam Fatura:', '${formatNumber.format(totalFatura)} ₺', AppColors.gray600),
-                            const SizedBox(height: 10),
-                            _buildSummaryRow('Toplam Gider:', '${formatNumber.format(totalGider)} ₺', AppColors.gray600),
-                            const SizedBox(height: 10),
-                            _buildSummaryRow('Toplam Avans:', '${formatNumber.format(totalAvans)} ₺', AppColors.gray600),
-                            const Divider(height: 24, color: AppColors.gray200),
-                            _buildSummaryRow(
-                              'Net Durum:',
-                              '${netDurum >= 0 ? '+' : ''}${formatNumber.format(netDurum)} ₺',
-                              netDurum >= 0 ? Colors.green : Colors.red,
-                              isBold: true,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+                              // Grid of 6 Cards
+                              GridView.count(
+                                crossAxisCount: MediaQuery.of(context).size.width >= 600 ? 3 : 2,
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                crossAxisSpacing: 12,
+                                mainAxisSpacing: 12,
+                                childAspectRatio: 1.15,
+                                children: [
+                                  _buildBakisCard(
+                                    title: 'Faturalar',
+                                    subtext: '$faturaCount fatura',
+                                    value: '${formatNumber.format(totalFatura)} ₺',
+                                    icon: Icons.description_rounded,
+                                    color: Colors.blue,
+                                    onTap: () => context.go('/firma/finans/faturalar'),
+                                  ),
+                                  _buildBakisCard(
+                                    title: 'Giderler',
+                                    subtext: '$giderCount gider',
+                                    value: '${formatNumber.format(totalGider)} ₺',
+                                    icon: Icons.credit_card_rounded,
+                                    color: Colors.red,
+                                    onTap: () => context.go('/firma/finans/giderler'),
+                                  ),
+                                  _buildBakisCard(
+                                    title: 'Gelirler',
+                                    subtext: '$gelirCount gelir',
+                                    value: '${formatNumber.format(totalGelir)} ₺',
+                                    icon: Icons.monetization_on_rounded,
+                                    color: Colors.green,
+                                    onTap: () => context.go('/firma/finans/gelirler'),
+                                  ),
+                                  _buildBakisCard(
+                                    title: 'Ödeme Geçmişi',
+                                    subtext: 'Mali raporlar',
+                                    value: 'Analiz',
+                                    icon: Icons.history_rounded,
+                                    color: Colors.purple,
+                                    onTap: () => context.go('/firma/finans/odeme-gecmisi'),
+                                  ),
+                                  _buildBakisCard(
+                                    title: 'Devir',
+                                    subtext: 'Ödeme devri',
+                                    value: 'Yönetim',
+                                    icon: Icons.sync_alt_rounded,
+                                    color: Colors.purple,
+                                    onTap: () => context.go('/firma/finans/devir'),
+                                  ),
+                                  _buildBakisCard(
+                                    title: 'Avanslar',
+                                    subtext: '$avansCount avans',
+                                    value: '${formatNumber.format(totalAvans)} ₺',
+                                    icon: Icons.money_off_rounded,
+                                    color: Colors.orange,
+                                    onTap: () => context.go('/firma/finans/avanslar'),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 20),
+
+                              // Summary Card
+                              AppCard(
+                                shadow: AppShadows.md,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '$monthStr Özeti',
+                                      style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.gray800),
+                                    ),
+                                    const SizedBox(height: 16),
+                                    _buildSummaryRow('Toplam Gelir (Süt + Ürün):', '${formatNumber.format(totalGelirCalculated)} ₺', AppColors.primary600),
+                                    const SizedBox(height: 10),
+                                    _buildSummaryRow('Toplam Gider (Avans + Gider):', '${formatNumber.format(totalGiderCalculated)} ₺', Colors.red),
+                                    const Divider(height: 24, color: AppColors.gray200),
+                                    _buildSummaryRow(
+                                      'Net Durum:',
+                                      '${netDurum >= 0 ? '+' : ''}${formatNumber.format(netDurum)} ₺',
+                                      netDurum >= 0 ? Colors.green : Colors.red,
+                                      isBold: true,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                      );
+                    },
                   );
                 },
               );
             },
           );
         },
-      );
-    },
-  ),
-);
+      ),
+    );
   }
 
   Widget _buildBakisCard({
@@ -1142,24 +1167,54 @@ class _FaturaEkleScreenState extends State<FaturaEkleScreen> {
                           'faturaNo': _faturaNoCtrl.text,
                         });
 
-                        // If it's a purchase invoice (Alış Faturası), log to expenses as well
+                        // If it's a purchase invoice (Alış Faturası), log to expenses AND update inventory stock!
                         if (_faturaTipi == 'alis') {
                           for (var item in _kalemler) {
+                            final String urunAd = item['urun'] as String;
                             final double m = item['miktar'] as double;
                             final double f = item['fiyat'] as double;
-                            final categoryName = item['kategori'] as String? ?? 'Genel';
+                            final String itemBirim = item['birim'] as String? ?? 'adet';
+                            final String categoryName = item['kategori'] as String? ?? 'Genel';
                             
                             await FirebaseFirestore.instance.collection('giderler').add({
                               'kategori': categoryName.toLowerCase()
                                   .replaceAll('araç', 'arac')
                                   .replaceAll('bakım', 'bakim')
                                   .replaceAll('müşteri', 'musteri'),
-                              'aciklama': '${_faturaNoCtrl.text}: ${item['urun']}',
+                              'aciklama': '${_faturaNoCtrl.text}: $urunAd',
                               'tutar': m * f,
                               'tarih': DateFormat('dd.MM.yyyy').format(_faturaTarihi),
                               'firma': currentFirmaName,
                               'timestamp': FieldValue.serverTimestamp(),
                             });
+
+                            // Update urunler collection stock and sonGelisFiyati
+                            final urunSnap = await FirebaseFirestore.instance.collection('urunler')
+                                .where('firma', isEqualTo: currentFirmaName)
+                                .where('ad', isEqualTo: urunAd)
+                                .limit(1)
+                                .get();
+
+                            if (urunSnap.docs.isNotEmpty) {
+                              final docRef = urunSnap.docs.first.reference;
+                              await docRef.update({
+                                'stok': FieldValue.increment(m),
+                                'sonGelisFiyati': f,
+                              });
+                            } else {
+                              // If product does not exist, create it!
+                              await FirebaseFirestore.instance.collection('urunler').add({
+                                'ad': urunAd,
+                                'firma': currentFirmaName,
+                                'stok': m,
+                                'sonGelisFiyati': f,
+                                'fiyat': f * 1.2, // Default markup
+                                'minStok': 10.0,
+                                'birim': itemBirim,
+                                'kategori': categoryName,
+                                'timestamp': FieldValue.serverTimestamp(),
+                              });
+                            }
                           }
                         }
 
@@ -1968,7 +2023,7 @@ class _DevirYonetimiScreenState extends State<DevirYonetimiScreen> {
                         ],
                         TextFormField(
                           controller: tutarCtrl,
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+                          keyboardType: TextInputType.text,
                           decoration: const InputDecoration(
                             labelText: 'Düzeltme Tutarı (₺) *',
                             hintText: 'Pozitif veya Negatif değer (Örn: -1500 veya 2000)',

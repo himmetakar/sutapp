@@ -112,27 +112,6 @@ class FirmaUreticiler extends StatelessWidget {
             ),
             _buildMenuCard(
               context: context,
-              title: 'Satışlar',
-              icon: Icons.list_alt_rounded,
-              color: const Color(0xFF22C55E), // Green
-              route: '/firma/satislar',
-            ),
-            _buildMenuCard(
-              context: context,
-              title: 'Tahsilat Yap',
-              icon: Icons.credit_card_rounded,
-              color: const Color(0xFFF97316), // Orange
-              route: '/firma/tahsilat',
-            ),
-            _buildMenuCard(
-              context: context,
-              title: 'Avans Ver',
-              icon: Icons.payments_rounded,
-              color: const Color(0xFFF97316), // Orange
-              route: '/firma/finans/avanslar',
-            ),
-            _buildMenuCard(
-              context: context,
               title: 'Hesap Görüntüleme',
               icon: Icons.description_rounded,
               color: const Color(0xFF3B82F6), // Blue
@@ -144,13 +123,6 @@ class FirmaUreticiler extends StatelessWidget {
               icon: Icons.local_offer_rounded,
               color: const Color(0xFFEF4444), // Red
               route: '/firma/finans/sut-fiyatlari',
-            ),
-            _buildMenuCard(
-              context: context,
-              title: 'Aylık Süt Kayıtları',
-              icon: Icons.grid_on_rounded,
-              color: const Color(0xFF06B6D4), // Cyan
-              route: '/firma/aylik-sut',
             ),
           ],
         ),

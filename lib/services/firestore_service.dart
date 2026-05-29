@@ -142,8 +142,30 @@ class FirestoreService {
       final compSnap = await companiesRef.limit(1).get();
       if (compSnap.docs.isEmpty) {
         final mockCompanies = [
-          {'ad': 'Kayseri Çiftlik', 'tel': '0352 111 2233', 'adres': 'Kayseri Organize Sanayi', 'yetkili': 'Hasan Yılmaz'},
-          {'ad': 'Sivas Süt A.Ş.', 'tel': '0346 222 3344', 'adres': 'Sivas OSB', 'yetkili': 'Murat Kaya'}
+          {
+            'ad': 'Kayseri Çiftlik',
+            'tel': '0352 111 2233',
+            'adres': 'Kayseri Organize Sanayi',
+            'yetkili': 'Hasan Yılmaz',
+            'maxPersonel': 10,
+            'maxUretici': 100,
+            'maxArac': 5,
+            'maxMesaj': 20,
+            'abonelikBitis': Timestamp.fromDate(DateTime.now().add(const Duration(days: 365))),
+            'createdAt': FieldValue.serverTimestamp(),
+          },
+          {
+            'ad': 'Sivas Süt A.Ş.',
+            'tel': '0346 222 3344',
+            'adres': 'Sivas OSB',
+            'yetkili': 'Murat Kaya',
+            'maxPersonel': 10,
+            'maxUretici': 100,
+            'maxArac': 5,
+            'maxMesaj': 20,
+            'abonelikBitis': Timestamp.fromDate(DateTime.now().add(const Duration(days: 365))),
+            'createdAt': FieldValue.serverTimestamp(),
+          }
         ];
         for (var c in mockCompanies) {
           await companiesRef.add(c);
@@ -582,6 +604,108 @@ class FirestoreService {
     }
   }
 
+  Future<void> transferTankStock({
+    required String sutKabulId,
+    required String sourceTankName,
+    required String targetTankName,
+    required double miktar,
+    required String vehiclePlate,
+    required String driverName,
+  }) async {
+    final db = FirebaseFirestore.instance;
+    final kabulDocRef = db.collection('sut_kabul').doc(sutKabulId);
+
+    // Find source tank
+    final sourceQuery = await db.collection('tanklar')
+        .where('ad', isEqualTo: sourceTankName)
+        .limit(1)
+        .get();
+
+    // Find target tank
+    final targetQuery = await db.collection('tanklar')
+        .where('ad', isEqualTo: targetTankName)
+        .limit(1)
+        .get();
+
+    if (sourceQuery.docs.isEmpty || targetQuery.docs.isEmpty) {
+      throw Exception('Kaynak veya hedef tank bulunamadı.');
+    }
+
+    final sourceDoc = sourceQuery.docs.first;
+    final targetDoc = targetQuery.docs.first;
+
+    // 1. Update source tank stok
+    final double sourceCurrent = (sourceDoc.data()['stok'] as num?)?.toDouble() ?? 0.0;
+    await sourceDoc.reference.update({'stok': (sourceCurrent - miktar).clamp(0.0, double.infinity)});
+
+    // 2. Update target tank stok
+    final double targetCurrent = (targetDoc.data()['stok'] as num?)?.toDouble() ?? 0.0;
+    await targetDoc.reference.update({'stok': (targetCurrent + miktar).clamp(0.0, double.infinity)});
+
+    // 3. Update vehicle tanks if source is vehicle tank
+    if (sourceDoc.data()['tip'] == 'arac' && vehiclePlate.isNotEmpty) {
+      final vehicleQuery = await db.collection('araclar')
+          .where('plaka', isEqualTo: vehiclePlate)
+          .limit(1)
+          .get();
+      if (vehicleQuery.docs.isNotEmpty) {
+        final vehicleDoc = vehicleQuery.docs.first;
+        final List<dynamic> vehicleTanks = (vehicleDoc['tanklar'] as List? ?? [])
+            .map((t) => Map<String, dynamic>.from(t as Map))
+            .toList();
+        for (int i = 0; i < vehicleTanks.length; i++) {
+          if (vehicleTanks[i]['ad'] == sourceTankName) {
+            vehicleTanks[i]['stok'] = (sourceCurrent - miktar).clamp(0.0, double.infinity);
+            break;
+          }
+        }
+        await vehicleDoc.reference.update({'tanklar': vehicleTanks});
+      }
+    }
+
+    // 4. Update sut_kabul document state
+    await kabulDocRef.update({'durum': 'Kabul Edildi'});
+
+    // 5. Also log a delivery record to 'teslimatlar' for audit
+    final timeStr = DateFormat('HH:mm').format(DateTime.now());
+    await db.collection('teslimatlar').add({
+      'plaka': vehiclePlate,
+      'kaynakTank': sourceTankName,
+      'hedefTank': targetTankName,
+      'miktar': miktar,
+      'saat': timeStr,
+      'tarih': DateFormat('dd.MM.yyyy').format(DateTime.now()),
+      'timestamp': FieldValue.serverTimestamp(),
+      'firma': targetDoc.data()['firma'] ?? '',
+    });
+
+    // 6. Send success notification to the driver
+    try {
+      await sendNotification(
+        recipientName: driverName,
+        role: 'surucu',
+        baslik: 'Boşaltma Talebi Onaylandı',
+        icerik: '$sourceTankName tankından $targetTankName tankına $miktar LT boşaltma işleminiz onaylandı.',
+        type: 'depo_aktarim',
+      );
+    } catch (_) {}
+  }
+
+  Future<void> rejectTankUnload(String sutKabulId, String driverName, String sourceTankName, String targetTankName) async {
+    await FirebaseFirestore.instance.collection('sut_kabul').doc(sutKabulId).update({'durum': 'Reddedildi'});
+    
+    // Send rejection notification to the driver
+    try {
+      await sendNotification(
+        recipientName: driverName,
+        role: 'surucu',
+        baslik: 'Boşaltma Talebi Reddedildi',
+        icerik: '$sourceTankName tankından $targetTankName tankına boşaltma talebiniz reddedilmiştir.',
+        type: 'depo_aktarim',
+      );
+    } catch (_) {}
+  }
+
   Future<void> recordTahsilat({
     required String producerName,
     required double tutar,
@@ -882,6 +1006,7 @@ class FirestoreService {
     required bool targetProducers,
     required bool isGlobal,
     List<String>? targetRoles,
+    bool isPopUp = false,
   }) async {
     if (!isGlobal) {
       final now = DateTime.now();
@@ -972,6 +1097,9 @@ class FirestoreService {
     final type = isGlobal ? 'admin_bildirim' : 'firma_bildirim';
     final batch = _db.batch();
 
+    int iletilenCount = 0;
+    int iletilemeyenCount = 0;
+
     for (var rId in uniqueRecipients) {
       bool isEnabled = true;
       final doc = await _users.doc(rId).get();
@@ -986,6 +1114,7 @@ class FirestoreService {
       }
 
       if (isEnabled) {
+        iletilenCount++;
         final docRef = _bildirimler.doc();
         batch.set(docRef, {
           'userId': rId,
@@ -995,21 +1124,26 @@ class FirestoreService {
           'read': false,
           'type': type,
         });
+      } else {
+        iletilemeyenCount++;
       }
     }
     await batch.commit();
 
-    if (!isGlobal) {
-      await _db.collection('duyurular').add({
-        'senderId': senderId,
-        'senderFirma': senderFirma,
-        'baslik': baslik,
-        'icerik': icerik,
-        'timestamp': FieldValue.serverTimestamp(),
-        'targetDrivers': targetDrivers,
-        'targetProducers': targetProducers,
-      });
-    }
+    await _db.collection('duyurular').add({
+      'senderId': senderId,
+      'senderFirma': senderFirma,
+      'baslik': baslik,
+      'icerik': icerik,
+      'timestamp': FieldValue.serverTimestamp(),
+      'targetDrivers': targetDrivers,
+      'targetProducers': targetProducers,
+      'isGlobal': isGlobal,
+      'targetRoles': targetRoles,
+      'isPopUp': isPopUp,
+      'iletilenCount': iletilenCount,
+      'iletilemeyenCount': iletilemeyenCount,
+    });
   }
 
   // --- COMMON FINANCIAL LEDGER HELPERS ---

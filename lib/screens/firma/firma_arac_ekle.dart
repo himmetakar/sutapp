@@ -76,6 +76,27 @@ class _FirmaAracEkleScreenState extends State<FirmaAracEkleScreen> {
       final auth = Provider.of<AuthProvider>(context, listen: false);
       final currentFirmaName = auth.user?.displayName ?? '';
 
+      if (!_isEdit) {
+        final firmSnap = await FirebaseFirestore.instance.collection('firmalar').where('ad', isEqualTo: currentFirmaName).limit(1).get();
+        if (firmSnap.docs.isNotEmpty) {
+          final firmData = firmSnap.docs.first.data();
+          final int maxArac = (firmData['maxArac'] as num?)?.toInt() ?? 5;
+          final vehicleSnap = await FirebaseFirestore.instance.collection('araclar').where('firma', isEqualTo: currentFirmaName).get();
+          if (vehicleSnap.docs.length >= maxArac) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Maksimum araç limitine ulaşıldı ($maxArac). Daha fazla araç ekleyemezsiniz.'),
+                backgroundColor: AppColors.danger,
+              ),
+            );
+            setState(() {
+              _isSaving = false;
+            });
+            return;
+          }
+        }
+      }
+
       final plate = _plakaCtrl.text.toUpperCase().trim();
       final ad = _adCtrl.text.trim();
       final model = _modelCtrl.text.trim();
