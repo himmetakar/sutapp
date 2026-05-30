@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:ui' as ui;
+import 'dart:io' show File;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
@@ -8,10 +10,13 @@ import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:excel/excel.dart';
+import 'package:file_picker/file_picker.dart';
 import '../../providers/auth_provider.dart';
 import '../../config/theme.dart';
 import '../../widgets/common_widgets.dart';
 import '../../services/firestore_service.dart';
+import '../../utils/file_download_helper.dart';
 
 class FirmaUreticiListesiScreen extends StatefulWidget {
   final String? groupFilter;
@@ -608,6 +613,74 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      // Bulk Add Banner/Button
+                      InkWell(
+                        onTap: () {
+                          Navigator.pop(ctx); // Close individual add dialog
+                          _showBulkAddProducerDialog(); // Open bulk add dialog
+                        },
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF8B5CF6), Color(0xFF6D28D9)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF8B5CF6).withOpacity(0.3),
+                                blurRadius: 8,
+                                offset: const Offset(0, 4),
+                              )
+                            ],
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.grid_on_rounded, color: Colors.white, size: 22),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Toplu Üretici Ekle (Excel)',
+                                      style: GoogleFonts.inter(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      'Excel dosyası ile hızlıca yükleyin',
+                                      style: GoogleFonts.inter(
+                                        color: Colors.white.withOpacity(0.8),
+                                        fontSize: 10,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const Icon(Icons.chevron_right_rounded, color: Colors.white),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      const Row(
+                        children: [
+                          Expanded(child: Divider()),
+                          Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 8),
+                            child: Text('veya tek tek ekleyin', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                          ),
+                          Expanded(child: Divider()),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
                       TextField(
                         controller: nameCtrl,
                         decoration: const InputDecoration(labelText: 'Ad Soyad', hintText: 'Örn: Mustafa Yılmaz'),
@@ -735,6 +808,40 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
                       return;
                     }
 
+                    // Check if producer with this phone number already exists in the system
+                    final query = await _db.collection('ureticiler').where('phone', isEqualTo: phone).limit(1).get();
+                    if (query.docs.isNotEmpty) {
+                      final doc = query.docs.first;
+                      final List<String> existingFirmalar = List<String>.from(doc['firmalar'] ?? []);
+                      if (existingFirmalar.contains(currentFirmaName)) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Bu telefon numarasına sahip bir üretici zaten firmanıza kayıtlı!'), backgroundColor: AppColors.danger),
+                          );
+                        }
+                        return;
+                      } else {
+                        existingFirmalar.add(currentFirmaName);
+                        await doc.reference.update({
+                          'name': name,
+                          'bolge': bolge,
+                          'tcNo': tcNo,
+                          'group': selectedGroup ?? 'Genel',
+                          'birlik': selectedBirlik ?? 'Yok',
+                          'firmalar': existingFirmalar,
+                          'lastMilkType': saveMilkType,
+                          'customerType': isYem ? 'yem' : 'sut',
+                        });
+                        if (context.mounted) {
+                          Navigator.pop(ctx);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Üretici sisteme kayıtlıydı, firmanıza başarıyla eklendi!'), backgroundColor: AppColors.success),
+                          );
+                        }
+                        return;
+                      }
+                    }
+
                     await _db.collection('ureticiler').add({
                       'name': name,
                       'phone': phone,
@@ -749,10 +856,12 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
                       'customerType': isYem ? 'yem' : 'sut',
                     });
 
-                    Navigator.pop(ctx);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Yeni üretici başarıyla eklendi!'), backgroundColor: AppColors.success),
-                    );
+                    if (context.mounted) {
+                      Navigator.pop(ctx);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Yeni üretici başarıyla eklendi!'), backgroundColor: AppColors.success),
+                      );
+                    }
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary600,
@@ -760,6 +869,299 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                   ),
                   child: const Text('Ekle'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  List<int>? _generateExcelTemplate() {
+    final excelObj = Excel.createExcel();
+    final sheet = excelObj['Sheet1'];
+    
+    // Set headers
+    sheet.appendRow([
+      TextCellValue('Ad'),
+      TextCellValue('Soyad'),
+      TextCellValue('Telefon'),
+      TextCellValue('Bölge'),
+      TextCellValue('TC No'),
+      TextCellValue('Grup'),
+      TextCellValue('Birlik'),
+      TextCellValue('Müşteri Türü (sut/yem)'),
+      TextCellValue('Süt Türü')
+    ]);
+    
+    // Add sample row
+    sheet.appendRow([
+      TextCellValue('Mehmet'),
+      TextCellValue('Kaya'),
+      TextCellValue('05334445566'),
+      TextCellValue('Kocasinan'),
+      TextCellValue('12345678901'),
+      TextCellValue('Genel'),
+      TextCellValue('Yok'),
+      TextCellValue('sut'),
+      TextCellValue('Soğuk Süt')
+    ]);
+
+    return excelObj.save();
+  }
+
+  Future<int> _processExcelUpload(List<int> bytes, String currentFirmaName) async {
+    final decoded = Excel.decodeBytes(bytes);
+    int addedCount = 0;
+    
+    for (var table in decoded.tables.keys) {
+      final t = decoded.tables[table]!;
+      if (t.rows.isEmpty) continue;
+      
+      // The first row is headers
+      final headers = t.rows.first.map((cell) => cell?.value?.toString().trim().toLowerCase() ?? '').toList();
+      
+      // Let's find column indexes
+      int adIdx = headers.indexOf('ad');
+      int soyadIdx = headers.indexOf('soyad');
+      int telIdx = headers.indexOf('telefon');
+      int bolgeIdx = headers.indexOf('bölge');
+      int tcIdx = headers.indexOf('tc no');
+      int grupIdx = headers.indexOf('grup');
+      int birlikIdx = headers.indexOf('birlik');
+      int tipIdx = headers.indexOf('müşteri türü (sut/yem)');
+      int sutTurIdx = headers.indexOf('süt türü');
+      
+      // Fallback index search by name if headers not matched exactly
+      if (adIdx == -1) adIdx = 0;
+      if (soyadIdx == -1) soyadIdx = 1;
+      if (telIdx == -1) telIdx = 2;
+      if (bolgeIdx == -1) bolgeIdx = 3;
+      if (tcIdx == -1) tcIdx = 4;
+      if (grupIdx == -1) grupIdx = 5;
+      if (birlikIdx == -1) birlikIdx = 6;
+      if (tipIdx == -1) tipIdx = 7;
+      if (sutTurIdx == -1) sutTurIdx = 8;
+      
+      // Iterate through data rows
+      for (int i = 1; i < t.rows.length; i++) {
+        final row = t.rows[i];
+        if (row.isEmpty) continue;
+        
+        String getValue(int idx) {
+          if (idx >= 0 && idx < row.length) {
+            return row[idx]?.value?.toString().trim() ?? '';
+          }
+          return '';
+        }
+        
+        final String adVal = getValue(adIdx);
+        final String soyadVal = getValue(soyadIdx);
+        final String telVal = getValue(telIdx);
+        final String bolgeVal = getValue(bolgeIdx);
+        final String tcVal = getValue(tcIdx);
+        final String grupVal = getValue(grupIdx);
+        final String birlikVal = getValue(birlikIdx);
+        final String customerTypeVal = getValue(tipIdx).toLowerCase();
+        final String lastMilkTypeVal = getValue(sutTurIdx);
+        
+        if (adVal.isEmpty || telVal.isEmpty) continue; // Ad and Telefon are mandatory
+        
+        final String name = '$adVal $soyadVal'.trim();
+        final String phone = telVal;
+        final String bolge = bolgeVal.isEmpty ? 'Merkez' : bolgeVal;
+        final String group = grupVal.isEmpty ? 'Genel' : grupVal;
+        final String birlik = birlikVal.isEmpty ? 'Yok' : birlikVal;
+        final String customerType = (customerTypeVal == 'yem') ? 'yem' : 'sut';
+        final String lastMilkType = lastMilkTypeVal.isEmpty ? 'Soğuk Süt' : lastMilkTypeVal;
+        
+        // Check if producer with this phone number already exists
+        final query = await _db.collection('ureticiler').where('phone', isEqualTo: phone).limit(1).get();
+        if (query.docs.isNotEmpty) {
+          final doc = query.docs.first;
+          final List<String> existingFirmalar = List<String>.from(doc['firmalar'] ?? []);
+          if (!existingFirmalar.contains(currentFirmaName)) {
+            existingFirmalar.add(currentFirmaName);
+          }
+          await doc.reference.update({
+            'name': name,
+            'bolge': bolge,
+            'tcNo': tcVal,
+            'group': group,
+            'birlik': birlik,
+            'firmalar': existingFirmalar,
+            'lastMilkType': lastMilkType,
+            'customerType': customerType,
+          });
+        } else {
+          // Add new
+          await _db.collection('ureticiler').add({
+            'name': name,
+            'phone': phone,
+            'bolge': bolge,
+            'tcNo': tcVal,
+            'group': group,
+            'birlik': birlik,
+            'avg': 30.0,
+            'total': 0.0,
+            'firmalar': [currentFirmaName],
+            'lastMilkType': lastMilkType,
+            'customerType': customerType,
+          });
+        }
+        
+        addedCount++;
+      }
+    }
+    
+    return addedCount;
+  }
+
+  void _showBulkAddProducerDialog() {
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final currentFirmaName = auth.user?.displayName ?? '';
+    
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        bool isUploading = false;
+        String? statusMessage;
+        
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: Text('Toplu Üretici Ekle', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
+              content: SizedBox(
+                width: 400,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'Üreticilerinizi toplu olarak eklemek için şablon Excel dosyasını indirin, bilgileri doldurun ve tekrar yükleyin.',
+                      style: GoogleFonts.inter(fontSize: 13, color: AppColors.gray600),
+                    ),
+                    const SizedBox(height: 20),
+                    
+                    // Download template button
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        try {
+                          final templateBytes = _generateExcelTemplate();
+                          if (templateBytes != null) {
+                            await FileDownloadHelper.downloadBinaryFile(
+                              fileName: 'toplu_uretici_sablon.xlsx',
+                              bytes: templateBytes,
+                            );
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Şablon Excel indirildi!'), backgroundColor: AppColors.success),
+                            );
+                          }
+                        } catch (e) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Hata: $e'), backgroundColor: AppColors.danger),
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.download_rounded, size: 18),
+                      label: Text('Şablon Excel İndir', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 12)),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: AppColors.primary600),
+                        foregroundColor: AppColors.primary600,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    
+                    const Divider(),
+                    const SizedBox(height: 16),
+                    
+                    // Upload Excel button
+                    if (isUploading) ...[
+                      const Center(child: CircularProgressIndicator()),
+                      const SizedBox(height: 8),
+                      if (statusMessage != null)
+                        Text(
+                          statusMessage!,
+                          style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray500),
+                          textAlign: TextAlign.center,
+                        ),
+                    ] else ...[
+                      ElevatedButton.icon(
+                        onPressed: () async {
+                          setDialogState(() {
+                            isUploading = true;
+                            statusMessage = 'Dosya seçiliyor...';
+                          });
+                          
+                          try {
+                            final result = await FilePicker.pickFiles(
+                              type: FileType.custom,
+                              allowedExtensions: ['xlsx'],
+                            );
+                            
+                            if (result != null) {
+                              setDialogState(() {
+                                statusMessage = 'Dosya okunuyor ve işleniyor...';
+                              });
+                              
+                              List<int>? bytes;
+                              if (result.files.single.bytes != null) {
+                                bytes = result.files.single.bytes;
+                              } else if (!kIsWeb && result.files.single.path != null) {
+                                final file = File(result.files.single.path!);
+                                bytes = await file.readAsBytes();
+                              }
+                              
+                              if (bytes != null) {
+                                final int addedCount = await _processExcelUpload(bytes, currentFirmaName);
+                                
+                                if (context.mounted) {
+                                  Navigator.pop(ctx);
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('$addedCount yeni üretici başarıyla eklendi!'), backgroundColor: AppColors.success),
+                                  );
+                                }
+                              } else {
+                                setDialogState(() {
+                                  isUploading = false;
+                                  statusMessage = 'Hata: Dosya içeriği okunamadı.';
+                                });
+                              }
+                            } else {
+                              setDialogState(() {
+                                isUploading = false;
+                                statusMessage = null;
+                              });
+                            }
+                          } catch (e) {
+                            setDialogState(() {
+                              isUploading = false;
+                              statusMessage = 'Hata: $e';
+                            });
+                          }
+                        },
+                        icon: const Icon(Icons.upload_file_rounded, size: 18),
+                        label: Text('Doldurulan Excel Dosyasını Yükle', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 12)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF10B981),
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          elevation: 0,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: Text('Kapat', style: GoogleFonts.inter(color: AppColors.gray500)),
                 ),
               ],
             );
@@ -1530,32 +1932,51 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
           ),
           body: Column(
             children: [
-              // Search Field
+              // Search & Bulk Add Row
               Padding(
                 padding: const EdgeInsets.all(16),
-                child: TextField(
-                  controller: _searchCtrl,
-                  decoration: InputDecoration(
-                    hintText: 'Üretici adı veya telefon ara...',
-                    prefixIcon: const Icon(Icons.search_rounded, color: AppColors.gray400),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    suffixIcon: _searchQuery.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.clear_rounded, size: 18),
-                            onPressed: () {
-                              _searchCtrl.clear();
-                              setState(() {
-                                _searchQuery = '';
-                              });
-                            },
-                          )
-                        : null,
-                  ),
-                  onChanged: (val) {
-                    setState(() {
-                      _searchQuery = val.trim();
-                    });
-                  },
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _searchCtrl,
+                        decoration: InputDecoration(
+                          hintText: 'Üretici adı veya telefon ara...',
+                          prefixIcon: const Icon(Icons.search_rounded, color: AppColors.gray400),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          suffixIcon: _searchQuery.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.clear_rounded, size: 18),
+                                  onPressed: () {
+                                    _searchCtrl.clear();
+                                    setState(() {
+                                      _searchQuery = '';
+                                    });
+                                  },
+                                )
+                              : null,
+                        ),
+                        onChanged: (val) {
+                          setState(() {
+                            _searchQuery = val.trim();
+                          });
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    ElevatedButton.icon(
+                      onPressed: _showBulkAddProducerDialog,
+                      icon: const Icon(Icons.grid_on_rounded, size: 16),
+                      label: Text('Toplu Üretici Ekle', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 12)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF8B5CF6),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        elevation: 0,
+                      ),
+                    ),
+                  ],
                 ),
               ),
 

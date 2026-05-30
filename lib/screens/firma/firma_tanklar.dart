@@ -17,7 +17,7 @@ class FirmaTanklar extends StatefulWidget {
 class _FirmaTanklarState extends State<FirmaTanklar> {
   bool _isRefreshing = false;
 
-  void _showTankIcerik(BuildContext context, String tankAdi) {
+  void _showTankIcerik(BuildContext context, String tankAdi, String tip) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -45,7 +45,7 @@ class _FirmaTanklarState extends State<FirmaTanklar> {
               child: Row(
                 children: [
                   Text(
-                    '$tankAdi Giriş Kayıtları',
+                    tip == 'merkez' ? '$tankAdi Geçmişi' : '$tankAdi Giriş Kayıtları',
                     style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.gray800),
                   ),
                   const Spacer(),
@@ -69,7 +69,9 @@ class _FirmaTanklarState extends State<FirmaTanklar> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Bu tanka son giren süt toplama kayıtları listelenmektedir.',
+                      tip == 'merkez'
+                          ? 'Bu tanka ait giriş, çıkış ve transfer kayıtları listelenmektedir.'
+                          : 'Bu tanka son giren süt toplama kayıtları listelenmektedir.',
                       style: GoogleFonts.inter(fontSize: 11.5, color: const Color(0xFF1D4ED8), fontWeight: FontWeight.w500),
                     ),
                   ),
@@ -77,17 +79,14 @@ class _FirmaTanklarState extends State<FirmaTanklar> {
               ),
             ),
             Expanded(
-              child: FutureBuilder<QuerySnapshot>(
-                future: FirebaseFirestore.instance
-                    .collection('toplamalar')
-                    .where('tank', isEqualTo: tankAdi)
-                    .get(),
+              child: FutureBuilder<List<TankHistoryEntry>>(
+                future: _fetchTankHistory(tankAdi, tip),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
                   }
-                  final rawDocs = snapshot.data?.docs ?? [];
-                  if (rawDocs.isEmpty) {
+                  final list = snapshot.data ?? [];
+                  if (list.isEmpty) {
                     return Center(
                       child: Text(
                         'Kayıt bulunamadı.',
@@ -96,53 +95,15 @@ class _FirmaTanklarState extends State<FirmaTanklar> {
                     );
                   }
 
-                  // Sort in memory by timestamp descending
-                  final docs = List<QueryDocumentSnapshot>.from(rawDocs);
-                  docs.sort((a, b) {
-                    final aData = a.data() as Map<String, dynamic>;
-                    final bData = b.data() as Map<String, dynamic>;
-
-                    final aTs = aData['timestamp'];
-                    final bTs = bData['timestamp'];
-
-                    DateTime aDate = DateTime(1970);
-                    DateTime bDate = DateTime(1970);
-
-                    if (aTs is Timestamp) {
-                      aDate = aTs.toDate();
-                    } else if (aData['tarih'] is String) {
-                      aDate = _parseDateStr(aData['tarih']);
-                    }
-
-                    if (bTs is Timestamp) {
-                      bDate = bTs.toDate();
-                    } else if (bData['tarih'] is String) {
-                      bDate = _parseDateStr(bData['tarih']);
-                    }
-
-                    return bDate.compareTo(aDate);
-                  });
-
-                  final displayDocs = docs.take(15).toList();
+                  final displayDocs = list.take(15).toList();
 
                   return ListView.builder(
                     controller: sc,
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     itemCount: displayDocs.length,
                     itemBuilder: (_, i) {
-                      final doc = displayDocs[i];
-                      final data = doc.data() as Map<String, dynamic>;
-                      final u = data['u'] ?? 'Bilinmeyen Üretici';
-                      final double m = (data['m'] as num?)?.toDouble() ?? 0.0;
-                      final s = data['s'] ?? '';
-                      
-                      final ts = data['timestamp'];
-                      String t = '';
-                      if (ts is Timestamp) {
-                        t = DateFormat('dd.MM.yyyy').format(ts.toDate());
-                      } else {
-                        t = data['tarih'] ?? '';
-                      }
+                      final item = displayDocs[i];
+                      final t = DateFormat('dd.MM.yyyy').format(item.date);
 
                       return Container(
                         margin: const EdgeInsets.only(bottom: 8),
@@ -153,16 +114,20 @@ class _FirmaTanklarState extends State<FirmaTanklar> {
                         ),
                         child: ListTile(
                           title: Text(
-                            u,
+                            item.title,
                             style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.gray800),
                           ),
                           subtitle: Text(
-                            '$t $s',
+                            '${t != '01.01.1970' ? '$t\n' : ''}${item.subtitle}',
                             style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray400),
                           ),
                           trailing: Text(
-                            '${m.toStringAsFixed(1)} LT',
-                            style: GoogleFonts.inter(fontWeight: FontWeight.bold, color: const Color(0xFF3B82F6), fontSize: 14),
+                            '${item.isIncoming ? '+' : '-'} ${item.miktar.toStringAsFixed(1)} LT',
+                            style: GoogleFonts.inter(
+                              fontWeight: FontWeight.bold,
+                              color: item.isIncoming ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                              fontSize: 14,
+                            ),
                           ),
                         ),
                       );
@@ -175,6 +140,148 @@ class _FirmaTanklarState extends State<FirmaTanklar> {
         ),
       ),
     );
+  }
+
+  Future<List<TankHistoryEntry>> _fetchTankHistory(String tankAdi, String tip) async {
+    final db = FirebaseFirestore.instance;
+    
+    if (tip == 'arac') {
+      final snap = await db.collection('toplamalar')
+          .where('tank', isEqualTo: tankAdi)
+          .get();
+      
+      final List<TankHistoryEntry> list = [];
+      for (var doc in snap.docs) {
+        final data = doc.data();
+        final u = data['u'] ?? 'Bilinmeyen Üretici';
+        final double m = (data['m'] as num?)?.toDouble() ?? 0.0;
+        final s = data['s'] ?? '';
+        final ts = data['timestamp'];
+        DateTime date = DateTime(1970);
+        if (ts is Timestamp) {
+          date = ts.toDate();
+        } else if (data['tarih'] is String) {
+          date = _parseDateStr(data['tarih']);
+        }
+        
+        list.add(TankHistoryEntry(
+          title: u,
+          subtitle: s,
+          miktar: m,
+          date: date,
+          isIncoming: true,
+        ));
+      }
+      list.sort((a, b) => b.date.compareTo(a.date));
+      return list;
+    } else {
+      final futures = await Future.wait([
+        db.collection('teslimatlar').where('hedefTank', isEqualTo: tankAdi).get(),
+        db.collection('teslimatlar').where('kaynakTank', isEqualTo: tankAdi).get(),
+        db.collection('sut_satislari').where('kaynakTank', isEqualTo: tankAdi).get(),
+      ]);
+
+      final incomingTransfers = futures[0].docs;
+      final outgoingTransfers = futures[1].docs;
+      final sales = futures[2].docs;
+
+      final List<TankHistoryEntry> list = [];
+
+      for (var doc in incomingTransfers) {
+        final data = doc.data();
+        final double m = (data['miktar'] as num?)?.toDouble() ?? 0.0;
+        final plaka = data['plaka'] ?? '';
+        final kaynak = data['kaynakTank'] ?? '';
+        final saat = data['saat'] ?? '';
+        final ts = data['timestamp'];
+        DateTime date = DateTime(1970);
+        if (ts is Timestamp) {
+          date = ts.toDate();
+        } else if (data['tarih'] is String) {
+          date = _parseDateStr(data['tarih']);
+        }
+
+        list.add(TankHistoryEntry(
+          title: 'Süt Kabul (Giriş)',
+          subtitle: 'Araç: $plaka\nKaynak: $kaynak • Saat: $saat',
+          miktar: m,
+          date: date,
+          isIncoming: true,
+        ));
+      }
+
+      for (var doc in outgoingTransfers) {
+        final data = doc.data();
+        final double m = (data['miktar'] as num?)?.toDouble() ?? 0.0;
+        final plaka = data['plaka'] ?? '';
+        final hedef = data['hedefTank'] ?? '';
+        final saat = data['saat'] ?? '';
+        final ts = data['timestamp'];
+        DateTime date = DateTime(1970);
+        if (ts is Timestamp) {
+          date = ts.toDate();
+        } else if (data['tarih'] is String) {
+          date = _parseDateStr(data['tarih']);
+        }
+
+        list.add(TankHistoryEntry(
+          title: 'Süt Transferi (Çıkış)',
+          subtitle: 'Araç: $plaka\nHedef: $hedef • Saat: $saat',
+          miktar: m,
+          date: date,
+          isIncoming: false,
+        ));
+      }
+
+      for (var doc in sales) {
+        final data = doc.data();
+        final double m = (data['miktar'] as num?)?.toDouble() ?? 0.0;
+        final alici = data['aliciFirma'] ?? '';
+        final not_ = data['not'] ?? '';
+        final ts = data['timestamp'];
+        DateTime date = DateTime.now();
+        if (ts is Timestamp) {
+          date = ts.toDate();
+        } else if (data['tarih'] is String) {
+          try {
+            final String tStr = data['tarih'];
+            final parts = tStr.split(' ');
+            if (parts.length >= 3) {
+              final day = int.tryParse(parts[0]) ?? 1;
+              final year = int.tryParse(parts[2]) ?? DateTime.now().year;
+              final months = {
+                'Oca': 1, 'Şub': 2, 'Mar': 3, 'Nis': 4, 'May': 5, 'Haz': 6,
+                'Tem': 7, 'Ağu': 8, 'Eyl': 9, 'Eki': 10, 'Kas': 11, 'Ara': 12
+              };
+              int month = 1;
+              final mWord = parts[1].substring(0, 3);
+              if (months.containsKey(mWord)) {
+                month = months[mWord]!;
+              }
+              int hour = 12;
+              int minute = 0;
+              if (parts.length >= 4 && parts[3].contains(':')) {
+                final timeParts = parts[3].split(':');
+                hour = int.tryParse(timeParts[0]) ?? 12;
+                minute = int.tryParse(timeParts[1]) ?? 0;
+              }
+              date = DateTime(year, month, day, hour, minute);
+            }
+          } catch (_) {}
+        }
+
+        list.add(TankHistoryEntry(
+          title: 'Süt Satışı (Çıkış)',
+          subtitle: 'Alıcı: $alici${not_.isNotEmpty ? '\nNot: $not_' : ''}',
+          miktar: m,
+          date: date,
+          isIncoming: false,
+        ));
+      }
+
+      list.sort((a, b) => b.date.compareTo(a.date));
+      return list;
+    }
   }
 
   @override
@@ -514,7 +621,7 @@ class _FirmaTanklarState extends State<FirmaTanklar> {
 
                 // Action Button: Detay
                 GestureDetector(
-                  onTap: () => _showTankIcerik(context, ad),
+                  onTap: () => _showTankIcerik(context, ad, tip),
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                     decoration: BoxDecoration(
@@ -603,3 +710,20 @@ class _FirmaTanklarState extends State<FirmaTanklar> {
     return DateTime(1970);
   }
 }
+
+class TankHistoryEntry {
+  final String title;
+  final String subtitle;
+  final double miktar;
+  final DateTime date;
+  final bool isIncoming;
+
+  TankHistoryEntry({
+    required this.title,
+    required this.subtitle,
+    required this.miktar,
+    required this.date,
+    required this.isIncoming,
+  });
+}
+

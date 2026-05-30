@@ -6,4 +6,11 @@ class FileDownloadHelper {
     // Stub implementation: do nothing or print.
     throw UnsupportedError('Cannot download file without platform implementation.');
   }
+
+  static Future<void> downloadBinaryFile({
+    required String fileName,
+    required List<int> bytes,
+  }) async {
+    throw UnsupportedError('Cannot download file without platform implementation.');
+  }
 }

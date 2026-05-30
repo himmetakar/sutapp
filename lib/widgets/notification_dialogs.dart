@@ -130,7 +130,15 @@ class NotificationDrawerDialog extends StatelessWidget {
                       );
                     }
 
-                    final docs = snapshot.data?.docs ?? [];
+                    final rawDocs = snapshot.data?.docs ?? [];
+                    final docs = List<QueryDocumentSnapshot>.from(rawDocs);
+                    docs.sort((a, b) {
+                      final aTime = (a.data() as Map<String, dynamic>?)?['timestamp'] as Timestamp?;
+                      final bTime = (b.data() as Map<String, dynamic>?)?['timestamp'] as Timestamp?;
+                      if (aTime == null) return 1;
+                      if (bTime == null) return -1;
+                      return bTime.compareTo(aTime);
+                    });
                     if (docs.isEmpty) {
                       return Column(
                         mainAxisAlignment: MainAxisAlignment.center,

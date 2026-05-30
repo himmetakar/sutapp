@@ -57,12 +57,17 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
         final query = await FirebaseFirestore.instance
             .collection('duyurular')
             .where('isGlobal', isEqualTo: true)
-            .where('isPopUp', isEqualTo: true)
-            .where('targetRoles', arrayContains: 'surucu')
             .get();
 
-        if (query.docs.isNotEmpty) {
-          final docs = List<QueryDocumentSnapshot>.from(query.docs);
+        final docs = query.docs.where((doc) {
+          final data = doc.data() as Map<String, dynamic>?;
+          if (data == null) return false;
+          final isPopUp = data['isPopUp'] as bool? ?? false;
+          final targetRoles = data['targetRoles'] as List<dynamic>?;
+          return isPopUp && (targetRoles != null && targetRoles.contains('surucu'));
+        }).toList();
+
+        if (docs.isNotEmpty) {
           docs.sort((a, b) {
             final aTime = (a.data() as Map<String, dynamic>)['timestamp'] as Timestamp?;
             final bTime = (b.data() as Map<String, dynamic>)['timestamp'] as Timestamp?;
@@ -2246,11 +2251,12 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
       // Get producer group/region
       String region = 'Merkez';
       try {
-        final prodQuery = await FirebaseFirestore.instance
-            .collection('ureticiler')
-            .where('name', isEqualTo: _selectedUreticiForSutAl)
-            .limit(1)
-            .get();
+        final prodQuery = await _firestoreService.getQueryWithCachePriority(
+          FirebaseFirestore.instance
+              .collection('ureticiler')
+              .where('name', isEqualTo: _selectedUreticiForSutAl)
+              .limit(1)
+        );
 
         if (prodQuery.docs.isNotEmpty) {
           region = prodQuery.docs.first['group'] ?? 'Merkez';
@@ -2573,11 +2579,26 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
       return;
     }
 
+    // Query pending unload requests for this source tank to compute remaining stock
+    double pendingUnload = 0.0;
+    try {
+      final pendingQuery = await db.collection('sut_kabul')
+          .where('kaynak', isEqualTo: sourceTankName)
+          .where('durum', isEqualTo: 'Bekliyor')
+          .get();
+      for (var doc in pendingQuery.docs) {
+        final val = doc.data()['miktar'];
+        pendingUnload += val is num ? val.toDouble() : (double.tryParse(val.toString()) ?? 0.0);
+      }
+    } catch (_) {}
+
+    final double remainingStock = (currentStock - pendingUnload).clamp(0.0, double.infinity);
+
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final driverName = authProvider.user?.displayName ?? 'Ahmet Kara';
     final driverEmail = authProvider.user?.email ?? '';
 
-    final amountCtrl = TextEditingController(text: currentStock.toStringAsFixed(0));
+    final amountCtrl = TextEditingController(text: remainingStock.toStringAsFixed(0));
     String? selectedTargetTank = otherTanks.first['ad'];
 
     if (!context.mounted) return;
@@ -2602,6 +2623,18 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                     'Kaynak: $sourceTankName (${currentStock.toStringAsFixed(0)} LT)',
                     style: GoogleFonts.inter(fontSize: 13, color: AppColors.gray600, fontWeight: FontWeight.w600),
                   ),
+                  if (pendingUnload > 0) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      'Onay Bekleyen Talep: ${pendingUnload.toStringAsFixed(0)} LT',
+                      style: GoogleFonts.inter(fontSize: 11.5, color: Colors.orange[850], fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Kalan Boşaltılabilir: ${remainingStock.toStringAsFixed(0)} LT',
+                      style: GoogleFonts.inter(fontSize: 11.5, color: Colors.green[800], fontWeight: FontWeight.bold),
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
                     value: selectedTargetTank,
@@ -2645,9 +2678,15 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                 ElevatedButton(
                   onPressed: () async {
                     final double? amount = double.tryParse(amountCtrl.text);
-                    if (amount == null || amount <= 0 || amount > currentStock) {
+                    if (amount == null || amount <= 0 || amount > remainingStock) {
                       ScaffoldMessenger.of(ctx).showSnackBar(
-                        const SnackBar(content: Text('Geçerli bir miktar girin! (Kaynak stokunu aşamaz)')),
+                        SnackBar(
+                          content: Text(
+                            pendingUnload > 0
+                                ? 'Geçerli bir miktar girin! Kalan limit: ${remainingStock.toStringAsFixed(0)} LT'
+                                : 'Geçerli bir miktar girin! (Kaynak stokunu veya limitini aşamaz)'
+                          ),
+                        ),
                       );
                       return;
                     }

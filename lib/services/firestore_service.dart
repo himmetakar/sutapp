@@ -310,6 +310,24 @@ class FirestoreService {
     await _collections.add(collection);
   }
 
+  // --- OFFLINE HELPER METHODS ---
+
+  Future<QuerySnapshot> getQueryWithCachePriority(Query query) async {
+    try {
+      final snap = await query.get(const GetOptions(source: Source.cache));
+      if (snap.docs.isNotEmpty) return snap;
+    } catch (_) {}
+    return query.get();
+  }
+
+  Future<DocumentSnapshot> getDocWithCachePriority(DocumentReference docRef) async {
+    try {
+      final doc = await docRef.get(const GetOptions(source: Source.cache));
+      if (doc.exists) return doc;
+    } catch (_) {}
+    return docRef.get();
+  }
+
   // --- BUSINESS LOGIC ACTIONS ---
 
   Future<void> recordMilkCollection({
@@ -330,7 +348,7 @@ class FirestoreService {
     // Resolve company name if not explicitly passed
     String resolvedFirma = firma ?? '';
     if (resolvedFirma.isEmpty) {
-      final tankQuery = await _tanks.where('ad', isEqualTo: tankName).limit(1).get();
+      final tankQuery = await getQueryWithCachePriority(_tanks.where('ad', isEqualTo: tankName).limit(1));
       if (tankQuery.docs.isNotEmpty) {
         resolvedFirma = tankQuery.docs.first['firma'] ?? '';
       }
@@ -360,7 +378,7 @@ class FirestoreService {
     });
 
     // 2. Update tank stock in tanklar collection
-    final tankQuery = await _tanks.where('ad', isEqualTo: tankName).limit(1).get();
+    final tankQuery = await getQueryWithCachePriority(_tanks.where('ad', isEqualTo: tankName).limit(1));
     if (tankQuery.docs.isNotEmpty) {
       final tankDoc = tankQuery.docs.first;
       final currentStock = (tankDoc['stok'] as num).toDouble();
@@ -371,7 +389,7 @@ class FirestoreService {
       if (tankDoc['tip'] == 'arac') {
         final plate = tankDoc['arac'] as String;
         if (plate.isNotEmpty) {
-          final vehicleQuery = await _vehicles.where('plaka', isEqualTo: plate).limit(1).get();
+          final vehicleQuery = await getQueryWithCachePriority(_vehicles.where('plaka', isEqualTo: plate).limit(1));
           if (vehicleQuery.docs.isNotEmpty) {
             final vehicleDoc = vehicleQuery.docs.first;
             final List<dynamic> vehicleTanks = (vehicleDoc['tanklar'] as List? ?? [])
@@ -390,7 +408,7 @@ class FirestoreService {
     }
 
     // 4. Update producer total milk & last milk type preference
-    final prodQuery = await _producers.where('name', isEqualTo: producerName).limit(1).get();
+    final prodQuery = await getQueryWithCachePriority(_producers.where('name', isEqualTo: producerName).limit(1));
     if (prodQuery.docs.isNotEmpty) {
       final prodDoc = prodQuery.docs.first;
       final currentTotal = (prodDoc['total'] as num).toDouble();
@@ -916,6 +934,22 @@ class FirestoreService {
           'bolge': data['ilce'] ?? '',
           'firmalar': existingFirmalar,
         });
+
+        // Auto-match user's company profile
+        if ((selectedFirma == null || selectedFirma.isEmpty) && existingFirmalar.isNotEmpty) {
+          final matchedFirmaName = existingFirmalar.first;
+          String matchedFirmaId = '';
+          final fQuery = await _db.collection('firmalar').where('ad', isEqualTo: matchedFirmaName).limit(1).get();
+          if (fQuery.docs.isNotEmpty) {
+            matchedFirmaId = fQuery.docs.first.id;
+          }
+          data['firmaName'] = matchedFirmaName;
+          data['firmaId'] = matchedFirmaId;
+          await _users.doc(uid).update({
+            'firmaName': matchedFirmaName,
+            'firmaId': matchedFirmaId,
+          });
+        }
       }
     }
   }
@@ -938,11 +972,9 @@ class FirestoreService {
   }) async {
     // 1. Search for recipient in 'users' collection to get their UID
     String? uid;
-    final userQuery = await _users
-        .where('displayName', isEqualTo: recipientName)
-        .where('role', isEqualTo: role)
-        .limit(1)
-        .get();
+    final userQuery = await getQueryWithCachePriority(
+      _users.where('displayName', isEqualTo: recipientName).where('role', isEqualTo: role).limit(1)
+    );
 
     if (userQuery.docs.isNotEmpty) {
       uid = userQuery.docs.first.id;
@@ -953,7 +985,7 @@ class FirestoreService {
 
     // 2. Check if notification type is enabled for this user
     bool isEnabled = true;
-    final doc = await _users.doc(uid).get();
+    final doc = await getDocWithCachePriority(_users.doc(uid));
     if (doc.exists) {
       final userData = doc.data() as Map<String, dynamic>?;
       if (userData != null && userData.containsKey('notificationSettings')) {
@@ -1020,12 +1052,19 @@ class FirestoreService {
       final now = DateTime.now();
       final startOfToday = DateTime(now.year, now.month, now.day);
       
-      final todayAnnouncements = await _db.collection('duyurular')
+      final allAnnouncements = await _db.collection('duyurular')
           .where('senderFirma', isEqualTo: senderFirma)
-          .where('timestamp', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfToday))
           .get();
 
-      if (todayAnnouncements.docs.length >= 3) {
+      final todayDocs = allAnnouncements.docs.where((doc) {
+        final data = doc.data();
+        final timestamp = data['timestamp'] as Timestamp?;
+        if (timestamp == null) return false;
+        final date = timestamp.toDate();
+        return date.isAfter(startOfToday) || date.isAtSameMomentAs(startOfToday);
+      }).toList();
+
+      if (todayDocs.length >= 3) {
         throw Exception('Günlük duyuru gönderme limitine (3 adet) ulaştınız.');
       }
     }

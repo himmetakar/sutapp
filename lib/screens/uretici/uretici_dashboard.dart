@@ -1170,12 +1170,17 @@ class _PopUpAdWrapperState extends State<PopUpAdWrapper> {
         final query = await FirebaseFirestore.instance
             .collection('duyurular')
             .where('isGlobal', isEqualTo: true)
-            .where('isPopUp', isEqualTo: true)
-            .where('targetRoles', arrayContains: widget.role)
             .get();
 
-        if (query.docs.isNotEmpty) {
-          final docs = List<QueryDocumentSnapshot>.from(query.docs);
+        final docs = query.docs.where((doc) {
+          final data = doc.data() as Map<String, dynamic>?;
+          if (data == null) return false;
+          final isPopUp = data['isPopUp'] as bool? ?? false;
+          final targetRoles = data['targetRoles'] as List<dynamic>?;
+          return isPopUp && (targetRoles != null && targetRoles.contains(widget.role));
+        }).toList();
+
+        if (docs.isNotEmpty) {
           docs.sort((a, b) {
             final aTime = (a.data() as Map<String, dynamic>)['timestamp'] as Timestamp?;
             final bTime = (b.data() as Map<String, dynamic>)['timestamp'] as Timestamp?;

@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
 import '../../config/theme.dart';
+import '../../config/constants.dart';
 import '../../widgets/common_widgets.dart';
 import '../../widgets/sut_analiz_dialog.dart';
 import '../../services/firestore_service.dart';
@@ -20,7 +21,9 @@ class _SutKabulScreenState extends State<SutKabulScreen> {
   @override
   void initState() {
     super.initState();
-    _initializeKabulData();
+    if (!AppConstants.isProduction) {
+      _initializeKabulData();
+    }
   }
 
   Future<void> _initializeKabulData() async {
@@ -148,8 +151,8 @@ class _SutKabulScreenState extends State<SutKabulScreen> {
           
           // Compute counters dynamically
           int bekleyenCount = 0;
-          int kabulEdilenCount = 33; // Mock cumulative total
-          int farkVarCount = 12; // Mock cumulative total
+          int kabulEdilenCount = 0;
+          int farkVarCount = 0;
 
           for (var doc in docs) {
             final data = doc.data() as Map<String, dynamic>;
@@ -158,6 +161,8 @@ class _SutKabulScreenState extends State<SutKabulScreen> {
               bekleyenCount++;
             } else if (durum == 'Kabul Edildi') {
               kabulEdilenCount++;
+            } else if (durum == 'Reddedildi' || durum == 'Fark Var') {
+              farkVarCount++;
             }
           }
 

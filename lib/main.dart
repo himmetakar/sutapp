@@ -9,6 +9,7 @@ import 'firebase_options.dart';
 import 'services/firestore_service.dart';
 import 'config/theme.dart';
 import 'config/router.dart';
+import 'config/constants.dart';
 import 'providers/auth_provider.dart';
 
 void main() async {
@@ -26,8 +27,10 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  // Initialize Firestore mock data
-  await FirestoreService().initializeMockDataIfNeeded();
+  // Initialize Firestore mock data (Only in dev/demo mode)
+  if (!AppConstants.isProduction) {
+    await FirestoreService().initializeMockDataIfNeeded();
+  }
 
   final authProvider = AuthProvider();
   await authProvider.loadSavedSession();

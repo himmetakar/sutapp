@@ -2262,6 +2262,8 @@ class _DevirYonetimiScreenState extends State<DevirYonetimiScreen> {
     final formKey = GlobalKey<FormState>();
     final tutarCtrl = TextEditingController();
     final aciklamaCtrl = TextEditingController(text: 'Başlangıç Bakiyesi');
+    DateTime selectedDate = DateTime.now();
+    final tarihCtrl = TextEditingController(text: DateFormat('dd.MM.yyyy').format(selectedDate));
     String? selectedProducer = defaultProducer;
 
     showDialog(
@@ -2281,48 +2283,78 @@ class _DevirYonetimiScreenState extends State<DevirYonetimiScreen> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   content: Form(
                     key: formKey,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (defaultProducer == null) ...[
-                          DropdownButtonFormField<String>(
-                            value: selectedProducer,
-                            hint: const Text('Üretici Seçin *'),
-                            decoration: const InputDecoration(labelText: 'Üretici *'),
-                            items: producers.map((name) => DropdownMenuItem(value: name, child: Text(name))).toList(),
-                            onChanged: (val) {
-                              setDialogState(() {
-                                selectedProducer = val;
-                              });
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (defaultProducer == null) ...[
+                            DropdownButtonFormField<String>(
+                              value: selectedProducer,
+                              hint: const Text('Üretici Seçin *'),
+                              decoration: const InputDecoration(labelText: 'Üretici *'),
+                              items: producers.map((name) => DropdownMenuItem(value: name, child: Text(name))).toList(),
+                              onChanged: (val) {
+                                setDialogState(() {
+                                  selectedProducer = val;
+                                });
+                              },
+                              validator: (val) => val == null ? 'Lütfen üretici seçin' : null,
+                            ),
+                            const SizedBox(height: 12),
+                          ],
+                          TextFormField(
+                            controller: tutarCtrl,
+                            keyboardType: TextInputType.text,
+                            decoration: const InputDecoration(
+                              labelText: 'Düzeltme Tutarı (₺) *',
+                              hintText: 'Pozitif veya Negatif değer (Örn: -1500 veya 2000)',
+                              helperText: 'Pozitif: Alacağı artırır, Negatif: Borcu artırır',
+                            ),
+                            validator: (value) {
+                              if (value == null || value.isEmpty) return 'Lütfen tutar girin';
+                              if (double.tryParse(value.replaceAll(',', '.')) == null) return 'Geçerli bir sayı girin';
+                              return null;
                             },
-                            validator: (val) => val == null ? 'Lütfen üretici seçin' : null,
                           ),
                           const SizedBox(height: 12),
-                        ],
-                        TextFormField(
-                          controller: tutarCtrl,
-                          keyboardType: TextInputType.text,
-                          decoration: const InputDecoration(
-                            labelText: 'Düzeltme Tutarı (₺) *',
-                            hintText: 'Pozitif veya Negatif değer (Örn: -1500 veya 2000)',
-                            helperText: 'Pozitif: Alacağı artırır, Negatif: Borcu artırır',
+                          TextFormField(
+                            controller: aciklamaCtrl,
+                            decoration: const InputDecoration(labelText: 'Açıklama/Gerekçe *'),
+                            validator: (value) {
+                              if (value == null || value.isEmpty) return 'Lütfen açıklama girin';
+                              return null;
+                            },
                           ),
-                          validator: (value) {
-                            if (value == null || value.isEmpty) return 'Lütfen tutar girin';
-                            if (double.tryParse(value.replaceAll(',', '.')) == null) return 'Geçerli bir sayı girin';
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 12),
-                        TextFormField(
-                          controller: aciklamaCtrl,
-                          decoration: const InputDecoration(labelText: 'Açıklama/Gerekçe *'),
-                          validator: (value) {
-                            if (value == null || value.isEmpty) return 'Lütfen açıklama girin';
-                            return null;
-                          },
-                        ),
-                      ],
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: tarihCtrl,
+                            readOnly: true,
+                            decoration: const InputDecoration(
+                              labelText: 'İşleneceği Dönem/Tarih *',
+                              hintText: 'Tarih Seçin',
+                              suffixIcon: Icon(Icons.calendar_month_rounded),
+                            ),
+                            onTap: () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                initialDate: selectedDate,
+                                firstDate: DateTime(2020),
+                                lastDate: DateTime(2030),
+                              );
+                              if (picked != null) {
+                                setDialogState(() {
+                                  selectedDate = picked;
+                                  tarihCtrl.text = DateFormat('dd.MM.yyyy').format(picked);
+                                });
+                              }
+                            },
+                            validator: (value) {
+                              if (value == null || value.isEmpty) return 'Lütfen tarih seçin';
+                              return null;
+                            },
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                   actions: [
@@ -2337,9 +2369,9 @@ class _DevirYonetimiScreenState extends State<DevirYonetimiScreen> {
                             'uretici': selectedProducer,
                             'tutar': tutar,
                             'aciklama': aciklamaCtrl.text,
-                            'tarih': DateFormat('dd.MM.yyyy').format(DateTime.now()),
+                            'tarih': DateFormat('dd.MM.yyyy').format(selectedDate),
                             'firma': currentFirma,
-                            'timestamp': FieldValue.serverTimestamp(),
+                            'timestamp': Timestamp.fromDate(selectedDate),
                           });
 
                           Navigator.pop(ctx);

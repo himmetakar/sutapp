@@ -26,7 +26,7 @@ class _SurucuTeslimatlarScreenState extends State<SurucuTeslimatlarScreen> with 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     _loadDriverAndProducers();
   }
 
@@ -282,6 +282,28 @@ class _SurucuTeslimatlarScreenState extends State<SurucuTeslimatlarScreen> with 
           type: 'siparis',
         );
       } catch (_) {}
+    } else if (newStatus == 'İptal') {
+      // Send cancellation notification to the producer
+      try {
+        await FirestoreService().sendNotification(
+          recipientName: uretici,
+          role: 'uretici',
+          baslik: 'Sipariş İptal Edildi',
+          icerik: '${data['id'] ?? ''} nolu siparişiniz ${_driverName} tarafından iptal edilmiştir.',
+          type: 'siparis',
+        );
+      } catch (_) {}
+
+      // Send cancellation notification to the company
+      try {
+        await FirestoreService().sendNotification(
+          recipientName: _firmaName,
+          role: 'firma',
+          baslik: 'Sipariş İptal Edildi',
+          icerik: '$uretici üreticisine ait ${data['id'] ?? ''} nolu sipariş $_driverName tarafından iptal edilmiştir.',
+          type: 'siparis',
+        );
+      } catch (_) {}
     }
   }
 
@@ -527,6 +549,7 @@ class _SurucuTeslimatlarScreenState extends State<SurucuTeslimatlarScreen> with 
           unselectedLabelColor: AppColors.gray500,
           labelStyle: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 13),
           tabs: const [
+            Tab(text: 'Bekleyenler'),
             Tab(text: 'Aktif Siparişler'),
             Tab(text: 'Geçmiş Teslimatlar'),
           ],
@@ -571,7 +594,12 @@ class _SurucuTeslimatlarScreenState extends State<SurucuTeslimatlarScreen> with 
             return bTime.compareTo(aTime);
           });
 
-          // Separate active (Onaylandı, Teslimatta) and history (Teslim Edildi, İptal)
+          // Separate pending (Bekliyor), active (Onaylandı, Teslimatta), and history (Teslim Edildi, İptal)
+          final pendingOrders = driverDocs.where((doc) {
+            final durum = doc['durum'] ?? 'Bekliyor';
+            return durum == 'Bekliyor';
+          }).toList();
+
           final activeOrders = driverDocs.where((doc) {
             final durum = doc['durum'] ?? 'Bekliyor';
             return durum == 'Onaylandı' || durum == 'Teslimatta';
@@ -585,8 +613,9 @@ class _SurucuTeslimatlarScreenState extends State<SurucuTeslimatlarScreen> with 
           return TabBarView(
             controller: _tabController,
             children: [
-              _buildOrdersList(activeOrders, isActive: true),
-              _buildOrdersList(historyOrders, isActive: false),
+              _buildOrdersList(pendingOrders, 'pending'),
+              _buildOrdersList(activeOrders, 'active'),
+              _buildOrdersList(historyOrders, 'history'),
             ],
           );
         },
@@ -594,18 +623,31 @@ class _SurucuTeslimatlarScreenState extends State<SurucuTeslimatlarScreen> with 
     );
   }
 
-  Widget _buildOrdersList(List<QueryDocumentSnapshot> orders, {required bool isActive}) {
+  Widget _buildOrdersList(List<QueryDocumentSnapshot> orders, String tabType) {
     if (orders.isEmpty) {
+      IconData icon = Icons.local_shipping_outlined;
+      String text = '';
+      if (tabType == 'pending') {
+        icon = Icons.hourglass_empty_rounded;
+        text = 'Bekleyen siparişiniz bulunmamaktadır.';
+      } else if (tabType == 'active') {
+        icon = Icons.local_shipping_outlined;
+        text = 'Aktif dağıtım siparişiniz bulunmamaktadır.';
+      } else {
+        icon = Icons.history_rounded;
+        text = 'Geçmiş teslimatınız bulunmamaktadır.';
+      }
+
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(32.0),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(isActive ? Icons.local_shipping_outlined : Icons.history_rounded, size: 48, color: AppColors.gray300),
+              Icon(icon, size: 48, color: AppColors.gray300),
               const SizedBox(height: 12),
               Text(
-                isActive ? 'Aktif dağıtım siparişiniz bulunmamaktadır.' : 'Geçmiş teslimatınız bulunmamaktadır.',
+                text,
                 style: GoogleFonts.inter(color: AppColors.gray500, fontSize: 13),
                 textAlign: TextAlign.center,
               ),
@@ -723,7 +765,7 @@ class _SurucuTeslimatlarScreenState extends State<SurucuTeslimatlarScreen> with 
                   ],
                 ),
 
-                if (isActive) ...[
+                if (tabType == 'active') ...[
                   const SizedBox(height: 14),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
@@ -762,6 +804,59 @@ class _SurucuTeslimatlarScreenState extends State<SurucuTeslimatlarScreen> with 
                             elevation: 0,
                           ),
                         ),
+                    ],
+                  ),
+                ],
+
+                if (tabType == 'pending') ...[
+                  const SizedBox(height: 14),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      ElevatedButton.icon(
+                        onPressed: () async {
+                          final confirm = await showDialog<bool>(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              title: const Text('Siparişi İptal Et'),
+                              content: const Text('Bu siparişi iptal etmek istediğinize emin misiniz?'),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(ctx, false),
+                                  child: const Text('Geri'),
+                                ),
+                                ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.red,
+                                    foregroundColor: Colors.white,
+                                  ),
+                                  onPressed: () => Navigator.pop(ctx, true),
+                                  child: const Text('Evet, İptal Et'),
+                                ),
+                              ],
+                            ),
+                          );
+
+                          if (confirm == true) {
+                            await _updateOrderStatus(doc, 'İptal');
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Sipariş iptal edildi!'),
+                                backgroundColor: AppColors.success,
+                              ),
+                            );
+                          }
+                        },
+                        icon: const Icon(Icons.cancel_outlined, size: 16),
+                        label: const Text('Siparişi İptal Et'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                          elevation: 0,
+                        ),
+                      ),
                     ],
                   ),
                 ],

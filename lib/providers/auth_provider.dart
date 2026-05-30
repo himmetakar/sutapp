@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:convert';
 import '../models/user_model.dart';
 import '../services/firestore_service.dart';
@@ -71,6 +72,133 @@ class AuthProvider extends ChangeNotifier {
           _needsRegistration = false;
           _verifiedPhone = null;
         } else {
+          final rawPhone = firebaseUser.phoneNumber ?? '';
+          if (rawPhone.isNotEmpty) {
+            // 1. Check matching company (firma)
+            final firmalarSnap = await FirebaseFirestore.instance.collection('firmalar').get();
+            DocumentSnapshot? matchedFirma;
+            for (var doc in firmalarSnap.docs) {
+              final tel = doc['tel'] as String? ?? '';
+              if (comparePhoneNumbers(tel, rawPhone)) {
+                matchedFirma = doc;
+                break;
+              }
+            }
+
+            if (matchedFirma != null) {
+              final fData = matchedFirma.data() as Map<String, dynamic>;
+              final String firmaName = fData['ad'] ?? '';
+              final String yetkiliName = fData['yetkili'] ?? '';
+              final String adres = fData['adres'] ?? '';
+
+              final Map<String, dynamic> userData = {
+                'displayName': yetkiliName,
+                'name': yetkiliName,
+                'email': '',
+                'role': 'firma',
+                'phone': rawPhone,
+                'il': '',
+                'ilce': '',
+                'mahalleKoy': '',
+                'adresDetay': adres,
+                'postaKodu': '',
+                'firmaId': matchedFirma.id,
+                'firmaName': firmaName,
+              };
+              await _firestoreService.createUserProfile(firebaseUser.uid, userData);
+              _user = AppUser.fromMap(firebaseUser.uid, userData);
+              await _persistUser(_user);
+              _needsRegistration = false;
+              _verifiedPhone = null;
+              _loading = false;
+              notifyListeners();
+              return;
+            }
+
+            // 2. Check matching driver (surucu)
+            final suruculerSnap = await FirebaseFirestore.instance.collection('suruculer').get();
+            DocumentSnapshot? matchedSurucu;
+            for (var doc in suruculerSnap.docs) {
+              final tel = doc['tel'] as String? ?? '';
+              if (comparePhoneNumbers(tel, rawPhone)) {
+                matchedSurucu = doc;
+                break;
+              }
+            }
+
+            if (matchedSurucu != null) {
+              final dData = matchedSurucu.data() as Map<String, dynamic>;
+              final String surucuName = '${dData['ad'] ?? ''} ${dData['soyad'] ?? ''}'.trim();
+              final String dFirma = dData['firma'] ?? '';
+
+              final Map<String, dynamic> userData = {
+                'displayName': surucuName,
+                'name': surucuName,
+                'email': dData['email'] ?? '',
+                'role': 'surucu',
+                'phone': rawPhone,
+                'il': '',
+                'ilce': '',
+                'mahalleKoy': '',
+                'adresDetay': '',
+                'postaKodu': '',
+                'firmaId': '',
+                'firmaName': dFirma,
+              };
+              await _firestoreService.createUserProfile(firebaseUser.uid, userData);
+              _user = AppUser.fromMap(firebaseUser.uid, userData);
+              await _persistUser(_user);
+              _needsRegistration = false;
+              _verifiedPhone = null;
+              _loading = false;
+              notifyListeners();
+              return;
+            }
+
+            // 3. Check matching producer (uretici)
+            final ureticilerSnap = await FirebaseFirestore.instance.collection('ureticiler').get();
+            DocumentSnapshot? matchedUretici;
+            for (var doc in ureticilerSnap.docs) {
+              final tel = doc['phone'] as String? ?? '';
+              if (comparePhoneNumbers(tel, rawPhone)) {
+                matchedUretici = doc;
+                break;
+              }
+            }
+
+            if (matchedUretici != null) {
+              final uData = matchedUretici.data() as Map<String, dynamic>;
+              final String ureticiName = uData['name'] ?? '';
+              final String bolge = uData['bolge'] ?? '';
+              final String group = uData['group'] ?? '';
+              final List<dynamic> firmalar = uData['firmalar'] as List? ?? [];
+              final String firstFirma = firmalar.isNotEmpty ? firmalar.first.toString() : '';
+
+              final Map<String, dynamic> userData = {
+                'displayName': ureticiName,
+                'name': ureticiName,
+                'email': '',
+                'role': 'uretici',
+                'phone': rawPhone,
+                'il': '',
+                'ilce': bolge,
+                'mahalleKoy': group,
+                'adresDetay': '',
+                'postaKodu': '',
+                'firmaId': '',
+                'firmaName': firstFirma,
+              };
+              await _firestoreService.createUserProfile(firebaseUser.uid, userData);
+              _user = AppUser.fromMap(firebaseUser.uid, userData);
+              await _persistUser(_user);
+              _needsRegistration = false;
+              _verifiedPhone = null;
+              _loading = false;
+              notifyListeners();
+              return;
+            }
+          }
+
           // User is logged in via Auth but doesn't have a profile yet (needs registration)
           _user = null;
           await _persistUser(null);
@@ -289,6 +417,19 @@ class AuthProvider extends ChangeNotifier {
     _verifiedPhone = null;
     _loading = false;
     notifyListeners();
+  }
+
+  bool comparePhoneNumbers(String phone1, String phone2) {
+    final digits1 = phone1.replaceAll(RegExp(r'\D'), '');
+    final digits2 = phone2.replaceAll(RegExp(r'\D'), '');
+    
+    if (digits1.length < 10 || digits2.length < 10) {
+      return digits1.isNotEmpty && digits1 == digits2;
+    }
+    
+    final last10_1 = digits1.substring(digits1.length - 10);
+    final last10_2 = digits2.substring(digits2.length - 10);
+    return last10_1 == last10_2;
   }
 }
 

@@ -509,13 +509,20 @@ class _AdminDuyuruGonderScreenState extends State<AdminDuyuruGonderScreen> {
                         stream: FirebaseFirestore.instance
                             .collection('duyurular')
                             .where('isGlobal', isEqualTo: true)
-                            .orderBy('timestamp', descending: true)
                             .snapshots(),
                         builder: (context, snapshot) {
                           if (snapshot.connectionState == ConnectionState.waiting) {
                             return const Center(child: CircularProgressIndicator());
                           }
-                          final docs = snapshot.data?.docs ?? [];
+                          final rawDocs = snapshot.data?.docs ?? [];
+                          final docs = List<QueryDocumentSnapshot>.from(rawDocs);
+                          docs.sort((a, b) {
+                            final aTime = (a.data() as Map<String, dynamic>?)?['timestamp'] as Timestamp?;
+                            final bTime = (b.data() as Map<String, dynamic>?)?['timestamp'] as Timestamp?;
+                            if (aTime == null) return 1;
+                            if (bTime == null) return -1;
+                            return bTime.compareTo(aTime);
+                          });
                           if (docs.isEmpty) {
                             return Center(
                               child: Text(

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../models/user_model.dart';
 import '../../config/theme.dart';
+import '../../config/constants.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -251,101 +252,103 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 24),
 
-                    // Divider
-                    Row(children: [
-                      Expanded(child: Container(height: 1, color: AppColors.gray200)),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        child: Text('HIZLI DEMO GİRİŞ', style: GoogleFonts.inter(fontSize: 9, fontWeight: FontWeight.w700, color: AppColors.gray400, letterSpacing: 0.8)),
+                    if (!AppConstants.isProduction) ...[
+                      // Divider
+                      Row(children: [
+                        Expanded(child: Container(height: 1, color: AppColors.gray200)),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: Text('HIZLI DEMO GİRİŞ', style: GoogleFonts.inter(fontSize: 9, fontWeight: FontWeight.w700, color: AppColors.gray400, letterSpacing: 0.8)),
+                        ),
+                        Expanded(child: Container(height: 1, color: AppColors.gray200)),
+                      ]),
+                      const SizedBox(height: 16),
+
+                      // Group 1: Yönetim & Firmalar
+                      _buildSectionHeader('YÖNETİM VE FİRMALAR'),
+                      const SizedBox(height: 8),
+                      Row(children: [
+                        Expanded(child: _DemoBtn(
+                          icon: Icons.admin_panel_settings_rounded, label: 'Admin', desc: 'Sistem Yönetimi',
+                          color: const Color(0xFF7C3AED), bgColor: const Color(0xFFEDE9FE),
+                          onTap: () => auth.demoLogin(UserRole.admin),
+                        )),
+                      ]),
+                      const SizedBox(height: 8),
+                      Row(children: [
+                        Expanded(child: _DemoBtn(
+                          icon: Icons.business_rounded, label: 'Kayseri Çiftlik', desc: 'Firma Yöneticisi',
+                          color: AppColors.primary600, bgColor: AppColors.primary50,
+                          onTap: () => auth.demoLogin(UserRole.firma, customName: 'Kayseri Çiftlik'),
+                        )),
+                        const SizedBox(width: 8),
+                        Expanded(child: _DemoBtn(
+                          icon: Icons.business_rounded, label: 'Sivas Süt A.Ş.', desc: 'Firma Yöneticisi',
+                          color: AppColors.primary600, bgColor: AppColors.primary50,
+                          onTap: () => auth.demoLogin(UserRole.firma, customName: 'Sivas Süt A.Ş.'),
+                        )),
+                      ]),
+                      
+                      const SizedBox(height: 16),
+
+                      // Group 2: Toplayıcılar
+                      _buildSectionHeader('TOPLAYICILAR'),
+                      const SizedBox(height: 8),
+                      Row(children: [
+                        Expanded(child: _DemoBtn(
+                          icon: Icons.local_shipping_rounded, label: 'Ahmet Kara', desc: 'Toplayıcı',
+                          color: AppColors.success, bgColor: AppColors.successLight,
+                          onTap: () => auth.demoLogin(UserRole.surucu, customName: 'Ahmet Kara'),
+                        )),
+                        const SizedBox(width: 8),
+                        Expanded(child: _DemoBtn(
+                          icon: Icons.local_shipping_rounded, label: 'Veli Yıldız', desc: 'Toplayıcı',
+                          color: AppColors.success, bgColor: AppColors.successLight,
+                          onTap: () => auth.demoLogin(UserRole.surucu, customName: 'Veli Yıldız'),
+                        )),
+                      ]),
+
+                      const SizedBox(height: 16),
+
+                      // Group 3: Üreticiler
+                      _buildSectionHeader('ÜRETİCİLER'),
+                      const SizedBox(height: 8),
+                      GridView.count(
+                        crossAxisCount: 2,
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        crossAxisSpacing: 8,
+                        mainAxisSpacing: 8,
+                        childAspectRatio: 2.8,
+                        children: [
+                          _DemoBtn(
+                            icon: Icons.agriculture_rounded, label: 'Mehmet Yılmaz', desc: 'Süt Üreticisi',
+                            color: AppColors.warning, bgColor: AppColors.warningLight,
+                            onTap: () => auth.demoLogin(UserRole.uretici, customName: 'Mehmet Yılmaz'),
+                          ),
+                          _DemoBtn(
+                            icon: Icons.agriculture_rounded, label: 'Fatma Korkmaz', desc: 'Süt Üreticisi',
+                            color: AppColors.warning, bgColor: AppColors.warningLight,
+                            onTap: () => auth.demoLogin(UserRole.uretici, customName: 'Fatma Korkmaz'),
+                          ),
+                          _DemoBtn(
+                            icon: Icons.agriculture_rounded, label: 'Ali Özdemir', desc: 'Süt Üreticisi',
+                            color: AppColors.warning, bgColor: AppColors.warningLight,
+                            onTap: () => auth.demoLogin(UserRole.uretici, customName: 'Ali Özdemir'),
+                          ),
+                          _DemoBtn(
+                            icon: Icons.agriculture_rounded, label: 'Ayşe Şahin', desc: 'Süt Üreticisi',
+                            color: AppColors.warning, bgColor: AppColors.warningLight,
+                            onTap: () => auth.demoLogin(UserRole.uretici, customName: 'Ayşe Şahin'),
+                          ),
+                          _DemoBtn(
+                            icon: Icons.agriculture_rounded, label: 'Hüseyin Kaya', desc: 'Süt Üreticisi',
+                            color: AppColors.warning, bgColor: AppColors.warningLight,
+                            onTap: () => auth.demoLogin(UserRole.uretici, customName: 'Hüseyin Kaya'),
+                          ),
+                        ],
                       ),
-                      Expanded(child: Container(height: 1, color: AppColors.gray200)),
-                    ]),
-                    const SizedBox(height: 16),
-
-                    // Group 1: Yönetim & Firmalar
-                    _buildSectionHeader('YÖNETİM VE FİRMALAR'),
-                    const SizedBox(height: 8),
-                    Row(children: [
-                      Expanded(child: _DemoBtn(
-                        icon: Icons.admin_panel_settings_rounded, label: 'Admin', desc: 'Sistem Yönetimi',
-                        color: const Color(0xFF7C3AED), bgColor: const Color(0xFFEDE9FE),
-                        onTap: () => auth.demoLogin(UserRole.admin),
-                      )),
-                    ]),
-                    const SizedBox(height: 8),
-                    Row(children: [
-                      Expanded(child: _DemoBtn(
-                        icon: Icons.business_rounded, label: 'Kayseri Çiftlik', desc: 'Firma Yöneticisi',
-                        color: AppColors.primary600, bgColor: AppColors.primary50,
-                        onTap: () => auth.demoLogin(UserRole.firma, customName: 'Kayseri Çiftlik'),
-                      )),
-                      const SizedBox(width: 8),
-                      Expanded(child: _DemoBtn(
-                        icon: Icons.business_rounded, label: 'Sivas Süt A.Ş.', desc: 'Firma Yöneticisi',
-                        color: AppColors.primary600, bgColor: AppColors.primary50,
-                        onTap: () => auth.demoLogin(UserRole.firma, customName: 'Sivas Süt A.Ş.'),
-                      )),
-                    ]),
-                    
-                    const SizedBox(height: 16),
-
-                    // Group 2: Toplayıcılar
-                    _buildSectionHeader('TOPLAYICILAR'),
-                    const SizedBox(height: 8),
-                    Row(children: [
-                      Expanded(child: _DemoBtn(
-                        icon: Icons.local_shipping_rounded, label: 'Ahmet Kara', desc: 'Toplayıcı',
-                        color: AppColors.success, bgColor: AppColors.successLight,
-                        onTap: () => auth.demoLogin(UserRole.surucu, customName: 'Ahmet Kara'),
-                      )),
-                      const SizedBox(width: 8),
-                      Expanded(child: _DemoBtn(
-                        icon: Icons.local_shipping_rounded, label: 'Veli Yıldız', desc: 'Toplayıcı',
-                        color: AppColors.success, bgColor: AppColors.successLight,
-                        onTap: () => auth.demoLogin(UserRole.surucu, customName: 'Veli Yıldız'),
-                      )),
-                    ]),
-
-                    const SizedBox(height: 16),
-
-                    // Group 3: Üreticiler
-                    _buildSectionHeader('ÜRETİCİLER'),
-                    const SizedBox(height: 8),
-                    GridView.count(
-                      crossAxisCount: 2,
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      crossAxisSpacing: 8,
-                      mainAxisSpacing: 8,
-                      childAspectRatio: 2.8,
-                      children: [
-                        _DemoBtn(
-                          icon: Icons.agriculture_rounded, label: 'Mehmet Yılmaz', desc: 'Süt Üreticisi',
-                          color: AppColors.warning, bgColor: AppColors.warningLight,
-                          onTap: () => auth.demoLogin(UserRole.uretici, customName: 'Mehmet Yılmaz'),
-                        ),
-                        _DemoBtn(
-                          icon: Icons.agriculture_rounded, label: 'Fatma Korkmaz', desc: 'Süt Üreticisi',
-                          color: AppColors.warning, bgColor: AppColors.warningLight,
-                          onTap: () => auth.demoLogin(UserRole.uretici, customName: 'Fatma Korkmaz'),
-                        ),
-                        _DemoBtn(
-                          icon: Icons.agriculture_rounded, label: 'Ali Özdemir', desc: 'Süt Üreticisi',
-                          color: AppColors.warning, bgColor: AppColors.warningLight,
-                          onTap: () => auth.demoLogin(UserRole.uretici, customName: 'Ali Özdemir'),
-                        ),
-                        _DemoBtn(
-                          icon: Icons.agriculture_rounded, label: 'Ayşe Şahin', desc: 'Süt Üreticisi',
-                          color: AppColors.warning, bgColor: AppColors.warningLight,
-                          onTap: () => auth.demoLogin(UserRole.uretici, customName: 'Ayşe Şahin'),
-                        ),
-                        _DemoBtn(
-                          icon: Icons.agriculture_rounded, label: 'Hüseyin Kaya', desc: 'Süt Üreticisi',
-                          color: AppColors.warning, bgColor: AppColors.warningLight,
-                          onTap: () => auth.demoLogin(UserRole.uretici, customName: 'Hüseyin Kaya'),
-                        ),
-                      ],
-                    ),
+                    ],
                   ],
                 ),
               ),

@@ -514,7 +514,7 @@ class _SutTransferScreenState extends State<SutTransferScreen> {
                           FutureBuilder<QuerySnapshot>(
                             future: db.collection('cari_firmalar')
                                 .where('firma', isEqualTo: firma)
-                                .where('tip', isEqualTo: 'alici')
+                                .where('tip', isEqualTo: 'tedarikci')
                                 .get(),
                             builder: (context, companySnapshot) {
                               List<String> combinedFirmalar = List.from(anaFirmalar);

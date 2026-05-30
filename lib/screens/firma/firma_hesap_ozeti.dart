@@ -890,8 +890,11 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
             if ((data['durum'] ?? 'aktif') == 'aktif') {
               final tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
               final tarihStr = data['tarih'] ?? '';
+              final typeStr = data['kesintiTuru'] ?? (data['aciklama'] != null && data['aciklama'].toString().trim().isNotEmpty ? data['aciklama'].toString().trim() : 'Kesinti');
+              final String? detailStr = (data['kesintiTuru'] != null && data['aciklama'] != null && data['aciklama'].toString().trim().isNotEmpty) ? data['aciklama'].toString().trim() : null;
               rows.add(_buildSectionRow(
-                leftText: data['aciklama'] ?? 'Kesinti',
+                leftText: typeStr,
+                leftSubtitle: detailStr,
                 rightText: '- ${formatCurrency.format(tutar)}',
                 rightColor: Colors.red[850],
                 rightSubtitle: tarihStr,
@@ -1367,10 +1370,12 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
       if ((data['durum'] ?? 'aktif') == 'aktif') {
         final tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
         final ts = data['timestamp'] as Timestamp?;
+        final typeStr = data['kesintiTuru'] ?? (data['aciklama'] != null && data['aciklama'].toString().trim().isNotEmpty ? data['aciklama'].toString().trim() : 'Kesinti');
+        final String detailStr = (data['kesintiTuru'] != null && data['aciklama'] != null) ? data['aciklama'] : '';
         allTx.add({
           'ts': ts?.toDate() ?? DateTime.now(),
-          'title': 'Kesinti',
-          'subtitle': data['aciklama'] ?? '',
+          'title': typeStr,
+          'subtitle': detailStr,
           'amount': tutar,
           'isPositive': false,
           'icon': Icons.bar_chart_rounded,

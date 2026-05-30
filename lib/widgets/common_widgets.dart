@@ -577,23 +577,27 @@ class _SearchableDropdownState extends State<SearchableDropdown> {
 
   void _handleFocusChanged() {
     if (!_focusNode.hasFocus) {
-      // If focus is lost and the text does not match any item in the list, reset or match
-      if (!widget.items.contains(_controller.text)) {
-        if (_controller.text.isEmpty) {
-          widget.onChanged(null);
-        } else {
-          final match = widget.items.firstWhere(
-            (item) => item.toLowerCase() == _controller.text.toLowerCase(),
-            orElse: () => '',
-          );
-          if (match.isNotEmpty) {
-            _controller.text = match;
-            widget.onChanged(match);
+      // Delay check slightly to let raw autocomplete's onSelected complete if clicked
+      Future.delayed(const Duration(milliseconds: 200), () {
+        if (!mounted || _focusNode.hasFocus) return;
+        // If focus is lost and the text does not match any item in the list, reset or match
+        if (!widget.items.contains(_controller.text)) {
+          if (_controller.text.isEmpty) {
+            widget.onChanged(null);
           } else {
-            _controller.text = widget.value ?? '';
+            final match = widget.items.firstWhere(
+              (item) => item.toLowerCase() == _controller.text.toLowerCase(),
+              orElse: () => '',
+            );
+            if (match.isNotEmpty) {
+              _controller.text = match;
+              widget.onChanged(match);
+            } else {
+              _controller.text = widget.value ?? '';
+            }
           }
         }
-      }
+      });
     }
   }
 

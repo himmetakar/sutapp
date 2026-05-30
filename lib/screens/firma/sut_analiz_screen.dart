@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
 import '../../config/theme.dart';
+import '../../config/constants.dart';
 
 class SutAnalizScreen extends StatefulWidget {
   const SutAnalizScreen({super.key});
@@ -19,7 +20,9 @@ class _SutAnalizScreenState extends State<SutAnalizScreen> with SingleTickerProv
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _initializeAnalizData();
+    if (!AppConstants.isProduction) {
+      _initializeAnalizData();
+    }
   }
 
   @override

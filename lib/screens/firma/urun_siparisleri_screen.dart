@@ -56,6 +56,13 @@ class _UrunSiparisleriScreenState extends State<UrunSiparisleriScreen> {
 
     return Scaffold(
       backgroundColor: Colors.white,
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _showCreateOrderDialog(context, currentFirmaName),
+        backgroundColor: AppColors.primary600,
+        foregroundColor: Colors.white,
+        icon: const Icon(Icons.add_rounded, size: 22),
+        label: Text('Yeni Sipariş', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 13)),
+      ),
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
             .collection('urunler_siparisler')
@@ -119,6 +126,55 @@ class _UrunSiparisleriScreenState extends State<UrunSiparisleriScreen> {
 
           return Column(
             children: [
+              // Sipariş Yönetimi Header Row
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  border: Border(bottom: BorderSide(color: AppColors.gray200)),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Sipariş Yönetimi',
+                          style: GoogleFonts.inter(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.gray900,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Üretici ürün siparişlerini oluşturun ve yönetin',
+                          style: GoogleFonts.inter(
+                            fontSize: 11,
+                            color: AppColors.gray400,
+                          ),
+                        ),
+                      ],
+                    ),
+                    ElevatedButton.icon(
+                      onPressed: () => _showCreateOrderDialog(context, currentFirmaName),
+                      icon: const Icon(Icons.add_rounded, size: 18),
+                      label: Text(
+                        'Yeni Sipariş',
+                        style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 12),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary600,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               // Period Filter Tabs Bar
               Container(
                 color: Colors.white,
@@ -420,6 +476,10 @@ class _UrunSiparisleriScreenState extends State<UrunSiparisleriScreen> {
                                             }
                                           }),
                                         if (durum != 'Teslim Edildi' && durum != 'İptal')
+                                          _buildActionButton('Düzenle', Colors.blue, () {
+                                            _showEditOrderDialog(context, doc, currentFirmaName);
+                                          }),
+                                        if (durum != 'Teslim Edildi' && durum != 'İptal')
                                           _buildActionButton('İptal', Colors.orange, () async {
                                             await doc.reference.update({'durum': 'İptal'});
                                             await FirestoreService().sendNotification(
@@ -649,5 +709,679 @@ class _UrunSiparisleriScreenState extends State<UrunSiparisleriScreen> {
     } catch (e) {
       print('Error notifying drivers: $e');
     }
+  }
+
+  Future<void> _showEditOrderDialog(BuildContext context, DocumentSnapshot doc, String currentFirmaName) async {
+    // Show a loading indicator
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(child: CircularProgressIndicator()),
+    );
+
+    // Fetch products
+    List<Map<String, dynamic>> products = [];
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('urunler')
+          .where('firma', isEqualTo: currentFirmaName)
+          .get();
+      for (var d in snap.docs) {
+        final pData = d.data();
+        products.add({
+          'ad': pData['ad'] ?? '',
+          'birim': pData['birim'] ?? 'Adet',
+          'fiyat': (pData['fiyat'] as num?)?.toDouble() ?? 0.0,
+        });
+      }
+    } catch (e) {
+      print('Error fetching products: $e');
+    }
+
+    // Dismiss loading indicator
+    if (context.mounted) {
+      Navigator.pop(context);
+    }
+
+    if (products.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Firmaya ait ürün bulunamadı.'), backgroundColor: AppColors.danger),
+      );
+      return;
+    }
+
+    final data = doc.data() as Map<String, dynamic>;
+    final List<Map<String, dynamic>> initialItems = data.containsKey('kalemler') && data['kalemler'] is List
+        ? List<Map<String, dynamic>>.from((data['kalemler'] as List).map((e) => Map<String, dynamic>.from(e as Map)))
+        : [
+            {
+              'urun': data['urun'] ?? '',
+              'miktar': (data['miktar'] as num?)?.toDouble() ?? 1.0,
+              'birim': data['birim'] ?? 'Adet',
+              'birimFiyat': (data['birimFiyat'] as num?)?.toDouble() ?? 0.0,
+              'toplam': (data['toplam'] as num?)?.toDouble() ?? 0.0,
+            }
+          ];
+
+    List<Map<String, dynamic>> orderItems = List.from(initialItems);
+    Map<String, dynamic>? selectedProduct = products.first;
+    final addQtyCtrl = TextEditingController(text: '1');
+
+    // Create controllers for each item quantity in orderItems
+    final List<TextEditingController> qtyControllers = orderItems.map((item) {
+      final qty = (item['miktar'] as num?)?.toDouble() ?? 1.0;
+      return TextEditingController(text: qty % 1 == 0 ? qty.toInt().toString() : qty.toString());
+    }).toList();
+
+    if (!context.mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            double orderTotal = 0.0;
+            for (int i = 0; i < orderItems.length; i++) {
+              final double qty = double.tryParse(qtyControllers[i].text) ?? 0.0;
+              final double price = (orderItems[i]['birimFiyat'] as num?)?.toDouble() ?? 0.0;
+              orderItems[i]['miktar'] = qty;
+              orderItems[i]['toplam'] = qty * price;
+              orderTotal += qty * price;
+            }
+
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Siparişi Düzenle', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
+                  IconButton(icon: const Icon(Icons.close), onPressed: () {
+                    for (var c in qtyControllers) {
+                      c.dispose();
+                    }
+                    addQtyCtrl.dispose();
+                    Navigator.pop(ctx);
+                  }),
+                ],
+              ),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Sipariş kalemlerini ve miktarlarını güncelleyebilirsiniz.', style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray50)),
+                      const SizedBox(height: 12),
+                      const Divider(),
+                      const SizedBox(height: 8),
+
+                      // List of current items
+                      Text('Sipariş Kalemleri', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.gray700)),
+                      const SizedBox(height: 8),
+                      ListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: orderItems.length,
+                        itemBuilder: (context, index) {
+                          final item = orderItems[index];
+                          final String uAd = item['urun'] ?? '';
+                          final String unit = item['birim'] ?? 'Adet';
+                          final double price = (item['birimFiyat'] as num?)?.toDouble() ?? 0.0;
+                          final double itemTotal = item['toplam'] ?? 0.0;
+
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 12.0),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  flex: 3,
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(uAd, style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.gray800)),
+                                      Text('${price.toStringAsFixed(2)} ₺ / $unit', style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500)),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  flex: 2,
+                                  child: TextField(
+                                    controller: qtyControllers[index],
+                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                    decoration: InputDecoration(
+                                      contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+                                    ),
+                                    onChanged: (val) {
+                                      setStateDialog(() {});
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  '${itemTotal.toStringAsFixed(2)} ₺',
+                                  style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.gray700),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.remove_circle_outline, color: Colors.red, size: 20),
+                                  onPressed: () {
+                                    setStateDialog(() {
+                                      orderItems.removeAt(index);
+                                      qtyControllers[index].dispose();
+                                      qtyControllers.removeAt(index);
+                                    });
+                                  },
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                      const Divider(),
+                      const SizedBox(height: 8),
+
+                      // Add new item section
+                      Text('Yeni Kalem Ekle', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.gray700)),
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppColors.gray300),
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<Map<String, dynamic>>(
+                            value: selectedProduct,
+                            isExpanded: true,
+                            items: products.map((prod) {
+                              return DropdownMenuItem<Map<String, dynamic>>(
+                                value: prod,
+                                child: Text('${prod['ad']} (${prod['fiyat'].toStringAsFixed(2)} ₺)', style: GoogleFonts.inter(fontSize: 13)),
+                              );
+                            }).toList(),
+                            onChanged: (val) {
+                              setStateDialog(() {
+                                selectedProduct = val;
+                              });
+                            },
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: addQtyCtrl,
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              decoration: const InputDecoration(
+                                labelText: 'Miktar',
+                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          ElevatedButton.icon(
+                            onPressed: () {
+                              final double? qty = double.tryParse(addQtyCtrl.text);
+                              if (qty == null || qty <= 0 || selectedProduct == null) return;
+                              
+                              // Check if product already exists in orderItems
+                              final String newUrunName = selectedProduct!['ad'];
+                              int existingIdx = -1;
+                              for (int i = 0; i < orderItems.length; i++) {
+                                if (orderItems[i]['urun'] == newUrunName) {
+                                  existingIdx = i;
+                                  break;
+                                }
+                              }
+
+                              setStateDialog(() {
+                                if (existingIdx != -1) {
+                                  // Update quantity in existing controller
+                                  final double currentVal = double.tryParse(qtyControllers[existingIdx].text) ?? 0.0;
+                                  final double newVal = currentVal + qty;
+                                  qtyControllers[existingIdx].text = newVal % 1 == 0 ? newVal.toInt().toString() : newVal.toString();
+                                } else {
+                                  final double price = selectedProduct!['fiyat'] as double;
+                                  orderItems.add({
+                                    'urun': newUrunName,
+                                    'miktar': qty,
+                                    'birim': selectedProduct!['birim'],
+                                    'birimFiyat': price,
+                                    'toplam': qty * price,
+                                  });
+                                  qtyControllers.add(TextEditingController(text: qty % 1 == 0 ? qty.toInt().toString() : qty.toString()));
+                                }
+                                addQtyCtrl.text = '1';
+                              });
+                            },
+                            icon: const Icon(Icons.add, size: 14),
+                            label: const Text('Ekle'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primary600,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      const Divider(),
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('Toplam Tutar:', style: GoogleFonts.inter(fontWeight: FontWeight.bold, color: AppColors.gray800)),
+                          Text('${orderTotal.toStringAsFixed(2)} ₺', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.primary600)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    for (var c in qtyControllers) {
+                      c.dispose();
+                    }
+                    addQtyCtrl.dispose();
+                    Navigator.pop(ctx);
+                  },
+                  child: Text('İptal', style: GoogleFonts.inter(color: AppColors.gray50)),
+                ),
+                ElevatedButton(
+                  onPressed: orderItems.isEmpty
+                      ? null
+                      : () async {
+                          final updates = <String, dynamic>{
+                            'kalemler': orderItems,
+                            'toplam': orderTotal,
+                          };
+                          if (orderItems.isNotEmpty) {
+                            final first = orderItems.first;
+                            updates['urun'] = first['urun'];
+                            updates['miktar'] = first['miktar'];
+                            updates['birim'] = first['birim'];
+                            updates['birimFiyat'] = first['birimFiyat'];
+                          }
+                          await doc.reference.update(updates);
+
+                          for (var c in qtyControllers) {
+                            c.dispose();
+                          }
+                          addQtyCtrl.dispose();
+                          Navigator.pop(ctx);
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Sipariş başarıyla güncellendi!'),
+                              backgroundColor: AppColors.success,
+                            ),
+                          );
+                        },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary600,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  child: const Text('Kaydet'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _showCreateOrderDialog(BuildContext context, String currentFirmaName) async {
+    // Show a loading indicator
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(child: CircularProgressIndicator()),
+    );
+
+    List<String> producers = [];
+    List<Map<String, dynamic>> products = [];
+
+    try {
+      final producersSnap = await FirebaseFirestore.instance
+          .collection('ureticiler')
+          .where('firmalar', arrayContains: currentFirmaName)
+          .get();
+      producers = producersSnap.docs
+          .map((doc) => (doc.data() as Map<String, dynamic>)['name'] as String? ?? '')
+          .where((name) => name.isNotEmpty)
+          .toList();
+      producers.sort();
+
+      final productsSnap = await FirebaseFirestore.instance
+          .collection('urunler')
+          .where('firma', isEqualTo: currentFirmaName)
+          .get();
+      products = productsSnap.docs.map((doc) {
+        final pData = doc.data();
+        return {
+          'ad': pData['ad'] ?? '',
+          'birim': pData['birim'] ?? 'Adet',
+          'fiyat': (pData['fiyat'] as num?)?.toDouble() ?? 0.0,
+        };
+      }).toList();
+    } catch (e) {
+      print('Error loading data for order creation: $e');
+    }
+
+    // Dismiss loading indicator
+    if (context.mounted) {
+      Navigator.pop(context);
+    }
+
+    if (producers.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Sipariş oluşturmak için kayıtlı üreticiniz bulunmalıdır.'),
+            backgroundColor: AppColors.danger,
+          ),
+        );
+      }
+      return;
+    }
+
+    if (products.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Firmaya ait ürün bulunamadı.'),
+            backgroundColor: AppColors.danger,
+          ),
+        );
+      }
+      return;
+    }
+
+    String selectedProducer = producers.first;
+    Map<String, dynamic> selectedProduct = products.first;
+    final quantityCtrl = TextEditingController(text: '1');
+    List<Map<String, dynamic>> orderItems = [];
+
+    if (!context.mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            double orderTotal = orderItems.fold(0.0, (sum, item) => sum + ((item['toplam'] as num?)?.toDouble() ?? 0.0));
+
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Yeni Sipariş Oluştur', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
+                  IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx)),
+                ],
+              ),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // 1. Üretici Seçin
+                      Text('Üretici Seçin', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.gray700)),
+                      const SizedBox(height: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppColors.gray300),
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            value: selectedProducer,
+                            isExpanded: true,
+                            items: producers.map((name) {
+                              return DropdownMenuItem<String>(
+                                value: name,
+                                child: Text(name, style: GoogleFonts.inter(fontSize: 14)),
+                              );
+                            }).toList(),
+                            onChanged: (val) {
+                              if (val != null) {
+                                setStateDialog(() {
+                                  selectedProducer = val;
+                                });
+                              }
+                            },
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      const Divider(),
+                      const SizedBox(height: 8),
+
+                      // 2. Ürün Ekle Bölümü
+                      Text('Kalem Ekle', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.gray700)),
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppColors.gray300),
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<Map<String, dynamic>>(
+                            value: selectedProduct,
+                            isExpanded: true,
+                            items: products.map((prod) {
+                              return DropdownMenuItem<Map<String, dynamic>>(
+                                value: prod,
+                                child: Text('${prod['ad']} (${prod['fiyat'].toStringAsFixed(2)} ₺)', style: GoogleFonts.inter(fontSize: 14)),
+                              );
+                            }).toList(),
+                            onChanged: (val) {
+                              if (val != null) {
+                                setStateDialog(() {
+                                  selectedProduct = val;
+                                });
+                              }
+                            },
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: quantityCtrl,
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              decoration: const InputDecoration(
+                                labelText: 'Miktar',
+                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          ElevatedButton.icon(
+                            onPressed: () {
+                              final double? qty = double.tryParse(quantityCtrl.text);
+                              if (qty == null || qty <= 0) {
+                                return;
+                              }
+                              final double price = selectedProduct['fiyat'] as double;
+                              
+                              // Check if item already added
+                              int existingIdx = -1;
+                              for (int i = 0; i < orderItems.length; i++) {
+                                if (orderItems[i]['urun'] == selectedProduct['ad']) {
+                                  existingIdx = i;
+                                  break;
+                                }
+                              }
+
+                              setStateDialog(() {
+                                if (existingIdx != -1) {
+                                  final double currentVal = (orderItems[existingIdx]['miktar'] as num).toDouble();
+                                  final double newVal = currentVal + qty;
+                                  orderItems[existingIdx]['miktar'] = newVal;
+                                  orderItems[existingIdx]['toplam'] = newVal * price;
+                                } else {
+                                  orderItems.add({
+                                    'urun': selectedProduct['ad'],
+                                    'miktar': qty,
+                                    'birim': selectedProduct['birim'],
+                                    'birimFiyat': price,
+                                    'toplam': qty * price,
+                                  });
+                                }
+                                quantityCtrl.text = '1';
+                              });
+                            },
+                            icon: const Icon(Icons.add, size: 16),
+                            label: const Text('Ekle'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primary600,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      const Divider(),
+                      const SizedBox(height: 8),
+
+                      // 3. Eklenen Ürünler Listesi
+                      Text('Sipariş Kalemleri (${orderItems.length})', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.gray700)),
+                      const SizedBox(height: 8),
+                      if (orderItems.isEmpty)
+                        Text('Henüz ürün eklenmedi.', style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray400))
+                      else
+                        Container(
+                          constraints: const BoxConstraints(maxHeight: 180),
+                          child: ListView.builder(
+                            shrinkWrap: true,
+                            itemCount: orderItems.length,
+                            itemBuilder: (context, idx) {
+                              final item = orderItems[idx];
+                              return ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                dense: true,
+                                title: Text(item['urun'], style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 13)),
+                                subtitle: Text('${item['miktar'].toStringAsFixed(1)} ${item['birim']} x ${item['birimFiyat'].toStringAsFixed(2)} ₺', style: GoogleFonts.inter(fontSize: 11)),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text('${(item['toplam'] as double).toStringAsFixed(2)} ₺', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 13)),
+                                    IconButton(
+                                      icon: const Icon(Icons.remove_circle_outline, color: Colors.red, size: 18),
+                                      onPressed: () {
+                                        setStateDialog(() {
+                                          orderItems.removeAt(idx);
+                                        });
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      const SizedBox(height: 16),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('Toplam Tutar:', style: GoogleFonts.inter(fontWeight: FontWeight.bold, color: AppColors.gray800)),
+                          Text('${orderTotal.toStringAsFixed(2)} ₺', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.primary600)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: Text('İptal', style: GoogleFonts.inter(color: AppColors.gray500)),
+                ),
+                ElevatedButton(
+                  onPressed: orderItems.isEmpty
+                      ? null
+                      : () async {
+                          final orderId = 'ORD-${DateFormat('yyyyMMdd-HHmmss').format(DateTime.now())}';
+                          
+                          // Save order to Firebase
+                          final newOrderData = {
+                            'id': orderId,
+                            'uretici': selectedProducer,
+                            'firma': currentFirmaName,
+                            'durum': 'Onaylandı', // Since it is created by the company directly
+                            'tarih': DateFormat('dd MMMM yyyy', 'tr_TR').format(DateTime.now()),
+                            'saat': DateFormat('HH:mm').format(DateTime.now()),
+                            'toplam': orderTotal,
+                            'timestamp': FieldValue.serverTimestamp(),
+                            'kalemler': orderItems,
+                          };
+
+                          if (orderItems.isNotEmpty) {
+                            final first = orderItems.first;
+                            newOrderData['urun'] = first['urun'];
+                            newOrderData['miktar'] = first['miktar'];
+                            newOrderData['birim'] = first['birim'];
+                            newOrderData['birimFiyat'] = first['birimFiyat'];
+                          }
+
+                          await FirebaseFirestore.instance.collection('urunler_siparisler').add(newOrderData);
+
+                          // Send notification to the producer
+                          await FirestoreService().sendNotification(
+                            recipientName: selectedProducer,
+                            role: 'uretici',
+                            baslik: 'Yeni Sipariş Oluşturuldu',
+                            icerik: '$orderId nolu siparişiniz firma tarafından adınıza oluşturulmuştur.',
+                            type: 'siparis',
+                          );
+
+                          // Send notification to the assigned drivers
+                          await _notifyDriversForProducer(
+                            currentFirmaName,
+                            selectedProducer,
+                            orderId,
+                          );
+
+                          Navigator.pop(ctx);
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Sipariş başarıyla oluşturuldu!'),
+                                backgroundColor: AppColors.success,
+                              ),
+                            );
+                          }
+                        },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary600,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  child: const Text('Siparişi Oluştur'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 }
