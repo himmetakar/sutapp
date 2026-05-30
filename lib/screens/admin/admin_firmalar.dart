@@ -487,10 +487,14 @@ class _AdminFirmalarState extends State<AdminFirmalar> {
 
                 if (_selectedCariFirmaName != null) {
                   // Detailed statement view
-                  final companyDoc = companies.firstWhere(
-                    (d) => d['ad'] == _selectedCariFirmaName,
-                    orElse: () => companies.first,
-                  );
+                  QueryDocumentSnapshot? companyDoc;
+                  for (var d in companies) {
+                    if (d['ad'] == _selectedCariFirmaName) {
+                      companyDoc = d;
+                      break;
+                    }
+                  }
+                  companyDoc ??= companies.first;
                   final compData = companyDoc.data() as Map<String, dynamic>;
                   final tel = compData['tel'] ?? '-';
                   final yetkili = compData['yetkili'] ?? '-';

@@ -37,6 +37,14 @@ class FirestoreService {
         await _clearCollection(_db.collection('sut_fiyatlari'));
         await _clearCollection(_db.collection('cezalar'));
         await _clearCollection(_db.collection('kesintiler'));
+        await _clearCollection(_db.collection('faturalar'));
+        await _clearCollection(_db.collection('sut_kabul'));
+        await _clearCollection(_db.collection('sut_analiz'));
+        await _clearCollection(_db.collection('urunler_siparisler'));
+        await _clearCollection(_db.collection('satislar'));
+        await _clearCollection(_db.collection('bildirimler'));
+        await _clearCollection(_db.collection('duyurular'));
+        await _clearCollection(_db.collection('devirler'));
       }
 
       // 1. Tanks
@@ -389,7 +397,7 @@ class FirestoreService {
       final newTotal = currentTotal + miktar;
       await prodDoc.reference.update({
         'total': newTotal,
-        'lastMilkType': sutTipi ?? 'Soğuk süt',
+        'lastMilkType': sutTipi ?? 'Soğuk Süt',
       });
     }
 
@@ -1149,14 +1157,18 @@ class FirestoreService {
   // --- COMMON FINANCIAL LEDGER HELPERS ---
 
   String mapMilkTypeToPriceKey(String type) {
-    switch (type) {
-      case 'Sıcak süt':
+    switch (type.toLowerCase()) {
+      case 'sıcak süt':
+      case 'sıcak':
+      case 'b kalite':
         return 'sicak';
-      case 'Soğuk süt':
+      case 'soğuk süt':
+      case 'soğuk':
+      case 'a kalite':
         return 'soguk';
-      case 'C kalite':
+      case 'c kalite':
         return 'c_kalite';
-      case 'D kalite':
+      case 'd kalite':
         return 'd_kalite';
       default:
         return 'soguk';
@@ -1220,6 +1232,7 @@ class FirestoreService {
     required List<QueryDocumentSnapshot> avanslar,
     required List<QueryDocumentSnapshot> kesintiler,
     required List<QueryDocumentSnapshot> cezalar,
+    List<QueryDocumentSnapshot>? devirler,
     required String producerName,
     required String bolge,
     required String group,
@@ -1379,10 +1392,20 @@ class FirestoreService {
       }
     }
 
+    // 6. Devir/Düzeltme (Carryover balance)
+    double totalDevir = 0.0;
+    if (devirler != null) {
+      for (var doc in devirler) {
+        final data = doc.data() as Map<String, dynamic>;
+        final dVal = data['tutar'];
+        totalDevir += dVal is num ? dVal.toDouble() : (double.tryParse(dVal.toString()) ?? 0.0);
+      }
+    }
+
     final double totalKesinti = totalManualKesinti + dynamicKesintiSum;
 
-    // Net balance = gross milk receivable - payments - active advances - active kesintiler - active cezalar
-    final double netBalance = toplamAlacak - totalTahsilat - totalAvans - totalKesinti - totalCeza;
+    // Net balance = gross milk receivable - payments - active advances - active kesintiler - active cezalar + devirler
+    final double netBalance = toplamAlacak - totalTahsilat - totalAvans - totalKesinti - totalCeza + totalDevir;
 
     return {
       'toplamLitre': toplamLitre,
@@ -1391,6 +1414,7 @@ class FirestoreService {
       'totalAvans': totalAvans,
       'totalKesinti': totalKesinti,
       'totalCeza': totalCeza,
+      'totalDevir': totalDevir,
       'netBalance': netBalance,
     };
   }

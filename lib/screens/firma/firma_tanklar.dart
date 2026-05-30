@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import '../../providers/auth_provider.dart';
 import '../../config/theme.dart';
 
@@ -79,15 +80,14 @@ class _FirmaTanklarState extends State<FirmaTanklar> {
               child: FutureBuilder<QuerySnapshot>(
                 future: FirebaseFirestore.instance
                     .collection('toplamalar')
-                    .orderBy('tarih', descending: true)
-                    .limit(15)
+                    .where('tank', isEqualTo: tankAdi)
                     .get(),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
                   }
-                  final docs = snapshot.data?.docs ?? [];
-                  if (docs.isEmpty) {
+                  final rawDocs = snapshot.data?.docs ?? [];
+                  if (rawDocs.isEmpty) {
                     return Center(
                       child: Text(
                         'Kayıt bulunamadı.',
@@ -95,17 +95,54 @@ class _FirmaTanklarState extends State<FirmaTanklar> {
                       ),
                     );
                   }
+
+                  // Sort in memory by timestamp descending
+                  final docs = List<QueryDocumentSnapshot>.from(rawDocs);
+                  docs.sort((a, b) {
+                    final aData = a.data() as Map<String, dynamic>;
+                    final bData = b.data() as Map<String, dynamic>;
+
+                    final aTs = aData['timestamp'];
+                    final bTs = bData['timestamp'];
+
+                    DateTime aDate = DateTime(1970);
+                    DateTime bDate = DateTime(1970);
+
+                    if (aTs is Timestamp) {
+                      aDate = aTs.toDate();
+                    } else if (aData['tarih'] is String) {
+                      aDate = _parseDateStr(aData['tarih']);
+                    }
+
+                    if (bTs is Timestamp) {
+                      bDate = bTs.toDate();
+                    } else if (bData['tarih'] is String) {
+                      bDate = _parseDateStr(bData['tarih']);
+                    }
+
+                    return bDate.compareTo(aDate);
+                  });
+
+                  final displayDocs = docs.take(15).toList();
+
                   return ListView.builder(
                     controller: sc,
                     padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: docs.length,
+                    itemCount: displayDocs.length,
                     itemBuilder: (_, i) {
-                      final doc = docs[i];
+                      final doc = displayDocs[i];
                       final data = doc.data() as Map<String, dynamic>;
                       final u = data['u'] ?? 'Bilinmeyen Üretici';
                       final double m = (data['m'] as num?)?.toDouble() ?? 0.0;
                       final s = data['s'] ?? '';
-                      final t = data['tarih'] ?? '';
+                      
+                      final ts = data['timestamp'];
+                      String t = '';
+                      if (ts is Timestamp) {
+                        t = DateFormat('dd.MM.yyyy').format(ts.toDate());
+                      } else {
+                        t = data['tarih'] ?? '';
+                      }
 
                       return Container(
                         margin: const EdgeInsets.only(bottom: 8),
@@ -551,5 +588,18 @@ class _FirmaTanklarState extends State<FirmaTanklar> {
         ],
       ),
     );
+  }
+
+  DateTime _parseDateStr(String dateStr) {
+    try {
+      final parts = dateStr.split('.');
+      if (parts.length == 3) {
+        final day = int.parse(parts[0]);
+        final month = int.parse(parts[1]);
+        final year = int.parse(parts[2]);
+        return DateTime(year, month, day);
+      }
+    } catch (_) {}
+    return DateTime(1970);
   }
 }

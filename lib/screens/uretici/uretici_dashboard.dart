@@ -353,12 +353,13 @@ class UreticiDashboard extends StatelessWidget {
                                                               child: Text(
                                                                 currentFirma,
                                                                 textAlign: TextAlign.center,
-                                                                maxLines: 1,
+                                                                maxLines: 2,
                                                                 overflow: TextOverflow.ellipsis,
                                                                 style: GoogleFonts.inter(
-                                                                  fontSize: 9.5,
-                                                                  fontWeight: FontWeight.w800,
-                                                                  color: AppColors.gray700,
+                                                                  fontSize: 11.5,
+                                                                  fontWeight: FontWeight.bold,
+                                                                  color: AppColors.gray800,
+                                                                  height: 1.1,
                                                                 ),
                                                               ),
                                                             ),
@@ -427,7 +428,7 @@ class UreticiDashboard extends StatelessWidget {
         'subtitle': 'Aylık detaylı rapor',
         'icon': Icons.description_rounded,
         'color': Colors.blue,
-        'onTap': () => context.push('/uretici/faturalar'),
+        'onTap': () => context.push('/uretici/hesap-ozeti'),
       },
       {
         'title': 'Dijital Kart',

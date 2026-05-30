@@ -37,8 +37,10 @@ import '../screens/firma/urunler_screen.dart';
 import '../screens/firma/urun_siparisleri_screen.dart';
 import '../screens/surucu/surucu_dashboard.dart';
 import '../screens/surucu/surucu_profil.dart';
+import '../screens/surucu/surucu_teslimatlar.dart';
 import '../screens/uretici/uretici_dashboard.dart';
 import '../screens/uretici/uretici_faturalar.dart';
+import '../screens/uretici/uretici_profil.dart';
 import '../screens/auth/duyuru_gonder_screens.dart';
 import '../screens/firma/sut_odemeleri_screen.dart';
 import '../screens/firma/firma_gruplar.dart';
@@ -57,6 +59,7 @@ import '../screens/firma/sut_transfer_screen.dart';
 import '../screens/firma/sut_analiz_screen.dart';
 import '../screens/firma/firma_tank_atama.dart';
 import '../screens/firma/firma_yonetimi_screen.dart';
+import '../screens/firma/firma_firmalar_screen.dart';
 import '../screens/uretici/dijital_sut_karti.dart';
 
 
@@ -129,7 +132,8 @@ GoRouter createRouter(AuthProvider auth) {
             builder: (context, state) {
               final group = state.uri.queryParameters['group'];
               final birlik = state.uri.queryParameters['birlik'];
-              return FirmaUreticiListesiScreen(groupFilter: group, birlikFilter: birlik);
+              final bolge = state.uri.queryParameters['bolge'];
+              return FirmaUreticiListesiScreen(groupFilter: group, birlikFilter: birlik, bolgeFilter: bolge);
             },
           ),
           GoRoute(path: '/firma/tahsilat', builder: (_, __) => const FirmaTahsilatScreen()),
@@ -153,6 +157,7 @@ GoRouter createRouter(AuthProvider auth) {
             },
           ),
           GoRoute(path: '/firma/yonetimi', builder: (_, __) => const FirmaYonetimiScreen()),
+          GoRoute(path: '/firma/firmalar', builder: (_, __) => const FirmaFirmalarScreen()),
           GoRoute(
             path: '/firma/yonetimi/ekstre',
             builder: (context, state) {
@@ -225,6 +230,7 @@ GoRouter createRouter(AuthProvider auth) {
         routes: [
           GoRoute(path: '/surucu', builder: (_, __) => const SurucuDashboard()),
           GoRoute(path: '/surucu/toplama', builder: (_, __) => const SurucuDashboard(showSutAlDirectly: true)),
+          GoRoute(path: '/surucu/teslimatlar', builder: (_, __) => const SurucuTeslimatlarScreen()),
           GoRoute(path: '/surucu/profil', builder: (_, __) => const SurucuProfilScreen()),
         ],
       ),
@@ -244,6 +250,17 @@ GoRouter createRouter(AuthProvider auth) {
               return DijitalSutKartiScreen(producerName: name);
             },
           ),
+          GoRoute(
+            path: '/uretici/hesap-ozeti',
+            builder: (context, state) {
+              final producerName = auth.user?.displayName;
+              return FirmaHesapOzetiScreen(
+                producerName: producerName,
+                isUreticiView: true,
+              );
+            },
+          ),
+          GoRoute(path: '/uretici/profil', builder: (_, __) => const UreticiProfilScreen()),
         ],
       ),
     ],

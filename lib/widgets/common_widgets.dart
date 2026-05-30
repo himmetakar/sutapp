@@ -651,6 +651,7 @@ class _SearchableDropdownState extends State<SearchableDropdown> {
                   onSelected: (String selection) {
                     state.didChange(selection);
                     widget.onChanged(selection);
+                    _focusNode.unfocus();
                   },
                   optionsViewBuilder: (context, onSelected, options) {
                     final screenWidth = MediaQuery.of(context).size.width;

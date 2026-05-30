@@ -16,7 +16,8 @@ import '../../services/firestore_service.dart';
 class FirmaUreticiListesiScreen extends StatefulWidget {
   final String? groupFilter;
   final String? birlikFilter;
-  const FirmaUreticiListesiScreen({super.key, this.groupFilter, this.birlikFilter});
+  final String? bolgeFilter;
+  const FirmaUreticiListesiScreen({super.key, this.groupFilter, this.birlikFilter, this.bolgeFilter});
 
   @override
   State<FirmaUreticiListesiScreen> createState() => _FirmaUreticiListesiScreenState();
@@ -29,12 +30,14 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
   final Set<String> _selectedProducerIds = {};
   String? _groupFilterState;
   String? _birlikFilterState;
+  String? _bolgeFilterState;
 
   @override
   void initState() {
     super.initState();
     _groupFilterState = widget.groupFilter;
     _birlikFilterState = widget.birlikFilter;
+    _bolgeFilterState = widget.bolgeFilter;
   }
 
   @override
@@ -585,13 +588,13 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
       builder: (ctx) {
         final nameCtrl = TextEditingController();
         final phoneCtrl = TextEditingController();
-        final bolgeCtrl = TextEditingController(text: 'Merkez');
+        final bolgeCtrl = TextEditingController();
         final tcNoCtrl = TextEditingController();
 
         String? selectedGroup;
         String? selectedBirlik;
 
-        bool isSicak = false;
+        String selectedMilkType = 'Soğuk Süt';
         bool isYem = false;
 
         return StatefulBuilder(
@@ -621,9 +624,40 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
                         decoration: const InputDecoration(labelText: 'Telefon', hintText: 'Örn: 0532 999 8877'),
                       ),
                       const SizedBox(height: 16),
-                      TextField(
-                        controller: bolgeCtrl,
-                        decoration: const InputDecoration(labelText: 'Bölge / İlçe', hintText: 'Örn: Kocasinan'),
+                      StreamBuilder<QuerySnapshot>(
+                        stream: _db.collection('musteri_bolgeleri').where('firma', isEqualTo: currentFirmaName).snapshots(),
+                        builder: (context, snapshot) {
+                          final docs = snapshot.data?.docs ?? [];
+                          final List<String> bolgeler = docs.map((d) => d['ad'] as String).toList();
+                          
+                          String? currentSelected;
+                          if (bolgeCtrl.text.isNotEmpty && bolgeler.contains(bolgeCtrl.text)) {
+                            currentSelected = bolgeCtrl.text;
+                          } else {
+                            currentSelected = null;
+                          }
+                          
+                          if (bolgeler.isEmpty) {
+                            return TextField(
+                              controller: bolgeCtrl,
+                              decoration: const InputDecoration(labelText: 'Bölge / İlçe', hintText: 'Örn: Kocasinan'),
+                            );
+                          }
+                          
+                          return DropdownButtonFormField<String>(
+                            value: currentSelected,
+                            hint: const Text('Bölge Seçin'),
+                            decoration: const InputDecoration(labelText: 'Bölge / İlçe'),
+                            items: bolgeler.map((b) => DropdownMenuItem(value: b, child: Text(b))).toList(),
+                            onChanged: (val) {
+                              if (val != null) {
+                                setState(() {
+                                  bolgeCtrl.text = val;
+                                });
+                              }
+                            },
+                          );
+                        },
                       ),
                       const SizedBox(height: 16),
                       
@@ -663,10 +697,10 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
                       ),
                       const SizedBox(height: 24),
 
-                      // Custom toggle
-                      _buildTempToggle(
-                        isSicak,
-                        (val) => setState(() => isSicak = val),
+                      // Custom selector
+                      _buildMilkTypeSelector(
+                        selectedType: selectedMilkType,
+                        onChanged: (val) => setState(() => selectedMilkType = val),
                         enabled: !isYem,
                       ),
                       const SizedBox(height: 16),
@@ -689,9 +723,17 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
                     final phone = phoneCtrl.text.trim();
                     final bolge = bolgeCtrl.text.trim();
                     final tcNo = tcNoCtrl.text.trim();
-                    final selectedMilkType = isYem ? 'Yok' : (isSicak ? 'Sıcak süt' : 'Soğuk süt');
+                    final saveMilkType = isYem ? 'Yok' : selectedMilkType;
 
-                    if (name.isEmpty || phone.isEmpty || bolge.isEmpty) return;
+                    if (name.isEmpty || phone.isEmpty || bolge.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Lütfen Ad Soyad, Telefon ve Bölge alanlarını doldurun.'),
+                          backgroundColor: AppColors.danger,
+                        ),
+                      );
+                      return;
+                    }
 
                     await _db.collection('ureticiler').add({
                       'name': name,
@@ -703,7 +745,7 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
                       'avg': 30.0,
                       'total': 0.0,
                       'firmalar': [currentFirmaName],
-                      'lastMilkType': selectedMilkType,
+                      'lastMilkType': saveMilkType,
                       'customerType': isYem ? 'yem' : 'sut',
                     });
 
@@ -743,8 +785,20 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
         String? selectedGroup = data['group'];
         String? selectedBirlik = data['birlik'];
 
-        final currentMilkType = data['lastMilkType'] ?? 'Soğuk süt';
-        bool isSicak = currentMilkType == 'Sıcak süt';
+        String rawMilkType = data['lastMilkType'] ?? 'Soğuk Süt';
+        String selectedMilkType = 'Soğuk Süt';
+        final normType = rawMilkType.trim().toLowerCase();
+        if (normType.contains('soğuk') || normType.contains('a kalite')) {
+          selectedMilkType = 'Soğuk Süt';
+        } else if (normType.contains('sıcak') || normType.contains('b kalite')) {
+          selectedMilkType = 'Sıcak Süt';
+        } else if (normType.contains('c kalite')) {
+          selectedMilkType = 'C kalite';
+        } else if (normType.contains('d kalite')) {
+          selectedMilkType = 'D kalite';
+        } else {
+          selectedMilkType = 'Soğuk Süt';
+        }
         bool isYem = data['customerType'] == 'yem';
 
         return StatefulBuilder(
@@ -774,9 +828,40 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
                         decoration: const InputDecoration(labelText: 'Telefon'),
                       ),
                       const SizedBox(height: 16),
-                      TextField(
-                        controller: bolgeCtrl,
-                        decoration: const InputDecoration(labelText: 'Bölge / İlçe'),
+                      StreamBuilder<QuerySnapshot>(
+                        stream: _db.collection('musteri_bolgeleri').where('firma', isEqualTo: currentFirmaName).snapshots(),
+                        builder: (context, snapshot) {
+                          final docs = snapshot.data?.docs ?? [];
+                          final List<String> bolgeler = docs.map((d) => d['ad'] as String).toList();
+                          
+                          String? currentSelected;
+                          if (bolgeCtrl.text.isNotEmpty && bolgeler.contains(bolgeCtrl.text)) {
+                            currentSelected = bolgeCtrl.text;
+                          } else {
+                            currentSelected = null;
+                          }
+                          
+                          if (bolgeler.isEmpty) {
+                            return TextField(
+                              controller: bolgeCtrl,
+                              decoration: const InputDecoration(labelText: 'Bölge / İlçe'),
+                            );
+                          }
+                          
+                          return DropdownButtonFormField<String>(
+                            value: currentSelected,
+                            hint: const Text('Bölge Seçin'),
+                            decoration: const InputDecoration(labelText: 'Bölge / İlçe'),
+                            items: bolgeler.map((b) => DropdownMenuItem(value: b, child: Text(b))).toList(),
+                            onChanged: (val) {
+                              if (val != null) {
+                                setState(() {
+                                  bolgeCtrl.text = val;
+                                });
+                              }
+                            },
+                          );
+                        },
                       ),
                       const SizedBox(height: 16),
                       
@@ -822,10 +907,10 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
                       ),
                       const SizedBox(height: 24),
 
-                      // Custom toggle
-                      _buildTempToggle(
-                        isSicak,
-                        (val) => setState(() => isSicak = val),
+                      // Custom selector
+                      _buildMilkTypeSelector(
+                        selectedType: selectedMilkType,
+                        onChanged: (val) => setState(() => selectedMilkType = val),
                         enabled: !isYem,
                       ),
                       const SizedBox(height: 16),
@@ -848,9 +933,17 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
                     final phone = phoneCtrl.text.trim();
                     final bolge = bolgeCtrl.text.trim();
                     final tcNo = tcNoCtrl.text.trim();
-                    final selectedMilkType = isYem ? 'Yok' : (isSicak ? 'Sıcak süt' : 'Soğuk süt');
+                    final saveMilkType = isYem ? 'Yok' : selectedMilkType;
 
-                    if (name.isEmpty || phone.isEmpty || bolge.isEmpty) return;
+                    if (name.isEmpty || phone.isEmpty || bolge.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Lütfen Ad Soyad, Telefon ve Bölge alanlarını doldurun.'),
+                          backgroundColor: AppColors.danger,
+                        ),
+                      );
+                      return;
+                    }
 
                     await doc.reference.update({
                       'name': name,
@@ -859,7 +952,7 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
                       'tcNo': tcNo,
                       'group': selectedGroup ?? 'Genel',
                       'birlik': selectedBirlik ?? 'Yok',
-                      'lastMilkType': selectedMilkType,
+                      'lastMilkType': saveMilkType,
                       'customerType': isYem ? 'yem' : 'sut',
                     });
 
@@ -893,13 +986,23 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
     final tcNo = data['tcNo'] ?? '';
     final avg = (data['avg'] as num?)?.toDouble() ?? 0.0;
     final total = (data['total'] as num?)?.toDouble() ?? 0.0;
-    String lastMilkType = data['lastMilkType'] ?? 'Soğuk süt';
+    String rawMilkType = data['lastMilkType'] ?? 'Soğuk Süt';
+    String lastMilkType = 'Soğuk Süt';
+    final normType = rawMilkType.trim().toLowerCase();
+    if (normType.contains('soğuk') || normType.contains('a kalite')) {
+      lastMilkType = 'Soğuk Süt';
+    } else if (normType.contains('sıcak') || normType.contains('b kalite')) {
+      lastMilkType = 'Sıcak Süt';
+    } else if (normType.contains('c kalite')) {
+      lastMilkType = 'C kalite';
+    } else if (normType.contains('d kalite')) {
+      lastMilkType = 'D kalite';
+    } else {
+      lastMilkType = 'Soğuk Süt';
+    }
     String customerType = data['customerType'] ?? 'sut';
 
-    const List<String> milkTypes = ['Soğuk süt', 'Sıcak süt', 'C kalite', 'D kalite'];
-    if (!milkTypes.contains(lastMilkType)) {
-      lastMilkType = 'Soğuk süt';
-    }
+    const List<String> milkTypes = ['Soğuk Süt', 'Sıcak Süt', 'C kalite', 'D kalite'];
 
     showDialog(
       context: context,
@@ -990,220 +1093,7 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
     );
   }
 
-  void _showDigitalCardDialog(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
-    final name = data['name'] ?? '';
-    final group = data['group'] ?? 'Genel';
-    final avg = (data['avg'] as num?)?.toDouble() ?? 0.0;
-    final total = (data['total'] as num?)?.toDouble() ?? 0.0;
-    final docId = doc.id;
-    final cardNumber = "8024 ${docId.hashCode.abs().toString().padRight(12, '0').substring(0, 12).replaceAllMapped(RegExp(r".{4}"), (match) => "${match.group(0)} ")}".trim();
 
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: Colors.transparent,
-        contentPadding: EdgeInsets.zero,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 20),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // The Card
-            Container(
-              width: double.infinity,
-              height: 220,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(20),
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF0F172A), Color(0xFF1E293B), Color(0xFF334155)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.4),
-                    blurRadius: 15,
-                    offset: const Offset(0, 8),
-                  )
-                ],
-              ),
-              child: Stack(
-                children: [
-                  // Decorative water drop background
-                  Positioned(
-                    right: -20,
-                    bottom: -20,
-                    child: Opacity(
-                      opacity: 0.1,
-                      child: Icon(Icons.water_drop_rounded, size: 180, color: Colors.blue[300]),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.all(20.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        // Card Header
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Row(
-                              children: [
-                                const Icon(Icons.water_drop_rounded, color: Colors.blue, size: 24),
-                                const SizedBox(width: 6),
-                                Text(
-                                  'SütApp Kart',
-                                  style: GoogleFonts.outfit(
-                                    color: Colors.white,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    letterSpacing: 0.5,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const Icon(Icons.contactless_outlined, color: Colors.white60, size: 24),
-                          ],
-                        ),
-                        // Chip
-                        Container(
-                          width: 40,
-                          height: 30,
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [Color(0xFFFCD34D), Color(0xFFF59E0B)],
-                            ),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                        ),
-                        // Producer Details & Card Number
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              name.toUpperCase(),
-                              style: GoogleFonts.spaceMono(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 1.5,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  cardNumber,
-                                  style: GoogleFonts.spaceMono(
-                                    color: Colors.white70,
-                                    fontSize: 12,
-                                    letterSpacing: 2.0,
-                                  ),
-                                ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white24,
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: Text(
-                                    group.toUpperCase(),
-                                    style: GoogleFonts.inter(
-                                      color: Colors.white,
-                                      fontSize: 9,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            // Details & Action Modal Body
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                children: [
-                  Text(
-                    'Dijital Süt Kartı',
-                    style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.gray800),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Üreticinin günlük süt alımlarını ve aylık detaylı kartını inceleyin.',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500),
-                  ),
-                  const SizedBox(height: 16),
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.pop(ctx);
-                      context.push('/firma/dijital-kart?name=$name');
-                    },
-                    icon: const Icon(Icons.badge_rounded, size: 16),
-                    label: const Text('Dijital Süt Kartını Görüntüle'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary600,
-                      foregroundColor: Colors.white,
-                      minimumSize: const Size(double.infinity, 44),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      elevation: 0,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  // Producer statistics row
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      Column(
-                        children: [
-                          Text('Günlük Ort.', style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray400, fontWeight: FontWeight.w500)),
-                          const SizedBox(height: 4),
-                          Text('${avg.toStringAsFixed(0)} LT', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.gray800)),
-                        ],
-                      ),
-                      Container(width: 1, height: 24, color: AppColors.gray200),
-                      Column(
-                        children: [
-                          Text('Toplam Teslimat', style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray400, fontWeight: FontWeight.w500)),
-                          const SizedBox(height: 4),
-                          Text('${total.toStringAsFixed(0)} LT', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.gray800)),
-                        ],
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  OutlinedButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.gray600,
-                      side: const BorderSide(color: AppColors.gray200),
-                      minimumSize: const Size(double.infinity, 40),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
-                    child: const Text('Kapat'),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
   Widget _buildDetailRow(IconData icon, String label, String value) {
     return Row(
@@ -1231,12 +1121,23 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
     );
   }
 
-  Widget _buildTempToggle(bool isSicak, ValueChanged<bool> onChanged, {bool enabled = true}) {
+  Widget _buildMilkTypeSelector({
+    required String selectedType,
+    required ValueChanged<String> onChanged,
+    bool enabled = true,
+  }) {
+    final norm = selectedType.trim().toLowerCase();
+    bool isSicak = norm.contains('sıcak') || norm.contains('b kalite') || norm.contains('b quality');
+    bool isSoguk = norm.contains('soğuk') || norm.contains('a kalite') || norm.contains('a quality');
+    bool isC = norm.contains('c kalite');
+    bool isD = norm.contains('d kalite');
+    bool isToggleActive = isSicak || isSoguk;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Varsayılan Süt Sıcaklığı',
+          'Varsayılan Süt Sıcaklığı / Kalitesi',
           style: GoogleFonts.inter(
             fontWeight: FontWeight.bold,
             fontSize: 13,
@@ -1244,98 +1145,184 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
           ),
         ),
         const SizedBox(height: 8),
-        GestureDetector(
-          onTap: enabled ? () {
-            onChanged(!isSicak);
-          } : null,
-          child: Opacity(
-            opacity: enabled ? 1.0 : 0.5,
-            child: Container(
-              height: 48,
-              decoration: BoxDecoration(
-                color: Colors.grey[200],
-                borderRadius: BorderRadius.circular(24),
-              ),
-              child: Stack(
-                children: [
-                AnimatedAlign(
-                  duration: const Duration(milliseconds: 250),
-                  curve: Curves.easeInOut,
-                  alignment: isSicak ? Alignment.centerLeft : Alignment.centerRight,
-                  child: FractionallySizedBox(
-                    widthFactor: 0.5,
-                    child: Padding(
-                      padding: const EdgeInsets.all(4.0),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: isSicak ? Colors.red[600] : Colors.blue[600],
-                          borderRadius: BorderRadius.circular(20),
-                          boxShadow: [
-                            BoxShadow(
-                              color: (isSicak ? Colors.red : Colors.blue).withOpacity(0.3),
-                              blurRadius: 6,
-                              offset: const Offset(0, 3),
-                            )
-                          ],
-                        ),
-                        child: Center(
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                isSicak ? Icons.whatshot : Icons.ac_unit,
-                                color: Colors.white,
-                                size: 16,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                isSicak ? 'Sıcak süt' : 'Soğuk süt',
-                                style: GoogleFonts.inter(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 12,
-                                ),
-                              ),
+        Opacity(
+          opacity: enabled ? 1.0 : 0.5,
+          child: Container(
+            height: 48,
+            decoration: BoxDecoration(
+              color: Colors.grey[200],
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: Stack(
+              children: [
+                if (isToggleActive)
+                  AnimatedAlign(
+                    duration: const Duration(milliseconds: 250),
+                    curve: Curves.easeInOut,
+                    alignment: isSicak ? Alignment.centerLeft : Alignment.centerRight,
+                    child: FractionallySizedBox(
+                      widthFactor: 0.5,
+                      child: Padding(
+                        padding: const EdgeInsets.all(4.0),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: isSicak ? Colors.red[600] : Colors.blue[600],
+                            borderRadius: BorderRadius.circular(20),
+                            boxShadow: [
+                              BoxShadow(
+                                color: (isSicak ? Colors.red : Colors.blue).withOpacity(0.3),
+                                blurRadius: 6,
+                                offset: const Offset(0, 3),
+                              )
                             ],
+                          ),
+                          child: Center(
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  isSicak ? Icons.whatshot : Icons.ac_unit,
+                                  color: Colors.white,
+                                  size: 16,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  isSicak ? 'Sıcak Süt' : 'Soğuk Süt',
+                                  style: GoogleFonts.inter(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ),
-                ),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Expanded(
-                      child: Center(
-                        child: Text(
-                          'Sıcak süt',
-                          style: GoogleFonts.inter(
-                            color: isSicak ? Colors.transparent : Colors.grey[600],
-                            fontWeight: FontWeight.w600,
-                            fontSize: 12,
+                      child: GestureDetector(
+                        onTap: enabled ? () => onChanged('Sıcak Süt') : null,
+                        behavior: HitTestBehavior.opaque,
+                        child: Center(
+                          child: Text(
+                            'Sıcak Süt',
+                            style: GoogleFonts.inter(
+                              color: isSicak ? Colors.transparent : Colors.grey[600],
+                              fontWeight: FontWeight.w600,
+                              fontSize: 12,
+                            ),
                           ),
                         ),
                       ),
                     ),
                     Expanded(
-                      child: Center(
-                        child: Text(
-                          'Soğuk süt',
-                          style: GoogleFonts.inter(
-                            color: !isSicak ? Colors.transparent : Colors.grey[600],
-                            fontWeight: FontWeight.w600,
-                            fontSize: 12,
+                      child: GestureDetector(
+                        onTap: enabled ? () => onChanged('Soğuk Süt') : null,
+                        behavior: HitTestBehavior.opaque,
+                        child: Center(
+                          child: Text(
+                            'Soğuk Süt',
+                            style: GoogleFonts.inter(
+                              color: isSoguk ? Colors.transparent : Colors.grey[600],
+                              fontWeight: FontWeight.w600,
+                              fontSize: 12,
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ],
                 ),
-                ],
-              ),
+              ],
             ),
           ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: Opacity(
+                opacity: enabled ? 1.0 : 0.5,
+                child: InkWell(
+                  onTap: enabled ? () => onChanged(isC ? 'Soğuk Süt' : 'C kalite') : null,
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: isC ? Colors.teal[50] : Colors.transparent,
+                      border: Border.all(
+                        color: isC ? Colors.teal[600]! : Colors.grey[300]!,
+                        width: isC ? 2 : 1,
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          isC ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
+                          color: isC ? Colors.teal[600] : Colors.grey[500],
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'C Kalite',
+                          style: GoogleFonts.inter(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                            color: isC ? Colors.teal[800] : Colors.grey[700],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Opacity(
+                opacity: enabled ? 1.0 : 0.5,
+                child: InkWell(
+                  onTap: enabled ? () => onChanged(isD ? 'Soğuk Süt' : 'D kalite') : null,
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: isD ? Colors.orange[50] : Colors.transparent,
+                      border: Border.all(
+                        color: isD ? Colors.orange[600]! : Colors.grey[300]!,
+                        width: isD ? 2 : 1,
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          isD ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
+                          color: isD ? Colors.orange[600] : Colors.grey[500],
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'D Kalite',
+                          style: GoogleFonts.inter(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                            color: isD ? Colors.orange[800] : Colors.grey[700],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -1734,7 +1721,7 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
                                       IconButton(
                                         icon: const Icon(Icons.badge_rounded, color: Colors.orange, size: 20),
                                         onPressed: () {
-                                          _showDigitalCardDialog(doc);
+                                          context.push('/firma/dijital-kart?name=$name');
                                         },
                                       ),
                                       IconButton(

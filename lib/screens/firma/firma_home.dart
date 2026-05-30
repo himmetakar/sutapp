@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -94,7 +95,7 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
   }
 
   void _onCardTap(String target) {
-    if (target == 'personel' || target == 'sut_tank' || target == 'firma_yonetimi') {
+    if (target == 'personel' || target == 'sut_tank') {
       setState(() {
         _currentMenu = target;
       });
@@ -125,8 +126,10 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
         bool isNearExpiration = false;
         DateTime? expiryDate;
 
+        String? logoUrl;
         if (firmSnap.hasData && firmSnap.data!.docs.isNotEmpty) {
           final firmData = firmSnap.data!.docs.first.data() as Map<String, dynamic>;
+          logoUrl = firmData['logoUrl'] as String?;
           final Timestamp? expiryTs = firmData['abonelikBitis'] as Timestamp?;
           if (expiryTs != null) {
             expiryDate = expiryTs.toDate();
@@ -229,30 +232,93 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
                 if (_currentMenu == 'main') ...[
               // Screen Description / Welcome Title
               Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    'Hoş geldiniz, ${user?.displayName ?? 'Yönetici'}',
-                    style: GoogleFonts.inter(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.gray900,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                'Hoş geldiniz, ${user?.displayName ?? 'Yönetici'}',
+                                style: GoogleFonts.inter(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.gray900,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              '👋',
+                              style: GoogleFonts.inter(fontSize: 18),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Yönetmek istediğiniz modülü seçin.',
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            color: AppColors.gray500,
+                            fontWeight: FontWeight.w400,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(width: 6),
-                  Text(
-                    '👋',
-                    style: GoogleFonts.inter(fontSize: 18),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 12),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 60,
+                          height: 60,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: AppColors.gray200, width: 1.5),
+                            color: Colors.white,
+                            image: logoUrl != null && logoUrl.isNotEmpty
+                                ? DecorationImage(
+                                    image: logoUrl.startsWith('data:image')
+                                        ? MemoryImage(base64Decode(logoUrl.substring(logoUrl.indexOf(',') + 1))) as ImageProvider
+                                        : NetworkImage(logoUrl),
+                                    fit: BoxFit.cover,
+                                  )
+                                : null,
+                          ),
+                          child: logoUrl == null || logoUrl.isEmpty
+                              ? Center(
+                                  child: Icon(Icons.business_rounded, color: AppColors.gray400, size: 24),
+                                )
+                              : null,
+                        ),
+                        if (currentFirma.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          SizedBox(
+                            width: 85,
+                            child: Text(
+                              currentFirma,
+                              textAlign: TextAlign.center,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.inter(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.gray800,
+                                height: 1.1,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
                 ],
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Yönetmek istediğiniz modülü seçin.',
-                style: GoogleFonts.inter(
-                  fontSize: 12,
-                  color: AppColors.gray500,
-                  fontWeight: FontWeight.w400,
-                ),
               ),
               const SizedBox(height: 20),
 
@@ -315,14 +381,14 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
                     onTap: () => _onCardTap('/firma/finans'),
                   ),
 
-                  // Firma Yönetimi
+                  // Tedarikçi Firmalar
                   _buildMenuCard(
                     icon: Icons.business_rounded,
-                    title: 'Firma Yönetimi',
-                    subtitle: 'Firma bilgileri ve duyuru',
+                    title: 'Tedarikçi Firmalar',
+                    subtitle: 'Tedarikçi firma ve hesap yönetimi',
                     iconColor: Colors.white,
                     bgColor: const Color(0xFF1D9BF0),
-                    onTap: () => _onCardTap('firma_yonetimi'),
+                    onTap: () => _onCardTap('/firma/firmalar'),
                   ),
                 ],
               ),
@@ -437,38 +503,6 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
                     title: 'Süt Analiz',
                     color: const Color(0xFFD97706),
                     onTap: () => context.push('/firma/sut-analiz'),
-                  ),
-                ],
-              ),
-            ] else if (_currentMenu == 'firma_yonetimi') ...[
-              // Submenu Header
-              _buildSubmenuHeader('Firma Yönetimi'),
-              const SizedBox(height: 20),
-
-              // Submenu Grid
-              GridView.count(
-                crossAxisCount: 2,
-                crossAxisSpacing: 16,
-                mainAxisSpacing: 16,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                childAspectRatio: 1.0,
-                children: [
-                  _buildMenuCard(
-                    icon: Icons.business_rounded,
-                    title: 'Firma Profili',
-                    subtitle: 'Firma bilgileri ve ayarlar',
-                    iconColor: Colors.white,
-                    bgColor: const Color(0xFF1D9BF0),
-                    onTap: () => context.push('/firma/profil'),
-                  ),
-                  _buildMenuCard(
-                    icon: Icons.campaign_rounded,
-                    title: 'Duyuru Gönder',
-                    subtitle: 'Çalışanlara duyuru yapın',
-                    iconColor: Colors.white,
-                    bgColor: const Color(0xFF1D9BF0),
-                    onTap: () => context.push('/firma/duyuru-gonder'),
                   ),
                 ],
               ),

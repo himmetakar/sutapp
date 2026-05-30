@@ -44,13 +44,13 @@ class _AppShellState extends State<AppShell> {
         return [
           _TabItem('/surucu', Icons.dashboard_rounded, 'Ana Sayfa'),
           _TabItem('/surucu/toplama', Icons.water_drop_rounded, 'Süt Al'),
+          _TabItem('/surucu/teslimatlar', Icons.local_shipping_rounded, 'Teslimatlar'),
           _TabItem('/surucu/profil', Icons.person_rounded, 'Profil'),
         ];
       case UserRole.uretici:
         return [
           _TabItem('/uretici', Icons.dashboard_rounded, 'Ana Sayfa'),
-          _TabItem('/uretici/gecmis', Icons.history_rounded, 'Geçmiş'),
-          _TabItem('/uretici/faturalar', Icons.description_rounded, 'Faturalar'),
+          _TabItem('/uretici/profil', Icons.person_rounded, 'Profil'),
         ];
     }
   }
@@ -79,7 +79,7 @@ class _AppShellState extends State<AppShell> {
           _DrawerItem('/firma/fire-takip', Icons.warning_amber_rounded, 'Fire Takibi'),
           _DrawerItem('/firma/duyuru-gonder', Icons.campaign_rounded, 'Duyuru Gönder'),
           _DrawerItem('/firma/finans', Icons.monetization_on_rounded, 'Finans Yönetimi'),
-          _DrawerItem('/firma/yonetimi', Icons.business_rounded, 'Firma Yönetimi'),
+          _DrawerItem('/firma/firmalar', Icons.business_rounded, 'Tedarikçi Firmalar'),
           _DrawerItem('/firma/satis-raporlari', Icons.analytics_rounded, 'Satış Raporları'),
           _DrawerItem('/firma/urunler', Icons.shopping_bag_rounded, 'Ürünler'),
           _DrawerItem('/firma/urunler/siparisler', Icons.shopping_cart_rounded, 'Siparişler'),
@@ -88,6 +88,7 @@ class _AppShellState extends State<AppShell> {
         return [
           _DrawerItem('/surucu', Icons.dashboard_rounded, 'Dashboard'),
           _DrawerItem('/surucu/toplama', Icons.water_drop_rounded, 'Süt Al'),
+          _DrawerItem('/surucu/teslimatlar', Icons.local_shipping_rounded, 'Ürün Teslimatları'),
           _DrawerItem('/surucu/profil', Icons.person_rounded, 'Profil'),
         ];
       case UserRole.uretici:
@@ -97,6 +98,7 @@ class _AppShellState extends State<AppShell> {
           _DrawerItem('/uretici/gecmis', Icons.history_rounded, 'Geçmiş'),
           _DrawerItem('/uretici/faturalar', Icons.description_rounded, 'Faturalarım'),
           _DrawerItem('/uretici/urunler', Icons.shopping_bag_rounded, 'Ürünler'),
+          _DrawerItem('/uretici/profil', Icons.person_rounded, 'Profil'),
         ];
     }
   }
@@ -134,6 +136,7 @@ class _AppShellState extends State<AppShell> {
       '/admin/duyuru-gonder': 'Duyuru Gönder',
       '/firma/finans': 'Finans Yönetimi',
       '/firma/yonetimi': 'Firma Yönetimi',
+      '/firma/firmalar': 'Tedarikçi Firmalar',
       '/firma/yonetimi/ekstre': 'Cari Hesap Ekstresi',
       '/firma/finans/genel-bakis': 'Finansal Genel Bakış',
       '/firma/finans/faturalar': 'Faturalar',
@@ -152,10 +155,12 @@ class _AppShellState extends State<AppShell> {
       '/firma/finans/sut-fiyatlari/toplu': 'Toplu Fiyat İşlemleri',
       '/surucu': 'Ana Sayfa',
       '/surucu/toplama': 'Süt Toplama',
+      '/surucu/teslimatlar': 'Sipariş Teslimatları',
       '/surucu/profil': 'Profil',
       '/uretici': 'Ana Sayfa',
       '/uretici/gecmis': 'Teslim Geçmişi',
       '/uretici/faturalar': 'Faturalarım',
+      '/uretici/profil': 'Profil',
       '/firma/urunler': 'Ürünler',
       '/firma/urunler/siparisler': 'Siparişler',
       '/uretici/urunler': 'Ürünler',

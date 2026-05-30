@@ -15,8 +15,13 @@ import '../../services/firestore_service.dart';
 
 class FirmaHesapOzetiScreen extends StatefulWidget {
   final String? producerName;
+  final bool isUreticiView;
 
-  const FirmaHesapOzetiScreen({super.key, this.producerName});
+  const FirmaHesapOzetiScreen({
+    super.key,
+    this.producerName,
+    this.isUreticiView = false,
+  });
 
   @override
   State<FirmaHesapOzetiScreen> createState() => _FirmaHesapOzetiScreenState();
@@ -123,6 +128,36 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = Provider.of<AuthProvider>(context, listen: false);
+
+    if (widget.isUreticiView) {
+      return FutureBuilder<QuerySnapshot>(
+        future: _db.collection('ureticiler')
+            .where('name', isEqualTo: widget.producerName)
+            .limit(1)
+            .get(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return Scaffold(
+              appBar: AppBar(title: Text(widget.producerName ?? '', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16))),
+              body: const Center(child: CircularProgressIndicator()),
+            );
+          }
+          if (snapshot.hasError || !snapshot.hasData || snapshot.data!.docs.isEmpty) {
+            return Scaffold(
+              appBar: AppBar(title: Text(widget.producerName ?? '', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16))),
+              body: const Center(child: Text('Üretici bilgileri yüklenemedi.')),
+            );
+          }
+
+          final pDoc = snapshot.data!.docs.first.data() as Map<String, dynamic>;
+          final List<dynamic> firms = pDoc['firmalar'] ?? [];
+          final currentFirmaName = firms.isNotEmpty ? firms.first.toString() : '';
+
+          return _buildLedgerDetails(currentFirmaName, widget.producerName!);
+        },
+      );
+    }
+
     final currentFirmaName = auth.user?.displayName ?? '';
 
     if (_selectedProducer == null) {
@@ -897,7 +932,9 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
             leading: IconButton(
               icon: const Icon(Icons.arrow_back_rounded),
               onPressed: () {
-                if (widget.producerName != null) {
+                if (widget.isUreticiView) {
+                  context.go('/uretici');
+                } else if (widget.producerName != null) {
                   context.go('/firma/ureticiler');
                 } else {
                   setState(() {

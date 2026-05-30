@@ -344,13 +344,29 @@ class _FirmaProfilScreenState extends State<FirmaProfilScreen> {
                   ),
                 ],
             // Title
-            Text(
-              'Profil',
-              style: GoogleFonts.inter(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: AppColors.gray900,
-              ),
+            Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.arrow_back_rounded),
+                  color: AppColors.gray700,
+                  onPressed: () {
+                    if (context.canPop()) {
+                      context.pop();
+                    } else {
+                      context.go('/firma');
+                    }
+                  },
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Profil',
+                  style: GoogleFonts.inter(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.gray900,
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 20),
 

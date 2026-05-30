@@ -136,7 +136,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
         Map<String, dynamic>? selectedProvince;
         Map<String, dynamic>? selectedDistrict;
         Map<String, dynamic>? selectedNeighborhood;
-        bool isSicak = false;
+        String selectedMilkType = 'Soğuk süt';
         bool isYem = false;
         bool loading = false;
 
@@ -340,10 +340,10 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                         const SizedBox(height: 24),
                       ],
 
-                      // Custom toggle
-                      _buildTempToggle(
-                        isSicak,
-                        (val) => setState(() => isSicak = val),
+                      // Custom selector
+                      _buildMilkTypeSelector(
+                        selectedType: selectedMilkType,
+                        onChanged: (val) => setState(() => selectedMilkType = val),
                         enabled: !isYem,
                       ),
                       const SizedBox(height: 16),
@@ -374,7 +374,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                       bolge: ilce,
                       avg: 30.0,
                       firma: currentFirmaName,
-                      lastMilkType: isYem ? 'Yok' : (isSicak ? 'Sıcak süt' : 'Soğuk süt'),
+                      lastMilkType: isYem ? 'Yok' : selectedMilkType,
                       customerType: isYem ? 'yem' : 'sut',
                     );
 
@@ -419,7 +419,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
     String? localSelectedUretici;
     String? localSelectedMilkType;
     String? localSelectedCustomerType;
-    const List<String> milkTypes = ['Soğuk süt', 'Sıcak süt', 'C kalite', 'D kalite'];
+    const List<String> milkTypes = ['Soğuk Süt', 'Sıcak Süt', 'C kalite', 'D kalite'];
     
     // Track selected tank inside the dialog
     String? localSelectedTank = tankList.isNotEmpty ? (tankList.first as Map)['ad'] as String : null;
@@ -442,15 +442,25 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
             );
           }
 
+          String normalize(String? raw) {
+            if (raw == null) return 'Soğuk Süt';
+            final norm = raw.trim().toLowerCase();
+            if (norm.contains('soğuk') || norm.contains('a kalite')) return 'Soğuk Süt';
+            if (norm.contains('sıcak') || norm.contains('b kalite')) return 'Sıcak Süt';
+            if (norm.contains('c kalite')) return 'C kalite';
+            if (norm.contains('d kalite')) return 'D kalite';
+            return 'Soğuk Süt';
+          }
+
           if (localSelectedUretici == null || !producers.contains(localSelectedUretici)) {
             localSelectedUretici = producers.first;
             try {
               final prodDoc = prodSnapshot.data!.docs.firstWhere((doc) => doc['name'] == localSelectedUretici);
               final docData = prodDoc.data() as Map<String, dynamic>;
-              localSelectedMilkType = docData['lastMilkType'] ?? 'Soğuk süt';
+              localSelectedMilkType = normalize(docData['lastMilkType']);
               localSelectedCustomerType = docData['customerType'] ?? 'sut';
             } catch (_) {
-              localSelectedMilkType = 'Soğuk süt';
+              localSelectedMilkType = 'Soğuk Süt';
               localSelectedCustomerType = 'sut';
             }
           } else if (localSelectedCustomerType == null) {
@@ -464,7 +474,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
           }
 
           if (localSelectedMilkType == null || !milkTypes.contains(localSelectedMilkType)) {
-            localSelectedMilkType = 'Soğuk süt';
+            localSelectedMilkType = 'Soğuk Süt';
           }
 
           return StatefulBuilder(
@@ -498,14 +508,14 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                               try {
                                 final prodDoc = prodSnapshot.data!.docs.firstWhere((doc) => doc['name'] == localSelectedUretici);
                                 final docData = prodDoc.data() as Map<String, dynamic>;
-                                localSelectedMilkType = docData['lastMilkType'] ?? 'Soğuk süt';
+                                localSelectedMilkType = normalize(docData['lastMilkType']);
                                 localSelectedCustomerType = docData['customerType'] ?? 'sut';
                               } catch (_) {
-                                localSelectedMilkType = 'Soğuk süt';
+                                localSelectedMilkType = 'Soğuk Süt';
                                 localSelectedCustomerType = 'sut';
                               }
                               if (localSelectedMilkType == null || !milkTypes.contains(localSelectedMilkType)) {
-                                localSelectedMilkType = 'Soğuk süt';
+                                localSelectedMilkType = 'Soğuk Süt';
                               }
                             });
                           }
@@ -540,19 +550,10 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                         ),
                         const SizedBox(height: 16),
                       ],
-                      DropdownButtonFormField<String>(
-                        value: localSelectedMilkType,
-                        decoration: const InputDecoration(labelText: 'Süt Tipi'),
-                        items: milkTypes
-                            .map((t) => DropdownMenuItem(value: t, child: Text(t)))
-                            .toList(),
-                        onChanged: (val) {
-                          if (val != null) {
-                            setDialogState(() {
-                              localSelectedMilkType = val;
-                            });
-                          }
-                        },
+                      _buildMilkTypeSelector(
+                        selectedType: localSelectedMilkType ?? 'Soğuk süt',
+                        onChanged: (val) => setDialogState(() => localSelectedMilkType = val),
+                        enabled: localSelectedCustomerType != 'yem',
                       ),
                       const SizedBox(height: 16),
                       DropdownButtonFormField<String>(
@@ -667,12 +668,23 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
     );
   }
 
-  Widget _buildTempToggle(bool isSicak, ValueChanged<bool> onChanged, {bool enabled = true}) {
+  Widget _buildMilkTypeSelector({
+    required String selectedType,
+    required ValueChanged<String> onChanged,
+    bool enabled = true,
+  }) {
+    final norm = selectedType.trim().toLowerCase();
+    bool isSicak = norm.contains('sıcak') || norm.contains('b kalite') || norm.contains('b quality');
+    bool isSoguk = norm.contains('soğuk') || norm.contains('a kalite') || norm.contains('a quality');
+    bool isC = norm.contains('c kalite');
+    bool isD = norm.contains('d kalite');
+    bool isToggleActive = isSicak || isSoguk;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Varsayılan Süt Sıcaklığı',
+          'Varsayılan Süt Sıcaklığı / Kalitesi',
           style: GoogleFonts.inter(
             fontWeight: FontWeight.bold,
             fontSize: 13,
@@ -680,20 +692,17 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
           ),
         ),
         const SizedBox(height: 8),
-        GestureDetector(
-          onTap: enabled ? () {
-            onChanged(!isSicak);
-          } : null,
-          child: Opacity(
-            opacity: enabled ? 1.0 : 0.5,
-            child: Container(
-              height: 48,
-              decoration: BoxDecoration(
-                color: Colors.grey[200],
-                borderRadius: BorderRadius.circular(24),
-              ),
-              child: Stack(
-                children: [
+        Opacity(
+          opacity: enabled ? 1.0 : 0.5,
+          child: Container(
+            height: 48,
+            decoration: BoxDecoration(
+              color: Colors.grey[200],
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: Stack(
+              children: [
+                if (isToggleActive)
                   AnimatedAlign(
                     duration: const Duration(milliseconds: 250),
                     curve: Curves.easeInOut,
@@ -725,7 +734,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                                 ),
                                 const SizedBox(width: 4),
                                 Text(
-                                  isSicak ? 'Sıcak süt' : 'Soğuk süt',
+                                  isSicak ? 'Sıcak Süt' : 'Soğuk Süt',
                                   style: GoogleFonts.inter(
                                     color: Colors.white,
                                     fontWeight: FontWeight.bold,
@@ -739,13 +748,16 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                       ),
                     ),
                   ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: enabled ? () => onChanged('Sıcak Süt') : null,
+                        behavior: HitTestBehavior.opaque,
                         child: Center(
                           child: Text(
-                            'Sıcak süt',
+                            'Sıcak Süt',
                             style: GoogleFonts.inter(
                               color: isSicak ? Colors.transparent : Colors.grey[600],
                               fontWeight: FontWeight.w600,
@@ -754,24 +766,110 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                           ),
                         ),
                       ),
-                      Expanded(
+                    ),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: enabled ? () => onChanged('Soğuk Süt') : null,
+                        behavior: HitTestBehavior.opaque,
                         child: Center(
                           child: Text(
-                            'Soğuk süt',
+                            'Soğuk Süt',
                             style: GoogleFonts.inter(
-                              color: !isSicak ? Colors.transparent : Colors.grey[600],
+                              color: isSoguk ? Colors.transparent : Colors.grey[600],
                               fontWeight: FontWeight.w600,
                               fontSize: 12,
                             ),
                           ),
                         ),
                       ),
-                    ],
-                  ),
-                ],
-              ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: Opacity(
+                opacity: enabled ? 1.0 : 0.5,
+                child: InkWell(
+                  onTap: enabled ? () => onChanged(isC ? 'Soğuk Süt' : 'C kalite') : null,
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: isC ? Colors.teal[50] : Colors.transparent,
+                      border: Border.all(
+                        color: isC ? Colors.teal[600]! : Colors.grey[300]!,
+                        width: isC ? 2 : 1,
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          isC ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
+                          color: isC ? Colors.teal[600] : Colors.grey[500],
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'C Kalite',
+                          style: GoogleFonts.inter(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                            color: isC ? Colors.teal[800] : Colors.grey[700],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Opacity(
+                opacity: enabled ? 1.0 : 0.5,
+                child: InkWell(
+                  onTap: enabled ? () => onChanged(isD ? 'Soğuk Süt' : 'D kalite') : null,
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: isD ? Colors.orange[50] : Colors.transparent,
+                      border: Border.all(
+                        color: isD ? Colors.orange[600]! : Colors.grey[300]!,
+                        width: isD ? 2 : 1,
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          isD ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
+                          color: isD ? Colors.orange[600] : Colors.grey[500],
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'D Kalite',
+                          style: GoogleFonts.inter(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                            color: isD ? Colors.orange[800] : Colors.grey[700],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -972,8 +1070,6 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
       _cachedEmail = userEmail;
       _profileStream = FirebaseFirestore.instance
           .collection('suruculer')
-          .where('email', isEqualTo: userEmail)
-          .limit(1)
           .snapshots();
     }
 
@@ -986,16 +1082,34 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
         String resolvedDriverName = driverName;
 
         if (profileSnapshot.hasData && profileSnapshot.data!.docs.isNotEmpty) {
-          final pDoc = profileSnapshot.data!.docs.first;
-          final pData = pDoc.data() as Map<String, dynamic>;
-          canAddCustomer = pData['canAddCustomer'] ?? true;
-          canEditCustomer = pData['canEditCustomer'] ?? true;
-          canCreateOrder = pData['canCreateOrder'] ?? true;
-          final dbAd = pData['ad'] ?? '';
-          final dbSoyad = pData['soyad'] ?? '';
-          final dbFullName = '$dbAd $dbSoyad'.trim();
-          if (dbFullName.isNotEmpty) {
-            resolvedDriverName = dbFullName;
+          final docs = profileSnapshot.data!.docs;
+          DocumentSnapshot? matchedDoc;
+          
+          for (var doc in docs) {
+            final data = doc.data() as Map<String, dynamic>;
+            final ad = data['ad'] ?? '';
+            final soyad = data['soyad'] ?? '';
+            final fullName = '$ad $soyad'.trim();
+            final email = data['email'] ?? '';
+            
+            if (fullName.toLowerCase() == driverName.toLowerCase() ||
+                (email.isNotEmpty && email == userEmail)) {
+              matchedDoc = doc;
+              break;
+            }
+          }
+
+          if (matchedDoc != null) {
+            final pData = matchedDoc.data() as Map<String, dynamic>;
+            canAddCustomer = pData['canAddCustomer'] ?? true;
+            canEditCustomer = pData['canEditCustomer'] ?? true;
+            canCreateOrder = pData['canCreateOrder'] ?? true;
+            final dbAd = pData['ad'] ?? '';
+            final dbSoyad = pData['soyad'] ?? '';
+            final dbFullName = '$dbAd $dbSoyad'.trim();
+            if (dbFullName.isNotEmpty) {
+              resolvedDriverName = dbFullName;
+            }
           }
         }
 
@@ -1152,7 +1266,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                               ],
                             ),
                           ),
-                          // Right side action (Üretici Ekle) and logo
+                          // Right side action (Üretici Ekle) and logo + name
                           Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
@@ -1171,23 +1285,53 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                                   ),
                                 ),
-                                if (logoUrl != null && logoUrl.isNotEmpty) const SizedBox(width: 12),
+                                const SizedBox(width: 12),
                               ],
-                              if (logoUrl != null && logoUrl.isNotEmpty)
-                                Container(
-                                  width: 48,
-                                  height: 48,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    border: Border.all(color: AppColors.gray200, width: 1.5),
-                                    image: DecorationImage(
-                                      image: logoUrl.startsWith('data:image')
-                                          ? MemoryImage(base64Decode(logoUrl.substring(logoUrl.indexOf(',') + 1))) as ImageProvider
-                                          : NetworkImage(logoUrl),
-                                      fit: BoxFit.cover,
+                              Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 50,
+                                    height: 50,
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(color: AppColors.gray200, width: 1.5),
+                                      color: Colors.white,
+                                      image: logoUrl != null && logoUrl.isNotEmpty
+                                          ? DecorationImage(
+                                              image: logoUrl.startsWith('data:image')
+                                                  ? MemoryImage(base64Decode(logoUrl.substring(logoUrl.indexOf(',') + 1))) as ImageProvider
+                                                  : NetworkImage(logoUrl),
+                                              fit: BoxFit.cover,
+                                            )
+                                          : null,
                                     ),
+                                    child: logoUrl == null || logoUrl.isEmpty
+                                        ? Center(
+                                            child: Icon(Icons.business_rounded, color: AppColors.gray400, size: 20),
+                                          )
+                                        : null,
                                   ),
-                                ),
+                                  if (currentFirmaName.isNotEmpty) ...[
+                                    const SizedBox(height: 4),
+                                    SizedBox(
+                                      width: 75,
+                                      child: Text(
+                                        currentFirmaName,
+                                        textAlign: TextAlign.center,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: GoogleFonts.inter(
+                                          fontSize: 10.5,
+                                          fontWeight: FontWeight.bold,
+                                          color: AppColors.gray800,
+                                          height: 1.1,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
                             ],
                           ),
                         ],
@@ -1254,214 +1398,278 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
       _producersStream = _firestoreService.getProducersStream(firma: firma);
     }
 
+    final atamalarStream = FirebaseFirestore.instance
+        .collection('toplayici_atamalari')
+        .where('toplayici', isEqualTo: driverName)
+        .where('firma', isEqualTo: firma)
+        .snapshots();
+
     return StreamBuilder<QuerySnapshot>(
-      stream: _collectionsStream!,
-      builder: (context, collectionsSnapshot) {
+      stream: atamalarStream,
+      builder: (context, atamalarSnapshot) {
         return StreamBuilder<QuerySnapshot>(
-          stream: _producersStream!,
-          builder: (context, producersSnapshot) {
-            if (!producersSnapshot.hasData || !collectionsSnapshot.hasData) {
-              return const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(32.0),
-                  child: CircularProgressIndicator(),
-                ),
-              );
-            }
+          stream: _collectionsStream!,
+          builder: (context, collectionsSnapshot) {
+            return StreamBuilder<QuerySnapshot>(
+              stream: _producersStream!,
+              builder: (context, producersSnapshot) {
+                if (!producersSnapshot.hasData || !collectionsSnapshot.hasData || !atamalarSnapshot.hasData) {
+                  return const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(32.0),
+                      child: CircularProgressIndicator(),
+                    ),
+                  );
+                }
 
-            final producersDocs = producersSnapshot.data!.docs;
-            final collectionsDocs = collectionsSnapshot.data!.docs;
+                final producersDocs = producersSnapshot.data!.docs;
+                final collectionsDocs = collectionsSnapshot.data!.docs;
+                final atamalarDocs = atamalarSnapshot.data!.docs;
 
-            // Find who has been visited today
-            final today = DateTime.now();
-            final visitedProducersToday = collectionsDocs.where((doc) {
-              final data = doc.data() as Map<String, dynamic>;
-              final ts = data['timestamp'] as Timestamp?;
-              if (ts == null) return false;
-              final date = ts.toDate();
-              return date.year == today.year && date.month == today.month && date.day == today.day;
-            }).map((doc) => (doc.data() as Map<String, dynamic>)['u'] as String).toSet();
+                // Load assignments for this driver
+                final List<String> assignedProducers = [];
+                final List<String> assignedGroups = [];
+                final List<String> assignedBirlikler = [];
 
-            // Filter/Search producers
-            final filteredProducers = producersDocs.where((doc) {
-              final data = doc.data() as Map<String, dynamic>;
-              final name = (data['name'] ?? '').toString().toLowerCase();
-              final group = (data['group'] ?? '').toString().toLowerCase();
-              final query = _searchQuery.toLowerCase();
-              return name.contains(query) || group.contains(query);
-            }).toList();
-
-            final totalProducers = producersDocs.length;
-            final visitedCount = producersDocs.where((doc) {
-              final name = (doc.data() as Map<String, dynamic>)['name'] ?? '';
-              return visitedProducersToday.contains(name);
-            }).length;
-
-            return StreamBuilder<DocumentSnapshot>(
-              stream: _savedRotaStream!,
-              builder: (context, rotaSnapshot) {
-                if (rotaSnapshot.hasData && rotaSnapshot.data!.exists) {
-                  final rotaData = rotaSnapshot.data!.data() as Map<String, dynamic>?;
-                  final List<dynamic>? orderedNames = rotaData?['sirali_ureticiler'] as List<dynamic>?;
-                  if (orderedNames != null) {
-                    filteredProducers.sort((a, b) {
-                      final aName = (a.data() as Map)['name'] ?? '';
-                      final bName = (b.data() as Map)['name'] ?? '';
-                      int aIndex = orderedNames.indexOf(aName);
-                      int bIndex = orderedNames.indexOf(bName);
-                      if (aIndex == -1) aIndex = 999999;
-                      if (bIndex == -1) bIndex = 999999;
-                      return aIndex.compareTo(bIndex);
-                    });
+                for (var doc in atamalarDocs) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  final hTip = data['hedefTip'];
+                  final hAd = data['hedefAd'];
+                  if (hTip == 'uretici') {
+                    assignedProducers.add(hAd);
+                  } else if (hTip == 'grup') {
+                    assignedGroups.add(hAd);
+                  } else if (hTip == 'birlik' || hTip == 'bolge') {
+                    assignedBirlikler.add(hAd);
                   }
                 }
 
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Header card with statistics and controls
-                    AppCard(
-                      shadow: AppShadows.sm,
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Ziyaret İlerlemesi',
-                                  style: GoogleFonts.inter(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                    color: AppColors.gray500,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  'Bugün Tamamlanan: $visitedCount / $totalProducers',
-                                  style: GoogleFonts.inter(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppColors.gray900,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 16),
+                // Filter producers based on assignments
+                final myProducers = producersDocs.where((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  final name = data['name'] ?? '';
+                  final group = data['group'] ?? '';
+                  final bolge = data['bolge'] ?? '';
+                  final birlik = data['birlik'] ?? 'Yok';
 
-                    // Search Bar
-                    TextField(
-                      onChanged: (val) {
-                        setState(() {
-                          _searchQuery = val;
+                  return assignedProducers.contains(name) ||
+                      (group.isNotEmpty && assignedGroups.contains(group)) ||
+                      (bolge.isNotEmpty && assignedBirlikler.contains(bolge)) ||
+                      (birlik.isNotEmpty && birlik != 'Yok' && assignedBirlikler.contains(birlik));
+                }).toList();
+
+                // Find who has been visited today and how much milk they gave
+                final today = DateTime.now();
+                final Map<String, double> todayMilkMap = {};
+                final visitedProducersToday = collectionsDocs.where((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  final ts = data['timestamp'] as Timestamp?;
+                  if (ts == null) return false;
+                  final date = ts.toDate();
+                  final isToday = date.year == today.year && date.month == today.month && date.day == today.day;
+                  if (isToday) {
+                    final String name = data['u'] ?? '';
+                    final double mVal = (data['m'] as num?)?.toDouble() ?? 0.0;
+                    todayMilkMap[name] = (todayMilkMap[name] ?? 0.0) + mVal;
+                  }
+                  return isToday;
+                }).map((doc) => (doc.data() as Map<String, dynamic>)['u'] as String).toSet();
+
+                // Filter/Search producers
+                final filteredProducers = myProducers.where((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  final name = (data['name'] ?? '').toString().toLowerCase();
+                  final group = (data['group'] ?? '').toString().toLowerCase();
+                  final query = _searchQuery.toLowerCase();
+                  return name.contains(query) || group.contains(query);
+                }).toList();
+
+                final totalProducers = myProducers.length;
+                final visitedCount = myProducers.where((doc) {
+                  final name = (doc.data() as Map<String, dynamic>)['name'] ?? '';
+                  return visitedProducersToday.contains(name);
+                }).length;
+
+                return StreamBuilder<DocumentSnapshot>(
+                  stream: _savedRotaStream!,
+                  builder: (context, rotaSnapshot) {
+                    if (rotaSnapshot.hasData && rotaSnapshot.data!.exists) {
+                      final rotaData = rotaSnapshot.data!.data() as Map<String, dynamic>?;
+                      final List<dynamic>? orderedNames = rotaData?['sirali_ureticiler'] as List<dynamic>?;
+                      if (orderedNames != null) {
+                        filteredProducers.sort((a, b) {
+                          final aName = (a.data() as Map)['name'] ?? '';
+                          final bName = (b.data() as Map)['name'] ?? '';
+                          int aIndex = orderedNames.indexOf(aName);
+                          int bIndex = orderedNames.indexOf(bName);
+                          if (aIndex == -1) aIndex = 999999;
+                          if (bIndex == -1) bIndex = 999999;
+                          return aIndex.compareTo(bIndex);
                         });
-                      },
-                      decoration: InputDecoration(
-                        hintText: 'Müşteri veya bölge ara...',
-                        prefixIcon: const Icon(Icons.search_rounded, color: AppColors.gray400),
-                        suffixIcon: _searchQuery.isNotEmpty
-                            ? IconButton(
-                                icon: const Icon(Icons.close, size: 18),
-                                onPressed: () {
-                                  setState(() {
-                                    _searchQuery = '';
-                                  });
-                                },
-                              )
-                            : null,
-                        fillColor: Colors.white,
-                        filled: true,
-                        contentPadding: const EdgeInsets.symmetric(vertical: 10),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: AppColors.gray200),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: AppColors.gray200),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: AppColors.primary500, width: 1.5),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
+                      }
+                    }
 
-                    // Customer list
-                    if (filteredProducers.isEmpty)
-                      Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(32.0),
-                          child: Text(
-                            'Aramanızla eşleşen müşteri bulunamadı.',
-                            style: GoogleFonts.inter(color: AppColors.gray500),
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Header card with statistics and controls
+                        AppCard(
+                          shadow: AppShadows.sm,
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Ziyaret İlerlemesi',
+                                      style: GoogleFonts.inter(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppColors.gray500,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      'Bugün Tamamlanan: $visitedCount / $totalProducers',
+                                      style: GoogleFonts.inter(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppColors.gray900,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      )
-                    else
-                      ReorderableListView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: filteredProducers.length,
-                        onReorder: (oldIndex, newIndex) async {
-                          if (newIndex > oldIndex) {
-                            newIndex -= 1;
-                          }
-                          setState(() {
-                            final item = filteredProducers.removeAt(oldIndex);
-                            filteredProducers.insert(newIndex, item);
-                          });
+                        const SizedBox(height: 16),
 
-                          final namesList = filteredProducers
-                              .map((doc) => (doc.data() as Map)['name'] as String)
-                              .toList();
-
-                          await FirebaseFirestore.instance
-                              .collection('surucu_rota_siralamalari')
-                              .doc(driverName)
-                              .set({
-                            'sirali_ureticiler': namesList,
-                            'lastUpdated': FieldValue.serverTimestamp(),
-                          });
-                        },
-                        itemBuilder: (context, index) {
-                          final doc = filteredProducers[index];
-                          final data = doc.data() as Map<String, dynamic>;
-                          final name = data['name'] ?? '';
-                          final group = data['group'] ?? 'Bilinmeyen Bölge';
-                          final avg = (data['avg'] as num?)?.toDouble() ?? 0.0;
-                          final lastMilkType = data['lastMilkType'] ?? 'Soğuk süt';
-                          final hasBeenVisited = visitedProducersToday.contains(name);
-
-                          return Container(
-                            key: ValueKey(name),
-                            margin: const EdgeInsets.only(bottom: 8),
-                            child: _buildProducerItemTile(
-                              name: name,
-                              group: group,
-                              avg: avg,
-                              lastMilkType: lastMilkType,
-                              hasBeenVisited: hasBeenVisited,
-                              onTap: () {
-                                setState(() {
-                                  _selectedUreticiForSutAl = name;
-                                  _selectedUreticiForm = name;
-                                  _selectedMilkTypeForm = lastMilkType;
-                                  _selectedCustomerTypeForm = data['customerType'] ?? 'sut';
-                                  _selectedQualityForm = lastMilkType;
-                                  _miktarFormCtrl.clear();
-                                });
-                              },
+                        // Search Bar
+                        TextField(
+                          onChanged: (val) {
+                            setState(() {
+                              _searchQuery = val;
+                            });
+                          },
+                          decoration: InputDecoration(
+                            hintText: 'Müşteri veya bölge ara...',
+                            prefixIcon: const Icon(Icons.search_rounded, color: AppColors.gray400),
+                            suffixIcon: _searchQuery.isNotEmpty
+                                ? IconButton(
+                                    icon: const Icon(Icons.close, size: 18),
+                                    onPressed: () {
+                                      setState(() {
+                                        _searchQuery = '';
+                                      });
+                                    },
+                                  )
+                                : null,
+                            fillColor: Colors.white,
+                            filled: true,
+                            contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(color: AppColors.gray200),
                             ),
-                          );
-                        },
-                      ),
-                  ],
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(color: AppColors.gray200),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(color: AppColors.primary500, width: 1.5),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Customer list
+                        if (filteredProducers.isEmpty)
+                          Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(32.0),
+                              child: Text(
+                                'Aramanızla eşleşen müşteri bulunamadı.',
+                                style: GoogleFonts.inter(color: AppColors.gray500),
+                              ),
+                            ),
+                          )
+                        else
+                          ReorderableListView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: filteredProducers.length,
+                            onReorder: (oldIndex, newIndex) async {
+                              if (newIndex > oldIndex) {
+                                newIndex -= 1;
+                              }
+                              setState(() {
+                                final item = filteredProducers.removeAt(oldIndex);
+                                filteredProducers.insert(newIndex, item);
+                              });
+
+                              final namesList = filteredProducers
+                                  .map((doc) => (doc.data() as Map)['name'] as String)
+                                  .toList();
+
+                              await FirebaseFirestore.instance
+                                  .collection('surucu_rota_siralamalari')
+                                  .doc(driverName)
+                                  .set({
+                                'sirali_ureticiler': namesList,
+                                'lastUpdated': FieldValue.serverTimestamp(),
+                              });
+                            },
+                            itemBuilder: (context, index) {
+                              final doc = filteredProducers[index];
+                              final data = doc.data() as Map<String, dynamic>;
+                              final name = data['name'] ?? '';
+                              final group = data['group'] ?? 'Bilinmeyen Bölge';
+                              final double bugunVerilenSut = todayMilkMap[name] ?? 0.0;
+                              final lastMilkType = data['lastMilkType'] ?? 'Soğuk süt';
+                              final hasBeenVisited = visitedProducersToday.contains(name);
+
+                              return Container(
+                                key: ValueKey(name),
+                                margin: const EdgeInsets.only(bottom: 8),
+                                child: _buildProducerItemTile(
+                                  name: name,
+                                  group: group,
+                                  bugunVerilenSut: bugunVerilenSut,
+                                  lastMilkType: lastMilkType,
+                                  hasBeenVisited: hasBeenVisited,
+                                  onTap: () {
+                                    setState(() {
+                                      _selectedUreticiForSutAl = name;
+                                      _selectedUreticiForm = name;
+                                      _selectedMilkTypeForm = lastMilkType;
+                                      _selectedCustomerTypeForm = data['customerType'] ?? 'sut';
+                                      
+                                      final norm = lastMilkType.trim().toLowerCase();
+                                      if (norm.contains('soğuk') || norm.contains('a kalite')) {
+                                        _selectedQualityForm = 'Soğuk Süt';
+                                      } else if (norm.contains('sıcak') || norm.contains('b kalite')) {
+                                        _selectedQualityForm = 'Sıcak Süt';
+                                      } else if (norm.contains('c kalite')) {
+                                        _selectedQualityForm = 'C kalite';
+                                      } else if (norm.contains('d kalite')) {
+                                        _selectedQualityForm = 'D kalite';
+                                      } else {
+                                        _selectedQualityForm = 'Soğuk Süt';
+                                      }
+                                      
+                                      _miktarFormCtrl.clear();
+                                    });
+                                  },
+                                ),
+                              );
+                            },
+                          ),
+                      ],
+                    );
+                  },
                 );
               },
             );
@@ -1474,12 +1682,14 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
   Widget _buildProducerItemTile({
     required String name,
     required String group,
-    required double avg,
+    required double bugunVerilenSut,
     required String lastMilkType,
     required bool hasBeenVisited,
     required VoidCallback onTap,
   }) {
-    final isSicak = lastMilkType == 'Sıcak süt';
+    final norm = lastMilkType.trim().toLowerCase();
+    final isSicak = norm.contains('sıcak') || norm.contains('b kalite') || norm.contains('b quality');
+    final isSoguk = norm.contains('soğuk') || norm.contains('a kalite') || norm.contains('a quality');
 
     return Container(
       decoration: BoxDecoration(
@@ -1515,7 +1725,9 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                   decoration: BoxDecoration(
                     color: hasBeenVisited
                         ? Colors.grey[200]
-                        : (isSicak ? Colors.red[50] : Colors.blue[50]),
+                        : (isSicak
+                            ? Colors.red[50]
+                            : (isSoguk ? Colors.blue[50] : Colors.grey[100])),
                     shape: BoxShape.circle,
                   ),
                   child: Center(
@@ -1523,7 +1735,9 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                         ? Icon(Icons.check_rounded, color: Colors.grey[600], size: 20)
                         : Icon(
                             Icons.water_drop_rounded,
-                            color: isSicak ? Colors.red[600] : Colors.blue[600],
+                            color: isSicak
+                                ? Colors.red[600]
+                                : (isSoguk ? Colors.blue[600] : Colors.grey[600]),
                             size: 20,
                           ),
                   ),
@@ -1573,7 +1787,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '$group • Ort: ${avg.toStringAsFixed(0)} LT',
+                        '$group • Bugün: ${bugunVerilenSut % 1 == 0 ? bugunVerilenSut.toStringAsFixed(0) : bugunVerilenSut.toStringAsFixed(1)} LT',
                         style: GoogleFonts.inter(
                           fontSize: 12,
                           color: AppColors.gray500,
@@ -1624,7 +1838,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
       _selectedTankForm = tanks.isNotEmpty ? tanks.first : tankName;
     }
 
-    final qualities = const ['A Kalite', 'B Kalite', 'C kalite', 'D kalite'];
+    final qualities = const ['Soğuk Süt', 'Sıcak Süt', 'C kalite', 'D kalite'];
     if (_selectedQualityForm == null || !qualities.contains(_selectedQualityForm)) {
       _selectedQualityForm = qualities.first;
     }
@@ -1894,7 +2108,12 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                         final m = (rData['m'] as num?)?.toDouble() ?? 0.0;
                         final s = rData['s'] ?? '';
                         final vakit = rData['vakit'] ?? 'Belirtilmemiş';
-                        final kalite = rData['kalite'] ?? 'A Kalite';
+                        final rawQuality = rData['kalite'] ?? 'Soğuk Süt';
+                        final kalite = (rawQuality == 'A Kalite' || rawQuality == 'Soğuk süt')
+                            ? 'Soğuk Süt'
+                            : (rawQuality == 'B Kalite' || rawQuality == 'Sıcak süt')
+                                ? 'Sıcak Süt'
+                                : rawQuality;
 
                         return Container(
                           margin: const EdgeInsets.only(bottom: 6),
@@ -2045,9 +2264,9 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
         driverName: driverName,
         vehiclePlate: plate,
         region: region,
-        sutTipi: _selectedMilkTypeForm ?? 'Soğuk süt',
+        sutTipi: _selectedQualityForm ?? 'Soğuk Süt',
         customerType: _selectedCustomerTypeForm ?? 'sut',
-        kalite: _selectedQualityForm ?? 'A Kalite',
+        kalite: _selectedQualityForm ?? 'Soğuk Süt',
       );
 
       _miktarFormCtrl.clear();
@@ -2567,15 +2786,14 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
               child: FutureBuilder<QuerySnapshot>(
                 future: FirebaseFirestore.instance
                     .collection('toplamalar')
-                    .orderBy('tarih', descending: true)
-                    .limit(15)
+                    .where('tank', isEqualTo: tankAdi)
                     .get(),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
                   }
-                  final docs = snapshot.data?.docs ?? [];
-                  if (docs.isEmpty) {
+                  final rawDocs = snapshot.data?.docs ?? [];
+                  if (rawDocs.isEmpty) {
                     return Center(
                       child: Text(
                         'Kayıt bulunamadı.',
@@ -2583,17 +2801,54 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                       ),
                     );
                   }
+
+                  // Sort in memory by timestamp descending
+                  final docs = List<QueryDocumentSnapshot>.from(rawDocs);
+                  docs.sort((a, b) {
+                    final aData = a.data() as Map<String, dynamic>;
+                    final bData = b.data() as Map<String, dynamic>;
+
+                    final aTs = aData['timestamp'];
+                    final bTs = bData['timestamp'];
+
+                    DateTime aDate = DateTime(1970);
+                    DateTime bDate = DateTime(1970);
+
+                    if (aTs is Timestamp) {
+                      aDate = aTs.toDate();
+                    } else if (aData['tarih'] is String) {
+                      aDate = _parseDateStr(aData['tarih']);
+                    }
+
+                    if (bTs is Timestamp) {
+                      bDate = bTs.toDate();
+                    } else if (bData['tarih'] is String) {
+                      bDate = _parseDateStr(bData['tarih']);
+                    }
+
+                    return bDate.compareTo(aDate);
+                  });
+
+                  final displayDocs = docs.take(15).toList();
+
                   return ListView.builder(
                     controller: sc,
                     padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: docs.length,
+                    itemCount: displayDocs.length,
                     itemBuilder: (_, i) {
-                      final doc = docs[i];
+                      final doc = displayDocs[i];
                       final data = doc.data() as Map<String, dynamic>;
                       final u = data['u'] ?? 'Bilinmeyen Üretici';
                       final double m = (data['m'] as num?)?.toDouble() ?? 0.0;
                       final s = data['s'] ?? '';
-                      final t = data['tarih'] ?? '';
+                      
+                      final ts = data['timestamp'];
+                      String t = '';
+                      if (ts is Timestamp) {
+                        t = DateFormat('dd.MM.yyyy').format(ts.toDate());
+                      } else {
+                        t = data['tarih'] ?? '';
+                      }
 
                       return Container(
                         margin: const EdgeInsets.only(bottom: 8),
@@ -2626,6 +2881,19 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
         ),
       ),
     );
+  }
+
+  DateTime _parseDateStr(String dateStr) {
+    try {
+      final parts = dateStr.split('.');
+      if (parts.length == 3) {
+        final day = int.parse(parts[0]);
+        final month = int.parse(parts[1]);
+        final year = int.parse(parts[2]);
+        return DateTime(year, month, day);
+      }
+    } catch (_) {}
+    return DateTime(1970);
   }
 
   void _showLimitExceededDialog(BuildContext context, String tankName, {VoidCallback? onDismiss}) {

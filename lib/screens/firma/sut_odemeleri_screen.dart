@@ -375,6 +375,7 @@ class _SutOdemeleriScreenState extends State<SutOdemeleriScreen> {
     List<QueryDocumentSnapshot> avanslar,
     List<QueryDocumentSnapshot> kesintiler,
     List<QueryDocumentSnapshot> cezalar,
+    List<QueryDocumentSnapshot> devirler,
     List<Map<String, dynamic>> pricesList,
   ) {
     final format = NumberFormat('#,##0.00', 'tr_TR');
@@ -467,6 +468,22 @@ class _SutOdemeleriScreenState extends State<SutOdemeleriScreen> {
         'alacak': 0.0,
         'borc': durum == 'aktif' ? tutar : 0.0,
         'color': durum == 'aktif' ? Colors.orange : AppColors.gray400,
+      });
+    }
+
+    // Devir / Düzeltme
+    for (var doc in devirler) {
+      final data = doc.data() as Map<String, dynamic>;
+      final dateStr = data['tarih'] ?? '-';
+      final double tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
+      final aciklama = data['aciklama'] ?? 'Devir/Bakiye Düzeltme';
+      items.add({
+        'tarih': dateStr,
+        'tur': 'Bakiye Düzeltme',
+        'aciklama': aciklama,
+        'alacak': tutar >= 0 ? tutar : 0.0,
+        'borc': tutar < 0 ? tutar.abs() : 0.0,
+        'color': tutar >= 0 ? Colors.green : Colors.red,
       });
     }
 
@@ -686,52 +703,59 @@ class _SutOdemeleriScreenState extends State<SutOdemeleriScreen> {
                                 builder: (context, cezalarSnap) {
                                   final allCezalar = cezalarSnap.data?.docs ?? [];
 
-                                  // Filter producers by: search query, group, region
-                                  final filteredProducers = allProducers.where((p) {
-                                    final name = (p['name'] as String? ?? '').toLowerCase();
-                                    final phone = (p['phone'] as String? ?? '').toLowerCase();
-                                    final group = p['group'] as String? ?? '';
-                                    final bolge = p['bolge'] as String? ?? '';
+                                  return StreamBuilder<QuerySnapshot>(
+                                    stream: FirebaseFirestore.instance.collection('devirler').where('firma', isEqualTo: currentFirmaName).snapshots(),
+                                    builder: (context, devirlerSnap) {
+                                      final allDevirler = devirlerSnap.data?.docs ?? [];
 
-                                    final matchesSearch = name.contains(_searchQuery.toLowerCase()) || phone.contains(_searchQuery.toLowerCase());
-                                    final matchesGroup = _selectedGroup == 'Tümü' || group == _selectedGroup;
-                                    final matchesRegion = _selectedRegion == 'Tümü' || bolge == _selectedRegion;
+                                      // Filter producers by: search query, group, region
+                                      final filteredProducers = allProducers.where((p) {
+                                        final name = (p['name'] as String? ?? '').toLowerCase();
+                                        final phone = (p['phone'] as String? ?? '').toLowerCase();
+                                        final group = p['group'] as String? ?? '';
+                                        final bolge = p['bolge'] as String? ?? '';
 
-                                    return matchesSearch && matchesGroup && matchesRegion;
-                                  }).toList();
+                                        final matchesSearch = name.contains(_searchQuery.toLowerCase()) || phone.contains(_searchQuery.toLowerCase());
+                                        final matchesGroup = _selectedGroup == 'Tümü' || group == _selectedGroup;
+                                        final matchesRegion = _selectedRegion == 'Tümü' || bolge == _selectedRegion;
 
-                                  // Calculate dashboard metrics for the selected month (real-time compile)
-                                  double totalOutstandingCompanyDebt = 0.0; // To be Paid (Ödenecek)
-                                  double totalPaidThisMonth = 0.0;          // Paid (Ödenen)
-                                  double totalKalanThisMonth = 0.0;         // Remaining (Kalan)
+                                        return matchesSearch && matchesGroup && matchesRegion;
+                                      }).toList();
 
-                                  final List<Map<String, dynamic>> compiledData = [];
+                                      // Calculate dashboard metrics for the selected month (real-time compile)
+                                      double totalOutstandingCompanyDebt = 0.0; // To be Paid (Ödenecek)
+                                      double totalPaidThisMonth = 0.0;          // Paid (Ödenen)
+                                      double totalKalanThisMonth = 0.0;         // Remaining (Kalan)
 
-                                  for (var p in filteredProducers) {
-                                    final name = p['name'] as String;
-                                    final bolge = p['bolge'] ?? '';
-                                    final group = p['group'] ?? '';
-                                    final kesintiAyarlari = p['kesintiAyarlari'] as Map<String, dynamic>?;
+                                      final List<Map<String, dynamic>> compiledData = [];
 
-                                    final pCollections = allCollections.where((doc) => doc['u'] == name).toList();
-                                    final pTahsilatlar = allTahsilatlar.where((doc) => doc['uretici'] == name).toList();
-                                    final pAvanslar = allAvanslar.where((doc) => doc['uretici'] == name).toList();
-                                    final pKesintiler = allKesintiler.where((doc) => doc['uretici'] == name).toList();
-                                    final pCezalar = allCezalar.where((doc) => doc['uretici'] == name).toList();
+                                      for (var p in filteredProducers) {
+                                        final name = p['name'] as String;
+                                        final bolge = p['bolge'] ?? '';
+                                        final group = p['group'] ?? '';
+                                        final kesintiAyarlari = p['kesintiAyarlari'] as Map<String, dynamic>?;
 
-                                    // 1. Calculate general cumulative ledger
-                                    final fullLedger = _firestoreService.calculateLedger(
-                                      collections: pCollections,
-                                      prices: priceDocs,
-                                      tahsilatlar: pTahsilatlar,
-                                      avanslar: pAvanslar,
-                                      kesintiler: pKesintiler,
-                                      cezalar: pCezalar,
-                                      producerName: name,
-                                      bolge: bolge,
-                                      group: group,
-                                      kesintiAyarlari: kesintiAyarlari,
-                                    );
+                                        final pCollections = allCollections.where((doc) => doc['u'] == name).toList();
+                                        final pTahsilatlar = allTahsilatlar.where((doc) => doc['uretici'] == name).toList();
+                                        final pAvanslar = allAvanslar.where((doc) => doc['uretici'] == name).toList();
+                                        final pKesintiler = allKesintiler.where((doc) => doc['uretici'] == name).toList();
+                                        final pCezalar = allCezalar.where((doc) => doc['uretici'] == name).toList();
+                                        final pDevirler = allDevirler.where((doc) => doc['uretici'] == name).toList();
+
+                                        // 1. Calculate general cumulative ledger
+                                        final fullLedger = _firestoreService.calculateLedger(
+                                          collections: pCollections,
+                                          prices: priceDocs,
+                                          tahsilatlar: pTahsilatlar,
+                                          avanslar: pAvanslar,
+                                          kesintiler: pKesintiler,
+                                          cezalar: pCezalar,
+                                          devirler: pDevirler,
+                                          producerName: name,
+                                          bolge: bolge,
+                                          group: group,
+                                          kesintiAyarlari: kesintiAyarlari,
+                                        );
 
                                     // 2. Calculate selected month's ledger
                                     final monthCollections = pCollections.where((doc) => _isDocInSelectedMonth(doc, _selectedMonth)).toList();
@@ -778,6 +802,7 @@ class _SutOdemeleriScreenState extends State<SutOdemeleriScreen> {
                                       'avanslar': pAvanslar,
                                       'kesintiler': pKesintiler,
                                       'cezalar': pCezalar,
+                                      'devirler': pDevirler,
                                     });
                                   }
 
@@ -1072,6 +1097,7 @@ class _SutOdemeleriScreenState extends State<SutOdemeleriScreen> {
                                                           data['avanslar'] as List<QueryDocumentSnapshot>,
                                                           data['kesintiler'] as List<QueryDocumentSnapshot>,
                                                           data['cezalar'] as List<QueryDocumentSnapshot>,
+                                                          data['devirler'] as List<QueryDocumentSnapshot>,
                                                           pricesList,
                                                         ),
                                                       ),
@@ -1184,6 +1210,8 @@ class _SutOdemeleriScreenState extends State<SutOdemeleriScreen> {
                                         ),
                                       ),
                                     ],
+                                      );
+                                    },
                                   );
                                 },
                               );

@@ -17,7 +17,7 @@ class QuickActionsDialogs {
     String? selectedTank;
     String? selectedMilkType;
     String? selectedCustomerType;
-    const List<String> milkTypes = ['Soğuk süt', 'Sıcak süt', 'C kalite', 'D kalite'];
+    const List<String> milkTypes = ['Soğuk Süt', 'Sıcak Süt', 'C kalite', 'D kalite'];
 
     debugPrint('showSutGirisiDialog: currentFirmaName = "$currentFirmaName"');
     showDialog(
@@ -108,15 +108,25 @@ class QuickActionsDialogs {
                 );
               }
 
+              String normalize(String? raw) {
+                if (raw == null) return 'Soğuk Süt';
+                final norm = raw.trim().toLowerCase();
+                if (norm == 'a kalite' || norm == 'soğuk süt') return 'Soğuk Süt';
+                if (norm == 'b kalite' || norm == 'sıcak süt') return 'Sıcak Süt';
+                if (norm == 'c kalite') return 'C kalite';
+                if (norm == 'd kalite') return 'D kalite';
+                return raw;
+              }
+
               if (selectedUretici == null || !producers.contains(selectedUretici)) {
                 selectedUretici = producers.first;
                 try {
                   final prodDoc = ureticiSnapshot.data!.docs.firstWhere((doc) => doc['name'] == selectedUretici);
                   final docData = prodDoc.data() as Map<String, dynamic>;
-                  selectedMilkType = docData['lastMilkType'] ?? 'Soğuk süt';
+                  selectedMilkType = normalize(docData['lastMilkType']);
                   selectedCustomerType = docData['customerType'] ?? 'sut';
                 } catch (_) {
-                  selectedMilkType = 'Soğuk süt';
+                  selectedMilkType = 'Soğuk Süt';
                   selectedCustomerType = 'sut';
                 }
               } else if (selectedCustomerType == null) {
@@ -130,7 +140,7 @@ class QuickActionsDialogs {
               }
 
               if (selectedMilkType == null || !milkTypes.contains(selectedMilkType)) {
-                selectedMilkType = 'Soğuk süt';
+                selectedMilkType = 'Soğuk Süt';
               }
 
               if (selectedTank == null || !tanks.contains(selectedTank)) {
@@ -157,14 +167,14 @@ class QuickActionsDialogs {
                                 try {
                                   final prodDoc = ureticiSnapshot.data!.docs.firstWhere((doc) => doc['name'] == selectedUretici);
                                   final docData = prodDoc.data() as Map<String, dynamic>;
-                                  selectedMilkType = docData['lastMilkType'] ?? 'Soğuk süt';
+                                  selectedMilkType = normalize(docData['lastMilkType']);
                                   selectedCustomerType = docData['customerType'] ?? 'sut';
                                 } catch (_) {
-                                  selectedMilkType = 'Soğuk süt';
+                                  selectedMilkType = 'Soğuk Süt';
                                   selectedCustomerType = 'sut';
                                 }
                                 if (selectedMilkType == null || !milkTypes.contains(selectedMilkType)) {
-                                  selectedMilkType = 'Soğuk süt';
+                                  selectedMilkType = 'Soğuk Süt';
                                 }
                               });
                             }

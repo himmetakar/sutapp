@@ -60,71 +60,61 @@ class FinansYonetimiScreen extends StatelessWidget {
       {'title': 'Ödeme Geçmişi', 'icon': Icons.history_rounded, 'color': Colors.purple, 'path': '/firma/finans/odeme-gecmisi'},
       {'title': 'Müşteri Cezaları', 'icon': Icons.gavel_rounded, 'color': Colors.red, 'path': '/firma/finans/cezalar'},
       {'title': 'Kesintiler', 'icon': Icons.content_cut_rounded, 'color': Colors.red, 'path': '/firma/finans/kesintiler'},
-      {'title': 'Kesinti Oranları', 'icon': Icons.percent_rounded, 'color': Colors.teal, 'path': '/firma/finans/oranlar'},
     ];
 
     return Scaffold(
       backgroundColor: AppColors.gray50,
+      appBar: AppBar(
+        title: Text('Finans Yönetimi', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded),
+          onPressed: () => context.go('/firma'),
+        ),
+      ),
       body: LayoutBuilder(
         builder: (context, constraints) {
           final isDesktop = constraints.maxWidth >= 1024;
           final isTablet = constraints.maxWidth >= 640 && constraints.maxWidth < 1024;
           final crossAxisCount = isDesktop ? 5 : (isTablet ? 3 : 2);
 
-          return ListView(
+          return GridView.builder(
             padding: const EdgeInsets.all(24),
-            children: [
-              Text(
-                'Finans Yönetimi',
-                style: GoogleFonts.inter(fontSize: 22, fontWeight: FontWeight.w700, color: AppColors.gray900),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Finansal işlemleri buradan yönetebilirsiniz',
-                style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray500),
-              ),
-              const SizedBox(height: 24),
-              GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: crossAxisCount,
-                  crossAxisSpacing: 16,
-                  mainAxisSpacing: 16,
-                  childAspectRatio: 1.1,
-                ),
-                itemCount: menuItems.length,
-                itemBuilder: (context, index) {
-                  final item = menuItems[index];
-                  return AppCard(
-                    shadow: AppShadows.sm,
-                    child: InkWell(
-                      onTap: () => context.go(item['path'] as String),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Container(
-                            width: 48,
-                            height: 48,
-                            decoration: BoxDecoration(
-                              color: (item['color'] as Color).withValues(alpha: 0.1),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(item['icon'] as IconData, color: item['color'] as Color, size: 24),
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            item['title'] as String,
-                            textAlign: TextAlign.center,
-                            style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.gray800),
-                          ),
-                        ],
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: crossAxisCount,
+              crossAxisSpacing: 16,
+              mainAxisSpacing: 16,
+              childAspectRatio: 1.1,
+            ),
+            itemCount: menuItems.length,
+            itemBuilder: (context, index) {
+              final item = menuItems[index];
+              return AppCard(
+                shadow: AppShadows.sm,
+                child: InkWell(
+                  onTap: () => context.go(item['path'] as String),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: (item['color'] as Color).withValues(alpha: 0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(item['icon'] as IconData, color: item['color'] as Color, size: 24),
                       ),
-                    ),
-                  );
-                },
-              ),
-            ],
+                      const SizedBox(height: 12),
+                      Text(
+                        item['title'] as String,
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.gray800),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
           );
         },
       ),
@@ -809,14 +799,18 @@ class _FaturaEkleScreenState extends State<FaturaEkleScreen> {
   final _faturaNoCtrl = TextEditingController();
   final _tedarikciCtrl = TextEditingController();
   final _aciklamaCtrl = TextEditingController();
+  final _faturaTarihiCtrl = TextEditingController();
   
   // Item controllers
   final _urunNameCtrl = TextEditingController();
   final _itemMiktarCtrl = TextEditingController();
   final _itemFiyatCtrl = TextEditingController();
+  final _itemToplamFiyatCtrl = TextEditingController();
+
+  double _productSellingPrice = 0.0;
 
   String _faturaTipi = 'alis'; // 'alis' | 'satis'
-  DateTime _faturaTarihi = DateTime.now();
+  DateTime? _faturaTarihi;
 
   String _selectedBirim = 'adet';
   String _selectedKategori = 'Genel';
@@ -832,6 +826,7 @@ class _FaturaEkleScreenState extends State<FaturaEkleScreen> {
     // Generate Invoice Number
     final timeStr = DateFormat('yyyyMMdd-HHmm').format(DateTime.now());
     _faturaNoCtrl.text = 'INV-$timeStr';
+    _faturaTarihiCtrl.text = '';
     _loadMusteriler();
   }
 
@@ -839,19 +834,143 @@ class _FaturaEkleScreenState extends State<FaturaEkleScreen> {
     try {
       final auth = Provider.of<AuthProvider>(context, listen: false);
       final currentFirmaName = auth.user?.displayName ?? '';
-      final snapshot = await FirebaseFirestore.instance
-          .collection('cari_firmalar')
-          .where('firma', isEqualTo: currentFirmaName)
-          .get();
-      setState(() {
-        _musteriler = snapshot.docs.map((doc) => doc['ad'] as String).toList();
-        _isLoadingMusteriler = false;
-      });
+      if (_faturaTipi == 'alis') {
+        final snapshot = await FirebaseFirestore.instance
+            .collection('cari_firmalar')
+            .where('firma', isEqualTo: currentFirmaName)
+            .where('tip', isEqualTo: 'tedarikci')
+            .get();
+        setState(() {
+          _musteriler = snapshot.docs.map((doc) => doc['ad'] as String).toList();
+          _isLoadingMusteriler = false;
+        });
+      } else {
+        setState(() {
+          _musteriler = [
+            'Sütaş',
+            'Pınar',
+            'Torku',
+            'İçim',
+            'Danone',
+            'Ak Gıda',
+            'Eker',
+            'Mis Süt',
+            'SEK',
+            'Yörükoğlu',
+            'Tahsildaroğlu',
+          ];
+          _isLoadingMusteriler = false;
+        });
+      }
     } catch (e) {
       setState(() {
         _isLoadingMusteriler = false;
       });
     }
+  }
+
+  void _showProductSelectionDialog(BuildContext context, String currentFirmaName) {
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Ürün Seç', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
+              IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx)),
+            ],
+          ),
+          content: SizedBox(
+            width: double.maxFinite,
+            height: 400,
+            child: StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('urunler')
+                  .where('firma', isEqualTo: currentFirmaName)
+                  .snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final docs = snapshot.data?.docs ?? [];
+                if (docs.isEmpty) {
+                  return Center(
+                    child: Text(
+                      'Kayıtlı ürün bulunamadı.\nÖnce Ürün Ekle bölümünden tanımlayın.',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.inter(color: AppColors.gray500, fontSize: 13),
+                    ),
+                  );
+                }
+
+                return ListView.separated(
+                  itemCount: docs.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (context, index) {
+                    final data = docs[index].data() as Map<String, dynamic>;
+                    final String ad = data['ad'] ?? '';
+                    final double fiyat = (data['fiyat'] as num?)?.toDouble() ?? 0.0;
+                    final String birim = data['birim'] ?? 'adet';
+                    final String kategori = data['kategori'] ?? 'Genel';
+
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(ad, style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 14)),
+                      subtitle: Text('${fiyat.toStringAsFixed(2)} ₺/$birim • $kategori', style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray500)),
+                      trailing: const Icon(Icons.chevron_right_rounded, color: AppColors.gray400),
+                      onTap: () {
+                        setState(() {
+                          _urunNameCtrl.text = ad;
+                          _itemFiyatCtrl.text = fiyat.toStringAsFixed(2);
+                          _productSellingPrice = fiyat;
+                          
+                          // Match unit
+                          _selectedBirim = birim.isNotEmpty ? birim : 'adet';
+
+                          // Match category
+                          final String cat = kategori;
+                          if (cat.toLowerCase().contains('yem')) {
+                            _selectedKategori = 'Firma';
+                          } else if (['Araç', 'Personel', 'Genel', 'Bakım', 'Müşteri', 'Firma'].contains(cat)) {
+                            _selectedKategori = cat;
+                          } else {
+                            _selectedKategori = 'Genel';
+                          }
+
+                          // Clear previous inputs
+                          _itemMiktarCtrl.clear();
+                          _itemToplamFiyatCtrl.clear();
+                        });
+                        Navigator.pop(ctx);
+                      },
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            SizedBox(
+              width: double.infinity,
+              child: TextButton.icon(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  context.go('/firma/urunler');
+                },
+                icon: const Icon(Icons.add_circle_outline_rounded, color: AppColors.primary600),
+                label: Text(
+                  'Aradığınız ürün listede yok mu? Ürün Ekle',
+                  style: GoogleFonts.inter(fontWeight: FontWeight.bold, color: AppColors.primary600, fontSize: 13),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -897,7 +1016,14 @@ class _FaturaEkleScreenState extends State<FaturaEkleScreen> {
                           elevation: 0,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                         ),
-                        onPressed: () => setState(() => _faturaTipi = 'alis'),
+                        onPressed: () {
+                          setState(() {
+                            _faturaTipi = 'alis';
+                            _tedarikciCtrl.clear();
+                            _isLoadingMusteriler = true;
+                          });
+                          _loadMusteriler();
+                        },
                         child: const Text('Alış Faturası'),
                       ),
                     ),
@@ -910,7 +1036,14 @@ class _FaturaEkleScreenState extends State<FaturaEkleScreen> {
                           elevation: 0,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                         ),
-                        onPressed: () => setState(() => _faturaTipi = 'satis'),
+                        onPressed: () {
+                          setState(() {
+                            _faturaTipi = 'satis';
+                            _tedarikciCtrl.clear();
+                            _isLoadingMusteriler = true;
+                          });
+                          _loadMusteriler();
+                        },
                         child: const Text('Satış Faturası'),
                       ),
                     ),
@@ -939,26 +1072,27 @@ class _FaturaEkleScreenState extends State<FaturaEkleScreen> {
                       ),
                 const SizedBox(height: 12),
                 // Date Picker field
-                GestureDetector(
+                TextField(
+                  controller: _faturaTarihiCtrl,
+                  readOnly: true,
                   onTap: () async {
                     final picked = await showDatePicker(
                       context: context,
-                      initialDate: _faturaTarihi,
+                      initialDate: _faturaTarihi ?? DateTime.now(),
                       firstDate: DateTime(2020),
                       lastDate: DateTime(2030),
                     );
                     if (picked != null) {
-                      setState(() => _faturaTarihi = picked);
+                      setState(() {
+                        _faturaTarihi = picked;
+                        _faturaTarihiCtrl.text = DateFormat('dd.MM.yyyy').format(picked);
+                      });
                     }
                   },
-                  child: AbsorbPointer(
-                    child: TextField(
-                      decoration: InputDecoration(
-                        labelText: 'Fatura Tarihi',
-                        suffixIcon: const Icon(Icons.calendar_month_rounded),
-                        hintText: DateFormat('dd.MM.yyyy').format(_faturaTarihi),
-                      ),
-                    ),
+                  decoration: const InputDecoration(
+                    labelText: 'Fatura Tarihi',
+                    hintText: 'Tarih Seçin',
+                    suffixIcon: Icon(Icons.calendar_month_rounded),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -980,52 +1114,102 @@ class _FaturaEkleScreenState extends State<FaturaEkleScreen> {
               children: [
                 Text('Yeni Kalem Ekle', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.gray800)),
                 const SizedBox(height: 16),
-                TextField(
-                  controller: _urunNameCtrl,
-                  decoration: const InputDecoration(labelText: 'Ürün Adı'),
+                InkWell(
+                  onTap: () => _showProductSelectionDialog(context, currentFirmaName),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      border: Border.all(color: AppColors.gray300),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Ürün Seçin *',
+                                style: GoogleFonts.inter(
+                                  fontSize: 12,
+                                  color: AppColors.gray500,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                _urunNameCtrl.text.isEmpty
+                                    ? 'Ürün seçmek için tıklayın'
+                                    : _urunNameCtrl.text,
+                                style: GoogleFonts.inter(
+                                  fontSize: 14,
+                                  fontWeight: _urunNameCtrl.text.isEmpty
+                                      ? FontWeight.normal
+                                      : FontWeight.bold,
+                                  color: _urunNameCtrl.text.isEmpty
+                                      ? AppColors.gray400
+                                      : AppColors.gray800,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Icon(Icons.list_alt_rounded, color: AppColors.primary600),
+                      ],
+                    ),
+                  ),
                 ),
+                if (_urunNameCtrl.text.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppColors.gray50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppColors.gray200),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.info_outline_rounded, size: 16, color: AppColors.primary600),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'Birim: $_selectedBirim | Fiyat: ${_itemFiyatCtrl.text} ₺ | Kategori: $_selectedKategori',
+                            style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray600, fontWeight: FontWeight.w500),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 16),
                 Row(
                   children: [
                     Expanded(
-                      flex: 2,
                       child: TextField(
                         controller: _itemMiktarCtrl,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(labelText: 'Miktar'),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      flex: 3,
-                      child: DropdownButtonFormField<String>(
-                        value: _selectedBirim,
-                        decoration: const InputDecoration(labelText: 'Birim'),
-                        items: ['adet', 'kg', 'litre', 'ton'].map((u) => DropdownMenuItem(value: u, child: Text(u))).toList(),
-                        onChanged: (val) {
-                          if (val != null) setState(() => _selectedBirim = val);
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      flex: 3,
-                      child: TextField(
-                        controller: _itemFiyatCtrl,
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        decoration: const InputDecoration(labelText: 'Birim Fiyat'),
+                        decoration: const InputDecoration(
+                          labelText: 'Stok (Miktar)',
+                          hintText: 'Miktar girin',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: TextField(
+                        controller: _itemToplamFiyatCtrl,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        decoration: const InputDecoration(
+                          labelText: 'Toplam Fiyat',
+                          hintText: 'Fiyat girin',
+                        ),
                       ),
                     ),
                   ],
-                ),
-                const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                  value: _selectedKategori,
-                  decoration: const InputDecoration(labelText: 'Kategori'),
-                  items: ['Araç', 'Personel', 'Genel', 'Bakım', 'Müşteri', 'Firma'].map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
-                  onChanged: (val) {
-                    if (val != null) setState(() => _selectedKategori = val);
-                  },
                 ),
                 const SizedBox(height: 20),
                 SizedBox(
@@ -1040,22 +1224,38 @@ class _FaturaEkleScreenState extends State<FaturaEkleScreen> {
                     onPressed: () {
                       final name = _urunNameCtrl.text;
                       final double? miktar = double.tryParse(_itemMiktarCtrl.text);
-                      final double? fiyat = double.tryParse(_itemFiyatCtrl.text);
+                      final double? toplamFiyat = double.tryParse(_itemToplamFiyatCtrl.text);
 
-                      if (name.isEmpty || miktar == null || miktar <= 0 || fiyat == null || fiyat < 0) return;
+                      if (name.isEmpty || miktar == null || miktar <= 0 || toplamFiyat == null || toplamFiyat < 0) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Lütfen geçerli miktar ve toplam fiyat girin.'),
+                            backgroundColor: AppColors.danger,
+                          ),
+                        );
+                        return;
+                      }
+
+                      final double calculatedUnitPrice = miktar > 0 ? (toplamFiyat / miktar) : 0.0;
+                      final isYemProduct = name.toLowerCase().contains('yem');
+                      final finalCategory = isYemProduct ? 'Firma' : _selectedKategori;
 
                       setState(() {
                         _kalemler.add({
                           'urun': name,
                           'miktar': miktar,
                           'birim': _selectedBirim,
-                          'fiyat': fiyat,
-                          'kategori': _selectedKategori,
+                          'fiyat': calculatedUnitPrice,
+                          'kategori': finalCategory,
                         });
                         // Clear item fields
                         _urunNameCtrl.clear();
                         _itemMiktarCtrl.clear();
                         _itemFiyatCtrl.clear();
+                        _itemToplamFiyatCtrl.clear();
+                        _productSellingPrice = 0.0;
+                        _selectedBirim = 'adet';
+                        _selectedKategori = 'Genel';
                       });
                     },
                     icon: const Icon(Icons.add_rounded),
@@ -1139,14 +1339,40 @@ class _FaturaEkleScreenState extends State<FaturaEkleScreen> {
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                       ),
                       onPressed: () async {
-                        if (_tedarikciCtrl.text.isEmpty) return;
+                        if (_tedarikciCtrl.text.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Lütfen tedarikçi / müşteri seçin.'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                          return;
+                        }
+                        if (_faturaTarihi == null) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Lütfen fatura tarihi seçin.'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                          return;
+                        }
+                        if (_kalemler.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Lütfen faturaya en az bir kalem ekleyin.'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                          return;
+                        }
 
                         // Save invoice to Firestore
                         await FirebaseFirestore.instance.collection('faturalar').add({
                           'faturaNo': _faturaNoCtrl.text,
                           'tip': _faturaTipi,
                           'tedarikci': _tedarikciCtrl.text,
-                          'tarih': DateFormat('dd.MM.yyyy').format(_faturaTarihi),
+                          'tarih': DateFormat('dd.MM.yyyy').format(_faturaTarihi!),
                           'aciklama': _aciklamaCtrl.text,
                           'kalemler': _kalemler,
                           'toplam': toplamTutar,
@@ -1161,7 +1387,7 @@ class _FaturaEkleScreenState extends State<FaturaEkleScreen> {
                           'baslik': 'Yeni Fatura Tanımlandı',
                           'icerik': '$currentFirmaName tarafından adınıza ${_faturaNoCtrl.text} nolu fatura kesilmiştir. Toplam Tutar: ${formatNumber.format(toplamTutar)} ₺',
                           'okundu': false,
-                          'tarih': DateFormat('dd.MM.yyyy').format(_faturaTarihi),
+                          'tarih': DateFormat('dd.MM.yyyy').format(_faturaTarihi!),
                           'timestamp': FieldValue.serverTimestamp(),
                           'tip': 'fatura',
                           'faturaNo': _faturaNoCtrl.text,
@@ -1175,15 +1401,18 @@ class _FaturaEkleScreenState extends State<FaturaEkleScreen> {
                             final double f = item['fiyat'] as double;
                             final String itemBirim = item['birim'] as String? ?? 'adet';
                             final String categoryName = item['kategori'] as String? ?? 'Genel';
-                            
+                            final String resolvedCategory = (urunAd.toLowerCase().contains('yem') || categoryName.toLowerCase() == 'firma')
+                                ? 'firma'
+                                : categoryName.toLowerCase()
+                                    .replaceAll('araç', 'arac')
+                                    .replaceAll('bakım', 'bakim')
+                                    .replaceAll('müşteri', 'musteri');
+
                             await FirebaseFirestore.instance.collection('giderler').add({
-                              'kategori': categoryName.toLowerCase()
-                                  .replaceAll('araç', 'arac')
-                                  .replaceAll('bakım', 'bakim')
-                                  .replaceAll('müşteri', 'musteri'),
+                              'kategori': resolvedCategory,
                               'aciklama': '${_faturaNoCtrl.text}: $urunAd',
                               'tutar': m * f,
-                              'tarih': DateFormat('dd.MM.yyyy').format(_faturaTarihi),
+                              'tarih': DateFormat('dd.MM.yyyy').format(_faturaTarihi!),
                               'firma': currentFirmaName,
                               'timestamp': FieldValue.serverTimestamp(),
                             });
@@ -1216,17 +1445,64 @@ class _FaturaEkleScreenState extends State<FaturaEkleScreen> {
                               });
                             }
                           }
+                        } else if (_faturaTipi == 'satis') {
+                          for (var item in _kalemler) {
+                            final String urunAd = item['urun'] as String;
+                            final double m = item['miktar'] as double;
+                            final double f = item['fiyat'] as double;
+
+                            // Log each sale to satislar collection so profit-loss and sales reports pick it up!
+                            await FirebaseFirestore.instance.collection('satislar').add({
+                              'uretici': _tedarikciCtrl.text,
+                              'urun': urunAd,
+                              'miktar': m,
+                              'tutar': m * f,
+                              'tarih': DateFormat('dd.MM.yyyy').format(_faturaTarihi!),
+                              'firma': currentFirmaName,
+                              'timestamp': FieldValue.serverTimestamp(),
+                            });
+
+                            // Update urunler collection stock (decrement)
+                            final urunSnap = await FirebaseFirestore.instance.collection('urunler')
+                                .where('firma', isEqualTo: currentFirmaName)
+                                .where('ad', isEqualTo: urunAd)
+                                .limit(1)
+                                .get();
+
+                            if (urunSnap.docs.isNotEmpty) {
+                              final uDoc = urunSnap.docs.first;
+                              final double currentStock = (uDoc['stok'] as num?)?.toDouble() ?? 0.0;
+                              final double minStok = (uDoc.data() as Map<String, dynamic>)['minStok']?.toDouble() ?? 10.0;
+                              final String birim = (uDoc.data() as Map<String, dynamic>)['birim'] ?? 'Adet';
+                              final double newStock = (currentStock - m).clamp(0.0, double.infinity);
+                              
+                              await uDoc.reference.update({
+                                'stok': newStock,
+                              });
+
+                              // Check critical stock
+                              if (newStock <= minStok) {
+                                await FirestoreService().sendNotification(
+                                  recipientName: currentFirmaName,
+                                  role: 'firma',
+                                  baslik: 'Kritik Stok Uyarısı',
+                                  icerik: '$urunAd ürünü kritik stok limitinin altına düştü! Güncel Stok: ${newStock.toStringAsFixed(0)} $birim',
+                                  type: 'stok',
+                                );
+                              }
+                            }
+                          }
                         }
 
-                        Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('Fatura ${_faturaNoCtrl.text} başarıyla kaydedildi!'),
-                            backgroundColor: AppColors.success,
-                          ),
-                        );
-
-                        context.go('/firma/finans/faturalar');
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Fatura ${_faturaNoCtrl.text} başarıyla kaydedildi!'),
+                              backgroundColor: AppColors.success,
+                            ),
+                          );
+                          context.go('/firma/finans/faturalar');
+                        }
                       },
                       child: const Text('Faturayı Kaydet'),
                     ),
@@ -1245,9 +1521,11 @@ class _FaturaEkleScreenState extends State<FaturaEkleScreen> {
     _faturaNoCtrl.dispose();
     _tedarikciCtrl.dispose();
     _aciklamaCtrl.dispose();
+    _faturaTarihiCtrl.dispose();
     _urunNameCtrl.dispose();
     _itemMiktarCtrl.dispose();
     _itemFiyatCtrl.dispose();
+    _itemToplamFiyatCtrl.dispose();
     super.dispose();
   }
 }
@@ -1292,7 +1570,7 @@ class _GiderYonetimiScreenState extends State<GiderYonetimiScreen> {
                     DropdownMenuItem(value: 'genel', child: Text('Genel Giderler')),
                     DropdownMenuItem(value: 'bakim', child: Text('Bakım & Onarım')),
                     DropdownMenuItem(value: 'musteri', child: Text('Müşteri Giderleri')),
-                    DropdownMenuItem(value: 'firma', child: Text('Firma Giderleri')),
+                    DropdownMenuItem(value: 'firma', child: Text('Firma Ödemeleri')),
                   ],
                   onChanged: (val) {
                     if (val != null) {
@@ -1577,7 +1855,7 @@ class _GiderYonetimiScreenState extends State<GiderYonetimiScreen> {
               _buildGiderCategoryListItem('genel', 'Genel Giderler', 'Elektrik, su, kira ve diğer giderler', genelTotal, Colors.orange, Icons.calculate_rounded),
               _buildGiderCategoryListItem('bakim', 'Bakım & Onarım', 'Ekipman ve tesis bakım giderleri', bakimTotal, Colors.purple, Icons.build_rounded),
               _buildGiderCategoryListItem('musteri', 'Müşteri Giderleri', 'Müşteri ağırlama ve temsil giderleri', musteriTotal, Colors.blue, Icons.monetization_on_rounded),
-              _buildGiderCategoryListItem('firma', 'Firma Giderleri', 'Ofis, kırtasiye ve diğer idari giderler', firmaTotal, Colors.orange, Icons.business_rounded),
+              _buildGiderCategoryListItem('firma', 'Firma Ödemeleri', 'Yem alışı ve diğer firma ödemeleri', firmaTotal, Colors.orange, Icons.business_rounded),
             ],
           );
         },
@@ -1658,7 +1936,7 @@ class _GiderKategoriDetayScreenState extends State<GiderKategoriDetayScreen> {
       case 'genel': return 'Genel Giderler';
       case 'bakim': return 'Bakım & Onarım';
       case 'musteri': return 'Müşteri Giderleri';
-      case 'firma': return 'Firma Giderleri';
+      case 'firma': return 'Firma Ödemeleri';
       default: return 'Gider Detayı';
     }
   }
@@ -2180,19 +2458,14 @@ class _DevirYonetimiScreenState extends State<DevirYonetimiScreen> {
                                           avanslar: pAvanslar,
                                           kesintiler: pKesintiler,
                                           cezalar: pCezalar,
+                                          devirler: pDevirler,
                                           producerName: name,
                                           bolge: bolge,
                                           group: group,
                                           kesintiAyarlari: kesintiAyarlari,
                                         );
 
-                                        double devirSum = 0.0;
-                                        for (var doc in pDevirler) {
-                                          final double devirTutar = (doc['tutar'] as num?)?.toDouble() ?? 0.0;
-                                          devirSum += devirTutar;
-                                        }
-
-                                        final double net = ledger['netBalance'] + devirSum;
+                                        final double net = ledger['netBalance'];
 
                                         if (net > 0) {
                                           totalCompanyDebt += net;
@@ -2347,11 +2620,11 @@ class _DevirYonetimiScreenState extends State<DevirYonetimiScreen> {
                                                       final email = item['email'] as String;
                                                       final double net = item['net'] as double;
 
-                                                      // net < 0: Producer owes company (Company alacak - Green)
-                                                      // net > 0: Company owes producer (Company borç - Red)
-                                                      final bool isReceivable = net < 0;
-                                                      final Color balanceColor = isReceivable ? Colors.green : (net > 0 ? Colors.red : AppColors.gray500);
-                                                      final String balanceLabel = isReceivable ? 'Alacaklıyız' : (net > 0 ? 'Borçluyuz' : 'Bakiye Sıfır');
+                                                      // net < 0: Producer owes company (Borçlu - Red)
+                                                      // net > 0: Company owes producer (Alacaklı - Green)
+                                                      final bool isDebtor = net < 0;
+                                                      final Color balanceColor = isDebtor ? Colors.red : (net > 0 ? Colors.green : AppColors.gray500);
+                                                      final String balanceLabel = isDebtor ? 'Borçlu' : (net > 0 ? 'Alacaklı' : 'Bakiye Sıfır');
 
                                                       return Container(
                                                         margin: const EdgeInsets.only(bottom: 12),

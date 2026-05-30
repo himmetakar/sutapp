@@ -95,7 +95,13 @@ class _MusteriAvanslariScreenState extends State<MusteriAvanslariScreen> {
         title: Text('Müşteri Avansları', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.pop(),
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/firma/finans');
+            }
+          },
         ),
       ),
       backgroundColor: AppColors.gray50,
@@ -392,10 +398,24 @@ class _AvansVerScreenState extends State<AvansVerScreen> {
   DateTime _verildigiTarih = DateTime.now();
   DateTime _tahsilEdilecegiTarih = DateTime.now();
 
+  String _producerSearchQuery = '';
+  DocumentSnapshot? _selectedProducerDoc;
+  final _searchController = TextEditingController();
+  late final Stream<QuerySnapshot> _producersStream;
+
+  @override
+  void initState() {
+    super.initState();
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final currentFirmaName = auth.user?.displayName ?? '';
+    _producersStream = FirestoreService().getProducersStream(firma: currentFirmaName);
+  }
+
   @override
   void dispose() {
     _tutarCtrl.dispose();
     _aciklamaCtrl.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -430,20 +450,32 @@ class _AvansVerScreenState extends State<AvansVerScreen> {
         title: Text('Avans Ver', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.pop(),
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/firma/finans/avanslar');
+            }
+          },
         ),
       ),
       backgroundColor: AppColors.gray50,
       body: StreamBuilder<QuerySnapshot>(
-        stream: FirestoreService().getProducersStream(firma: currentFirmaName),
+        stream: _producersStream,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
 
-          final producers = snapshot.hasData
-              ? snapshot.data!.docs.map((doc) => (doc.data() as Map)['name'] as String).toList()
-              : <String>[];
+          final docs = snapshot.hasData ? snapshot.data!.docs : [];
+          final filteredProducers = docs.where((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            final name = (data['name'] as String? ?? '').toLowerCase();
+            final group = (data['group'] as String? ?? '').toLowerCase();
+            final bolge = (data['bolge'] as String? ?? '').toLowerCase();
+            final query = _producerSearchQuery.toLowerCase();
+            return name.contains(query) || group.contains(query) || bolge.contains(query);
+          }).toList();
 
           return Form(
             key: _formKey,
@@ -457,15 +489,131 @@ class _AvansVerScreenState extends State<AvansVerScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Müşteri Seçimi
-                      SearchableDropdown(
-                        items: producers,
-                        value: _selectedUretici,
-                        hint: 'Üretici / Müşteri Seçin',
-                        label: 'Müşteri Seçiniz *',
-                        validator: (value) => value == null || value.isEmpty ? 'Lütfen bir müşteri seçin' : null,
-                        onChanged: (val) => setState(() => _selectedUretici = val),
-                      ),
+                      // Müşteri Seçimi (Detaylı Arama ve Seçim)
+                      if (_selectedUretici == null) ...[
+                        Text('Müşteri / Üretici Seçiniz *', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.gray500)),
+                        const SizedBox(height: 6),
+                        TextField(
+                          controller: _searchController,
+                          style: GoogleFonts.inter(fontSize: 13, color: AppColors.gray800),
+                          decoration: InputDecoration(
+                            hintText: 'İsim, grup veya bölge yazarak arayın...',
+                            hintStyle: GoogleFonts.inter(fontSize: 13, color: AppColors.gray400),
+                            prefixIcon: const Icon(Icons.search_rounded, color: AppColors.gray400, size: 20),
+                            suffixIcon: _searchController.text.isNotEmpty
+                                ? IconButton(
+                                    icon: const Icon(Icons.clear, size: 16),
+                                    onPressed: () {
+                                      _searchController.clear();
+                                      setState(() {
+                                        _producerSearchQuery = '';
+                                      });
+                                    },
+                                  )
+                                : null,
+                            border: const OutlineInputBorder(
+                              borderRadius: BorderRadius.all(Radius.circular(8)),
+                              borderSide: BorderSide(color: AppColors.gray300),
+                            ),
+                          ),
+                          onChanged: (val) {
+                            setState(() {
+                              _producerSearchQuery = val.trim();
+                            });
+                          },
+                        ),
+                        if (_producerSearchQuery.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          Container(
+                            constraints: const BoxConstraints(maxHeight: 200),
+                            decoration: BoxDecoration(
+                              border: Border.all(color: AppColors.gray200),
+                              borderRadius: BorderRadius.circular(8),
+                              color: Colors.white,
+                            ),
+                            child: filteredProducers.isEmpty
+                                ? Padding(
+                                    padding: const EdgeInsets.all(16.0),
+                                    child: Center(
+                                      child: Text(
+                                        'Müşteri bulunamadı.',
+                                        style: GoogleFonts.inter(color: AppColors.gray500, fontSize: 13),
+                                      ),
+                                    ),
+                                  )
+                                : ListView.builder(
+                                    shrinkWrap: true,
+                                    itemCount: filteredProducers.length,
+                                    itemBuilder: (context, index) {
+                                      final doc = filteredProducers[index];
+                                      final data = doc.data() as Map<String, dynamic>;
+                                      final name = data['name'] ?? '';
+                                      final group = data['group'] ?? 'Yok';
+                                      final bolge = data['bolge'] ?? 'Yok';
+
+                                      return ListTile(
+                                        title: Text(name, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.gray800)),
+                                        subtitle: Text('Grup: $group • Bölge: $bolge', style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500)),
+                                        trailing: const Icon(Icons.chevron_right_rounded, size: 18, color: AppColors.gray400),
+                                        onTap: () {
+                                          setState(() {
+                                            _selectedUretici = name;
+                                            _selectedProducerDoc = doc;
+                                            _producerSearchQuery = '';
+                                            _searchController.clear();
+                                          });
+                                        },
+                                      );
+                                    },
+                                  ),
+                          ),
+                        ],
+                      ] else ...[
+                        // Seçili Müşteri Kartı
+                        Text('Müşteri / Üretici Seçiniz *', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.gray500)),
+                        const SizedBox(height: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary50,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: AppColors.primary100),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.person_rounded, color: AppColors.primary600, size: 20),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      _selectedUretici!,
+                                      style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.gray800),
+                                    ),
+                                    if (_selectedProducerDoc != null) ...[
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        'Grup: ${(_selectedProducerDoc!.data() as Map)['group'] ?? 'Yok'} • Bölge: ${(_selectedProducerDoc!.data() as Map)['bolge'] ?? 'Yok'}',
+                                        style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                              TextButton(
+                                onPressed: () {
+                                  setState(() {
+                                    _selectedUretici = null;
+                                    _selectedProducerDoc = null;
+                                  });
+                                },
+                                child: Text('Değiştir', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.danger)),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 16),
 
                       // Tutar
@@ -582,6 +730,15 @@ class _AvansVerScreenState extends State<AvansVerScreen> {
                 // Kaydet Button
                 ElevatedButton(
                   onPressed: () async {
+                    if (_selectedUretici == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Lütfen önce bir müşteri seçin.'),
+                          backgroundColor: AppColors.danger,
+                        ),
+                      );
+                      return;
+                    }
                     if (_formKey.currentState!.validate()) {
                       final double tutar = double.parse(_tutarCtrl.text.replaceAll(',', '.'));
 

@@ -6,6 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../providers/auth_provider.dart';
 import '../../models/user_model.dart';
 import '../../config/theme.dart';
+import '../../services/firestore_service.dart';
 
 class UrunSiparisleriScreen extends StatefulWidget {
   const UrunSiparisleriScreen({super.key});
@@ -249,19 +250,45 @@ class _UrunSiparisleriScreenState extends State<UrunSiparisleriScreen> {
                                   const SizedBox(height: 4),
                                   Text('Sipariş $orderId • $tarih $saat', style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray400)),
                                   const Divider(height: 20),
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text(
-                                        urun,
-                                        style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.gray800),
-                                      ),
-                                      Text(
-                                        '${miktar.toStringAsFixed(0)} $birim x ${birimFiyat.toStringAsFixed(2)} ₺',
-                                        style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray500),
-                                      ),
-                                    ],
-                                  ),
+                                  ...(() {
+                                    final List<Map<String, dynamic>> itemsList = data.containsKey('kalemler') && data['kalemler'] is List
+                                        ? List<Map<String, dynamic>>.from((data['kalemler'] as List).map((e) => Map<String, dynamic>.from(e as Map)))
+                                        : [
+                                            {
+                                              'urun': urun,
+                                              'miktar': miktar,
+                                              'birim': birim,
+                                              'birimFiyat': birimFiyat,
+                                              'toplam': toplam,
+                                            }
+                                          ];
+                                    return itemsList.map((item) {
+                                      final String uName = item['urun'] ?? '';
+                                      final double qty = (item['miktar'] as num?)?.toDouble() ?? 1.0;
+                                      final String unit = item['birim'] ?? 'Adet';
+                                      final double price = (item['birimFiyat'] as num?)?.toDouble() ?? 0.0;
+                                      final double totalItem = (item['toplam'] as num?)?.toDouble() ?? 0.0;
+
+                                      return Padding(
+                                        padding: const EdgeInsets.only(bottom: 6.0),
+                                        child: Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                '$uName (${qty.toStringAsFixed(1)} $unit)',
+                                                style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w500, color: AppColors.gray800),
+                                              ),
+                                            ),
+                                            Text(
+                                              '${totalItem.toStringAsFixed(2)} ₺',
+                                              style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.gray700),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    }).toList();
+                                  })(),
                                   const SizedBox(height: 10),
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -286,42 +313,129 @@ class _UrunSiparisleriScreenState extends State<UrunSiparisleriScreen> {
                                         if (durum == 'Bekliyor')
                                           _buildActionButton('Onayla', Colors.green, () async {
                                             await doc.reference.update({'durum': 'Onaylandı'});
+                                            await FirestoreService().sendNotification(
+                                              recipientName: uretici,
+                                              role: 'uretici',
+                                              baslik: 'Siparişiniz Hazırlandı',
+                                              icerik: '$orderId nolu siparişiniz firma tarafından hazırlandı.',
+                                              type: 'siparis',
+                                            );
+                                            await _notifyDriversForProducer(
+                                              currentFirmaName,
+                                              uretici,
+                                              orderId,
+                                            );
                                           }),
                                         if (durum == 'Onaylandı')
                                           _buildActionButton('Teslimatta Yap', Colors.purple, () async {
                                             await doc.reference.update({'durum': 'Teslimatta'});
+                                            await FirestoreService().sendNotification(
+                                              recipientName: uretici,
+                                              role: 'uretici',
+                                              baslik: 'Siparişiniz Yola Çıktı',
+                                              icerik: '$orderId nolu siparişiniz dağıtıma çıkmıştır.',
+                                              type: 'siparis',
+                                            );
+                                            await _notifyDriversForProducer(
+                                              currentFirmaName,
+                                              uretici,
+                                              orderId,
+                                              customBaslik: 'Sipariş Yola Çıktı',
+                                              customIcerik: '$uretici üreticisine ait $orderId nolu sipariş yola çıktı.',
+                                            );
                                           }),
                                         if (durum == 'Teslimatta')
                                           _buildActionButton('Teslim Et', Colors.green, () async {
                                             await doc.reference.update({'durum': 'Teslim Edildi'});
                                             
-                                            // Subtract stock
-                                            final urunQuery = await FirebaseFirestore.instance
-                                                .collection('urunler')
-                                                .where('ad', isEqualTo: urun)
-                                                .where('firma', isEqualTo: currentFirmaName)
-                                                .limit(1)
-                                                .get();
-                                            if (urunQuery.docs.isNotEmpty) {
-                                              final uDoc = urunQuery.docs.first;
-                                              final double currentStock = (uDoc['stok'] as num).toDouble();
-                                              await uDoc.reference.update({'stok': (currentStock - miktar).clamp(0.0, double.infinity)});
-                                            }
+                                            await FirestoreService().sendNotification(
+                                              recipientName: uretici,
+                                              role: 'uretici',
+                                              baslik: 'Siparişiniz Teslim Edildi',
+                                              icerik: '$orderId nolu siparişiniz başarıyla teslim edilmiştir.',
+                                              type: 'siparis',
+                                            );
 
-                                            // Record payment deduction
-                                            await FirebaseFirestore.instance.collection('kesintiler').add({
-                                              'uretici': uretici,
-                                              'tutar': toplam,
-                                              'kesintiTuru': '$urun Alımı',
-                                              'durum': 'aktif',
-                                              'tarih': DateFormat('dd.MM.yyyy').format(DateTime.now()),
-                                              'timestamp': FieldValue.serverTimestamp(),
-                                              'firma': currentFirmaName,
-                                            });
+                                            await _notifyDriversForProducer(
+                                              currentFirmaName,
+                                              uretici,
+                                              orderId,
+                                              customBaslik: 'Sipariş Teslim Edildi',
+                                              customIcerik: '$uretici üreticisine ait $orderId nolu sipariş teslim edildi.',
+                                            );
+                                            
+                                            final List<Map<String, dynamic>> itemsList = data.containsKey('kalemler') && data['kalemler'] is List
+                                                ? List<Map<String, dynamic>>.from((data['kalemler'] as List).map((e) => Map<String, dynamic>.from(e as Map)))
+                                                : [
+                                                    {
+                                                      'urun': urun,
+                                                      'miktar': miktar,
+                                                      'birim': birim,
+                                                      'birimFiyat': birimFiyat,
+                                                      'toplam': toplam,
+                                                    }
+                                                  ];
+
+                                            for (var item in itemsList) {
+                                              final String uName = item['urun'] ?? '';
+                                              final double qty = (item['miktar'] as num?)?.toDouble() ?? 1.0;
+                                              final double totalItem = (item['toplam'] as num?)?.toDouble() ?? 0.0;
+
+                                              // Subtract stock
+                                              final urunQuery = await FirebaseFirestore.instance
+                                                  .collection('urunler')
+                                                  .where('ad', isEqualTo: uName)
+                                                  .where('firma', isEqualTo: currentFirmaName)
+                                                  .limit(1)
+                                                  .get();
+                                              if (urunQuery.docs.isNotEmpty) {
+                                                final uDoc = urunQuery.docs.first;
+                                                final double currentStock = (uDoc['stok'] as num?)?.toDouble() ?? 0.0;
+                                                final double minStok = (uDoc.data() as Map<String, dynamic>)['minStok']?.toDouble() ?? 10.0;
+                                                final String birimVal = (uDoc.data() as Map<String, dynamic>)['birim'] ?? 'Adet';
+                                                final double newStock = (currentStock - qty).clamp(0.0, double.infinity);
+                                                await uDoc.reference.update({'stok': newStock});
+                                                
+                                                if (newStock <= minStok) {
+                                                  await FirestoreService().sendNotification(
+                                                    recipientName: currentFirmaName,
+                                                    role: 'firma',
+                                                    baslik: 'Kritik Stok Uyarısı',
+                                                    icerik: '$uName ürünü kritik stok limitinin altına düştü! Güncel Stok: ${newStock.toStringAsFixed(0)} $birimVal',
+                                                    type: 'stok',
+                                                  );
+                                                }
+                                              }
+
+                                              // Record payment deduction
+                                              await FirebaseFirestore.instance.collection('kesintiler').add({
+                                                'uretici': uretici,
+                                                'tutar': totalItem,
+                                                'kesintiTuru': '$uName Alımı',
+                                                'durum': 'aktif',
+                                                'tarih': DateFormat('dd.MM.yyyy').format(DateTime.now()),
+                                                'timestamp': FieldValue.serverTimestamp(),
+                                                'firma': currentFirmaName,
+                                              });
+                                            }
                                           }),
                                         if (durum != 'Teslim Edildi' && durum != 'İptal')
                                           _buildActionButton('İptal', Colors.orange, () async {
                                             await doc.reference.update({'durum': 'İptal'});
+                                            await FirestoreService().sendNotification(
+                                              recipientName: uretici,
+                                              role: 'uretici',
+                                              baslik: 'Siparişiniz İptal Edildi',
+                                              icerik: '$orderId nolu siparişiniz firma tarafından iptal edilmiştir.',
+                                              type: 'siparis',
+                                            );
+                                            await _notifyDriversForProducer(
+                                              currentFirmaName,
+                                              uretici,
+                                              orderId,
+                                              customBaslik: 'Sipariş İptal Edildi',
+                                              customIcerik: '$uretici üreticisine ait $orderId nolu sipariş iptal edildi.',
+                                            );
                                           }),
                                         _buildActionButton('Sil', Colors.red, () async {
                                           final confirm = await showDialog<bool>(
@@ -483,5 +597,57 @@ class _UrunSiparisleriScreenState extends State<UrunSiparisleriScreen> {
         child: Text(label, style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold)),
       ),
     );
+  }
+
+  Future<void> _notifyDriversForProducer(String firma, String ureticiName, String orderId, {String? customBaslik, String? customIcerik}) async {
+    try {
+      final prodSnap = await FirebaseFirestore.instance
+          .collection('ureticiler')
+          .where('name', isEqualTo: ureticiName)
+          .limit(1)
+          .get();
+      
+      if (prodSnap.docs.isEmpty) return;
+      final pData = prodSnap.docs.first.data();
+      final String group = pData['group'] ?? '';
+      final String bolge = pData['bolge'] ?? '';
+      final String birlik = pData['birlik'] ?? 'Yok';
+
+      final atamalarSnap = await FirebaseFirestore.instance
+          .collection('toplayici_atamalari')
+          .where('firma', isEqualTo: firma)
+          .get();
+
+      final Set<String> driversToNotify = {};
+      for (var doc in atamalarSnap.docs) {
+        final data = doc.data();
+        final hTip = data['hedefTip'];
+        final hAd = data['hedefAd'];
+        final driver = data['toplayici'] as String? ?? '';
+
+        if (driver.isEmpty) continue;
+
+        if (hTip == 'uretici' && hAd == ureticiName) {
+          driversToNotify.add(driver);
+        } else if (hTip == 'grup' && group.isNotEmpty && hAd == group) {
+          driversToNotify.add(driver);
+        } else if ((hTip == 'birlik' || hTip == 'bolge') &&
+            ((bolge.isNotEmpty && hAd == bolge) || (birlik.isNotEmpty && birlik != 'Yok' && hAd == birlik))) {
+          driversToNotify.add(driver);
+        }
+      }
+
+      for (var driverName in driversToNotify) {
+        await FirestoreService().sendNotification(
+          recipientName: driverName,
+          role: 'surucu',
+          baslik: customBaslik ?? 'Yeni Dağıtım Görevi',
+          icerik: customIcerik ?? '$ureticiName üreticisine ait $orderId nolu sipariş hazırlandı, teslim alabilirsiniz.',
+          type: 'siparis',
+        );
+      }
+    } catch (e) {
+      print('Error notifying drivers: $e');
+    }
   }
 }

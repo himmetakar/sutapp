@@ -68,8 +68,8 @@ class _FirmaAylikSutScreenState extends State<FirmaAylikSutScreen> {
       text: currentMiktar > 0 ? currentMiktar.toStringAsFixed(1) : '',
     );
     String selectedTank = 'Tank seçimi (zorunlu değil)';
-    String selectedMilkType = 'Soğuk süt';
-    const List<String> milkTypes = ['Soğuk süt', 'Sıcak süt', 'C kalite', 'D kalite'];
+    String selectedMilkType = 'Soğuk Süt';
+    const List<String> milkTypes = ['Soğuk Süt', 'Sıcak Süt', 'C kalite', 'D kalite'];
 
     showDialog(
       context: context,

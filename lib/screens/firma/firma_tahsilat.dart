@@ -296,7 +296,7 @@ class _FirmaTahsilatScreenState extends State<FirmaTahsilatScreen> {
         title: Text('Üretici Tahsilatları', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.pop(),
+          onPressed: () => context.go('/firma/finans'),
         ),
       ),
       backgroundColor: AppColors.gray50,

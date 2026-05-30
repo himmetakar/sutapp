@@ -19,6 +19,7 @@ class FirmaDashboard extends StatefulWidget {
 
 class _FirmaDashboardState extends State<FirmaDashboard> {
   int _selectedTab = 0; // 0: Günlük, 1: Aylık, 2: Tank Durumu, 3: Mali Özet
+  DateTime _maliOzetMonth = DateTime.now();
 
   final _firestoreService = FirestoreService();
 
@@ -83,7 +84,7 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
                 // Quick Actions removed
 
                 // Dynamic tab content
-                _buildTabContent(isDesktop, isTablet, totalMilk, collectionCount, currentFirmaName),
+                _buildTabContent(isDesktop, isTablet, snapshot.data?.docs ?? [], collectionCount, currentFirmaName),
                 const SizedBox(height: 80),
               ],
             );
@@ -371,8 +372,8 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
               Expanded(
                 child: Column(
                   children: [
-                    _buildDonutLegend('A Kalite', '%45', '5.600 L', AppColors.primary600),
-                    _buildDonutLegend('B Kalite', '%35', '4.350 L', AppColors.success),
+                    _buildDonutLegend('Soğuk Süt', '%45', '5.600 L', AppColors.primary600),
+                    _buildDonutLegend('Sıcak Süt', '%35', '4.350 L', AppColors.success),
                     _buildDonutLegend('C kalite', '%15', '1.850 L', AppColors.warning),
                     _buildDonutLegend('D kalite', '%5', '650 L', AppColors.danger),
                   ],
@@ -705,7 +706,17 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
     );
   }
 
-  Widget _buildTabContent(bool isDesktop, bool isTablet, double totalMilk, int collectionCount, String currentFirmaName) {
+  Widget _buildTabContent(bool isDesktop, bool isTablet, List<QueryDocumentSnapshot> collections, int collectionCount, String currentFirmaName) {
+    double totalMilk = 0.0;
+    for (var doc in collections) {
+      final m = doc['m'];
+      if (m is num) {
+        totalMilk += m.toDouble();
+      } else if (m is String) {
+        totalMilk += double.tryParse(m) ?? 0.0;
+      }
+    }
+
     switch (_selectedTab) {
       case 0:
         return _buildDailyOperationsTab(isDesktop, isTablet, totalMilk, collectionCount, currentFirmaName);
@@ -714,7 +725,7 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
       case 2:
         return _buildTankStatusTab(isDesktop, isTablet, currentFirmaName);
       case 3:
-        return _buildFinancialSummaryTab(isDesktop, isTablet, totalMilk, currentFirmaName);
+        return _buildFinancialSummaryTab(isDesktop, isTablet, collections, currentFirmaName);
       default:
         return const SizedBox();
     }
@@ -1288,15 +1299,14 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
               child: FutureBuilder<QuerySnapshot>(
                 future: FirebaseFirestore.instance
                     .collection('toplamalar')
-                    .orderBy('tarih', descending: true)
-                    .limit(15)
+                    .where('tank', isEqualTo: tankAdi)
                     .get(),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
                   }
-                  final docs = snapshot.data?.docs ?? [];
-                  if (docs.isEmpty) {
+                  final rawDocs = snapshot.data?.docs ?? [];
+                  if (rawDocs.isEmpty) {
                     return Center(
                       child: Text(
                         'Kayıt bulunamadı.',
@@ -1304,17 +1314,54 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
                       ),
                     );
                   }
+
+                  // Sort in memory by timestamp descending
+                  final docs = List<QueryDocumentSnapshot>.from(rawDocs);
+                  docs.sort((a, b) {
+                    final aData = a.data() as Map<String, dynamic>;
+                    final bData = b.data() as Map<String, dynamic>;
+
+                    final aTs = aData['timestamp'];
+                    final bTs = bData['timestamp'];
+
+                    DateTime aDate = DateTime(1970);
+                    DateTime bDate = DateTime(1970);
+
+                    if (aTs is Timestamp) {
+                      aDate = aTs.toDate();
+                    } else if (aData['tarih'] is String) {
+                      aDate = parseDateStr(aData['tarih']);
+                    }
+
+                    if (bTs is Timestamp) {
+                      bDate = bTs.toDate();
+                    } else if (bData['tarih'] is String) {
+                      bDate = parseDateStr(bData['tarih']);
+                    }
+
+                    return bDate.compareTo(aDate);
+                  });
+
+                  final displayDocs = docs.take(15).toList();
+
                   return ListView.builder(
                     controller: sc,
                     padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: docs.length,
+                    itemCount: displayDocs.length,
                     itemBuilder: (_, i) {
-                      final doc = docs[i];
+                      final doc = displayDocs[i];
                       final data = doc.data() as Map<String, dynamic>;
                       final u = data['u'] ?? 'Bilinmeyen Üretici';
                       final double m = (data['m'] as num?)?.toDouble() ?? 0.0;
                       final s = data['s'] ?? '';
-                      final t = data['tarih'] ?? '';
+                      
+                      final ts = data['timestamp'];
+                      String t = '';
+                      if (ts is Timestamp) {
+                        t = DateFormat('dd.MM.yyyy').format(ts.toDate());
+                      } else {
+                        t = data['tarih'] ?? '';
+                      }
 
                       return Container(
                         margin: const EdgeInsets.only(bottom: 8),
@@ -1349,29 +1396,168 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
     );
   }
 
-  Widget _buildFinancialSummaryTab(bool isDesktop, bool isTablet, double totalMilk, String currentFirmaName) {
+  bool _isDocInSelectedMonth(DocumentSnapshot doc, DateTime selectedMonth) {
+    final data = doc.data() as Map<String, dynamic>?;
+    if (data == null) return false;
+
+    if (data['timestamp'] != null) {
+      final date = (data['timestamp'] as Timestamp).toDate();
+      return date.month == selectedMonth.month && date.year == selectedMonth.year;
+    }
+
+    final rawDate = data['tarih'] ?? data['verildigiTarih'] ?? data['vereseTarih'] ?? data['tarihStr'];
+    if (rawDate != null) {
+      try {
+        final parsed = DateFormat('dd.MM.yyyy').parse(rawDate.toString());
+        return parsed.month == selectedMonth.month && parsed.year == selectedMonth.year;
+      } catch (_) {
+        try {
+          final parsed2 = DateFormat('dd MMMM yyyy', 'tr_TR').parse(rawDate.toString());
+          return parsed2.month == selectedMonth.month && parsed2.year == selectedMonth.year;
+        } catch (_) {}
+      }
+    }
+    return false;
+  }
+
+  bool _isDocBeforeSelectedMonth(DocumentSnapshot doc, DateTime selectedMonth) {
+    final data = doc.data() as Map<String, dynamic>?;
+    if (data == null) return false;
+
+    DateTime? date;
+    if (data['timestamp'] != null) {
+      date = (data['timestamp'] as Timestamp).toDate();
+    } else {
+      final rawDate = data['tarih'] ?? data['verildigiTarih'] ?? data['vereseTarih'] ?? data['tarihStr'];
+      if (rawDate != null) {
+        try {
+          date = DateFormat('dd.MM.yyyy').parse(rawDate.toString());
+        } catch (_) {
+          try {
+            date = DateFormat('dd MMMM yyyy', 'tr_TR').parse(rawDate.toString());
+          } catch (_) {}
+        }
+      }
+    }
+
+    if (date != null) {
+      if (date.year < selectedMonth.year) return true;
+      if (date.year == selectedMonth.year && date.month < selectedMonth.month) return true;
+    }
+    return false;
+  }
+
+  bool _isDocUpToSelectedMonth(DocumentSnapshot doc, DateTime selectedMonth) {
+    final data = doc.data() as Map<String, dynamic>?;
+    if (data == null) return false;
+
+    DateTime? date;
+    if (data['timestamp'] != null) {
+      date = (data['timestamp'] as Timestamp).toDate();
+    } else {
+      final rawDate = data['tarih'] ?? data['verildigiTarih'] ?? data['vereseTarih'] ?? data['tarihStr'];
+      if (rawDate != null) {
+        try {
+          date = DateFormat('dd.MM.yyyy').parse(rawDate.toString());
+        } catch (_) {
+          try {
+            date = DateFormat('dd MMMM yyyy', 'tr_TR').parse(rawDate.toString());
+          } catch (_) {}
+        }
+      }
+    }
+
+    if (date != null) {
+      if (date.year < selectedMonth.year) return true;
+      if (date.year == selectedMonth.year && date.month <= selectedMonth.month) return true;
+    }
+    return false;
+  }
+
+  Widget _buildFinancialSummaryTab(bool isDesktop, bool isTablet, List<QueryDocumentSnapshot> collections, String currentFirmaName) {
+    final formatNumber = NumberFormat('#,##0', 'tr_TR');
+    final monthStr = DateFormat('MMMM yyyy', 'tr_TR').format(_maliOzetMonth);
+
+    // 1. Calculate Monthly Milk Stats
+    final monthCollections = collections.where((doc) => _isDocInSelectedMonth(doc, _maliOzetMonth)).toList();
+    double monthlyMilk = 0.0;
+    for (var doc in monthCollections) {
+      final m = doc['m'];
+      if (m is num) {
+        monthlyMilk += m.toDouble();
+      } else if (m is String) {
+        monthlyMilk += double.tryParse(m) ?? 0.0;
+      }
+    }
+    final double grossMilkPrice = monthlyMilk * 23.0;
+    final double milkRevenue = monthlyMilk * 25.2;
+
+    // 2. Calculate Prior Milk Stats (Carryover)
+    final prevCollections = collections.where((doc) => _isDocBeforeSelectedMonth(doc, _maliOzetMonth)).toList();
+    double prevMilk = 0.0;
+    for (var doc in prevCollections) {
+      final m = doc['m'];
+      if (m is num) {
+        prevMilk += m.toDouble();
+      } else if (m is String) {
+        prevMilk += double.tryParse(m) ?? 0.0;
+      }
+    }
+    final double prevAlacak = prevMilk * 23.0;
+
+    // 3. Calculate Cumulative Milk Stats (Next Month Carryover)
+    final upToCollections = collections.where((doc) => _isDocUpToSelectedMonth(doc, _maliOzetMonth)).toList();
+    double upToMilk = 0.0;
+    for (var doc in upToCollections) {
+      final m = doc['m'];
+      if (m is num) {
+        upToMilk += m.toDouble();
+      } else if (m is String) {
+        upToMilk += double.tryParse(m) ?? 0.0;
+      }
+    }
+    final double upToAlacak = upToMilk * 23.0;
+
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection('tahsilatlar')
           .where('firma', isEqualTo: currentFirmaName)
           .snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+      builder: (context, tahsilatSnap) {
+        if (tahsilatSnap.connectionState == ConnectionState.waiting) {
           return const Center(child: Padding(
             padding: EdgeInsets.all(40.0),
             child: CircularProgressIndicator(),
           ));
         }
 
-        final docs = snapshot.data?.docs ?? [];
+        final tDocs = tahsilatSnap.data?.docs ?? [];
+        
+        // Month
+        final thisMonthTahsilatlar = tDocs.where((doc) => _isDocInSelectedMonth(doc, _maliOzetMonth)).toList();
         double totalTahsilat = 0.0;
-        for (var doc in docs) {
+        for (var doc in thisMonthTahsilatlar) {
           final tVal = doc['tutar'];
-          if (tVal is num) {
-            totalTahsilat += tVal.toDouble();
-          } else if (tVal is String) {
-            totalTahsilat += double.tryParse(tVal) ?? 0.0;
-          }
+          if (tVal is num) totalTahsilat += tVal.toDouble();
+          else if (tVal is String) totalTahsilat += double.tryParse(tVal) ?? 0.0;
+        }
+
+        // Previous
+        final prevTahsilatlar = tDocs.where((doc) => _isDocBeforeSelectedMonth(doc, _maliOzetMonth)).toList();
+        double prevTahsilatVal = 0.0;
+        for (var doc in prevTahsilatlar) {
+          final tVal = doc['tutar'];
+          if (tVal is num) prevTahsilatVal += tVal.toDouble();
+          else if (tVal is String) prevTahsilatVal += double.tryParse(tVal) ?? 0.0;
+        }
+
+        // Up to
+        final upToTahsilatlar = tDocs.where((doc) => _isDocUpToSelectedMonth(doc, _maliOzetMonth)).toList();
+        double upToTahsilatVal = 0.0;
+        for (var doc in upToTahsilatlar) {
+          final tVal = doc['tutar'];
+          if (tVal is num) upToTahsilatVal += tVal.toDouble();
+          else if (tVal is String) upToTahsilatVal += double.tryParse(tVal) ?? 0.0;
         }
 
         return StreamBuilder<QuerySnapshot>(
@@ -1380,17 +1566,43 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
               .where('firma', isEqualTo: currentFirmaName)
               .snapshots(),
           builder: (context, avansSnap) {
-            double totalAvans = 0.0;
+            if (avansSnap.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
             final aDocs = avansSnap.data?.docs ?? [];
-            for (var doc in aDocs) {
+
+            // Month
+            final thisMonthAvanslar = aDocs.where((doc) => _isDocInSelectedMonth(doc, _maliOzetMonth)).toList();
+            double totalAvans = 0.0;
+            for (var doc in thisMonthAvanslar) {
               final durum = doc['durum'] as String? ?? 'aktif';
               if (durum == 'iptal') continue;
               final aVal = doc['tutar'];
-              if (aVal is num) {
-                totalAvans += aVal.toDouble();
-              } else if (aVal is String) {
-                totalAvans += double.tryParse(aVal) ?? 0.0;
-              }
+              if (aVal is num) totalAvans += aVal.toDouble();
+              else if (aVal is String) totalAvans += double.tryParse(aVal) ?? 0.0;
+            }
+
+            // Previous
+            final prevAvanslar = aDocs.where((doc) => _isDocBeforeSelectedMonth(doc, _maliOzetMonth)).toList();
+            double prevAvansVal = 0.0;
+            for (var doc in prevAvanslar) {
+              final durum = doc['durum'] as String? ?? 'aktif';
+              if (durum == 'iptal') continue;
+              final aVal = doc['tutar'];
+              if (aVal is num) prevAvansVal += aVal.toDouble();
+              else if (aVal is String) prevAvansVal += double.tryParse(aVal) ?? 0.0;
+            }
+
+            // Up to
+            final upToAvanslar = aDocs.where((doc) => _isDocUpToSelectedMonth(doc, _maliOzetMonth)).toList();
+            double upToAvansVal = 0.0;
+            for (var doc in upToAvanslar) {
+              final durum = doc['durum'] as String? ?? 'aktif';
+              if (durum == 'iptal') continue;
+              final aVal = doc['tutar'];
+              if (aVal is num) upToAvansVal += aVal.toDouble();
+              else if (aVal is String) upToAvansVal += double.tryParse(aVal) ?? 0.0;
             }
 
             return StreamBuilder<QuerySnapshot>(
@@ -1399,17 +1611,43 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
                   .where('firma', isEqualTo: currentFirmaName)
                   .snapshots(),
               builder: (context, kesintilerSnap) {
-                double totalKesinti = 0.0;
+                if (kesintilerSnap.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
                 final kDocs = kesintilerSnap.data?.docs ?? [];
-                for (var doc in kDocs) {
+
+                // Month
+                final thisMonthKesintiler = kDocs.where((doc) => _isDocInSelectedMonth(doc, _maliOzetMonth)).toList();
+                double totalKesinti = 0.0;
+                for (var doc in thisMonthKesintiler) {
                   final durum = doc['durum'] as String? ?? 'aktif';
                   if (durum == 'iptal') continue;
                   final kVal = doc['tutar'];
-                  if (kVal is num) {
-                    totalKesinti += kVal.toDouble();
-                  } else if (kVal is String) {
-                    totalKesinti += double.tryParse(kVal) ?? 0.0;
-                  }
+                  if (kVal is num) totalKesinti += kVal.toDouble();
+                  else if (kVal is String) totalKesinti += double.tryParse(kVal) ?? 0.0;
+                }
+
+                // Previous
+                final prevKesintiler = kDocs.where((doc) => _isDocBeforeSelectedMonth(doc, _maliOzetMonth)).toList();
+                double prevKesintiVal = 0.0;
+                for (var doc in prevKesintiler) {
+                  final durum = doc['durum'] as String? ?? 'aktif';
+                  if (durum == 'iptal') continue;
+                  final kVal = doc['tutar'];
+                  if (kVal is num) prevKesintiVal += kVal.toDouble();
+                  else if (kVal is String) prevKesintiVal += double.tryParse(kVal) ?? 0.0;
+                }
+
+                // Up to
+                final upToKesintiler = kDocs.where((doc) => _isDocUpToSelectedMonth(doc, _maliOzetMonth)).toList();
+                double upToKesintiVal = 0.0;
+                for (var doc in upToKesintiler) {
+                  final durum = doc['durum'] as String? ?? 'aktif';
+                  if (durum == 'iptal') continue;
+                  final kVal = doc['tutar'];
+                  if (kVal is num) upToKesintiVal += kVal.toDouble();
+                  else if (kVal is String) upToKesintiVal += double.tryParse(kVal) ?? 0.0;
                 }
 
                 return StreamBuilder<QuerySnapshot>(
@@ -1418,190 +1656,377 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
                       .where('firma', isEqualTo: currentFirmaName)
                       .snapshots(),
                   builder: (context, cezalarSnap) {
-                    double totalCeza = 0.0;
-                    final cDocs = cezalarSnap.data?.docs ?? [];
-                    final cost = totalMilk * 23.0;
+                    if (cezalarSnap.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
 
-                    for (var doc in cDocs) {
+                    final cDocs = cezalarSnap.data?.docs ?? [];
+
+                    // Month
+                    final thisMonthCezalar = cDocs.where((doc) => _isDocInSelectedMonth(doc, _maliOzetMonth)).toList();
+                    double totalCeza = 0.0;
+                    for (var doc in thisMonthCezalar) {
                       final data = doc.data() as Map<String, dynamic>;
                       final durum = data['durum'] as String? ?? 'aktif';
                       if (durum == 'iptal') continue;
                       final tip = data['tip'] as String? ?? 'miktarsal';
                       if (tip == 'oransal') {
                         final double oran = (data['oran'] as num?)?.toDouble() ?? 0.0;
-                        totalCeza += cost * (oran / 100.0);
+                        totalCeza += grossMilkPrice * (oran / 100.0);
                       } else {
                         final double tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
                         totalCeza += tutar;
                       }
                     }
 
-                    final formatNumber = NumberFormat('#,##0', 'tr_TR');
-                    final revenue = totalMilk * 25.2;
-                    final profit = revenue - cost;
-                    final debt = (cost - totalTahsilat - totalAvans - totalCeza - totalKesinti).clamp(0.0, double.infinity);
-
-                    final cards = [
-                      StatCard(
-                        icon: Icons.payments_rounded,
-                        label: 'Toplam Alım Bedeli (₺)',
-                        value: formatNumber.format(cost),
-                        color: AppColors.primary600,
-                        change: '+%14,2',
-                        subtext: 'Birim: 23 ₺/LT',
-                        sparklineData: const [120, 140, 160, 180, 200, 220, 240],
-                        isUp: true,
-                      ),
-                      StatCard(
-                        icon: Icons.sell_rounded,
-                        label: 'Satış Hasılatı (₺)',
-                        value: formatNumber.format(revenue),
-                        color: AppColors.success,
-                        change: '+%16,5',
-                        subtext: 'Birim: 25.2 ₺/LT',
-                        sparklineData: const [130, 155, 175, 195, 215, 240, 260],
-                        isUp: true,
-                      ),
-                      StatCard(
-                        icon: Icons.account_balance_wallet_rounded,
-                        label: 'Tahsil Edilen (₺)',
-                        value: formatNumber.format(totalTahsilat),
-                        color: Colors.purple,
-                        change: '+%18,7',
-                        subtext: '${docs.length} adet işlem',
-                        sparklineData: const [80, 100, 120, 140, 160, 180, 200],
-                        isUp: true,
-                      ),
-                      StatCard(
-                        icon: Icons.money_off_rounded,
-                        label: 'Ödenen Avanslar (₺)',
-                        value: formatNumber.format(totalAvans),
-                        color: Colors.orange,
-                        change: '',
-                        subtext: '${aDocs.length} avans kaydı',
-                        sparklineData: const [],
-                        isUp: false,
-                      ),
-                      StatCard(
-                        icon: Icons.gavel_rounded,
-                        label: 'Uygulanan Cezalar (₺)',
-                        value: formatNumber.format(totalCeza),
-                        color: Colors.red,
-                        change: '',
-                        subtext: '${cDocs.length} ceza kaydı',
-                        sparklineData: const [],
-                        isUp: false,
-                      ),
-                      StatCard(
-                        icon: Icons.content_cut_rounded,
-                        label: 'Uygulanan Kesintiler (₺)',
-                        value: formatNumber.format(totalKesinti),
-                        color: Colors.redAccent,
-                        change: '',
-                        subtext: '${kDocs.length} kesinti kaydı',
-                        sparklineData: const [],
-                        isUp: false,
-                      ),
-                      StatCard(
-                        icon: Icons.money_off_rounded,
-                        label: 'Kalan Süt Borcu (₺)',
-                        value: formatNumber.format(debt),
-                        color: AppColors.danger,
-                        change: '-%4,3',
-                        subtext: 'Üreticilere kalan borç',
-                        sparklineData: const [40, 38, 35, 33, 30, 28, 25],
-                        isUp: false,
-                      ),
-                    ];
-
-                    Widget statsGrid;
-                    if (isDesktop) {
-                      statsGrid = Row(
-                        children: cards.map((c) => Expanded(child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 6),
-                          child: c,
-                        ))).toList(),
-                      );
-                    } else {
-                      statsGrid = StatsGrid(
-                        crossAxisCount: isTablet ? 3 : 2,
-                        spacing: 12,
-                        children: cards,
-                      );
+                    // Previous
+                    final prevCezalar = cDocs.where((doc) => _isDocBeforeSelectedMonth(doc, _maliOzetMonth)).toList();
+                    double prevCezaVal = 0.0;
+                    for (var doc in prevCezalar) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      final durum = data['durum'] as String? ?? 'aktif';
+                      if (durum == 'iptal') continue;
+                      final tip = data['tip'] as String? ?? 'miktarsal';
+                      if (tip == 'oransal') {
+                        final double oran = (data['oran'] as num?)?.toDouble() ?? 0.0;
+                        prevCezaVal += prevAlacak * (oran / 100.0);
+                      } else {
+                        final double tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
+                        prevCezaVal += tutar;
+                      }
                     }
 
-                final recentCollectionsWidget = AppCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Son Tahsilat Kayıtları', style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600)),
-                      const SizedBox(height: 14),
-                      if (docs.isEmpty)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 24),
-                          child: Center(
-                            child: Text('Henüz tahsilat kaydı bulunmuyor.', style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray500)),
-                          ),
-                        )
-                      else
-                        ListView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: docs.length > 5 ? 5 : docs.length,
-                          itemBuilder: (context, idx) {
-                            final data = docs[idx].data() as Map<String, dynamic>;
-                            final uretici = data['uretici'] ?? '-';
-                            final tutarVal = data['tutar'] ?? 0;
-                            final tutarStr = tutarVal is num ? tutarVal.toStringAsFixed(0) : tutarVal.toString();
-                            final tarih = data['tarih'] ?? '';
-                            final saat = data['saat'] ?? '';
+                    // Up to
+                    final upToCezalar = cDocs.where((doc) => _isDocUpToSelectedMonth(doc, _maliOzetMonth)).toList();
+                    double upToCezaVal = 0.0;
+                    for (var doc in upToCezalar) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      final durum = data['durum'] as String? ?? 'aktif';
+                      if (durum == 'iptal') continue;
+                      final tip = data['tip'] as String? ?? 'miktarsal';
+                      if (tip == 'oransal') {
+                        final double oran = (data['oran'] as num?)?.toDouble() ?? 0.0;
+                        upToCezaVal += upToAlacak * (oran / 100.0);
+                      } else {
+                        final double tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
+                        upToCezaVal += tutar;
+                      }
+                    }
 
-                            return Container(
-                              margin: const EdgeInsets.only(bottom: 6),
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                              decoration: BoxDecoration(color: AppColors.gray50, borderRadius: BorderRadius.circular(8)),
-                              child: Row(
-                                children: [
-                                  Container(
-                                    width: 30,
-                                    height: 30,
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFE8F5E9),
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: const Center(
-                                      child: Icon(Icons.monetization_on_rounded, color: Colors.green, size: 16),
-                                    ),
+                    return StreamBuilder<QuerySnapshot>(
+                      stream: FirebaseFirestore.instance
+                          .collection('urunler')
+                          .where('firma', isEqualTo: currentFirmaName)
+                          .snapshots(),
+                      builder: (context, urunlerSnap) {
+                        final Map<String, String> productToCategory = {};
+                        if (urunlerSnap.hasData) {
+                          for (var doc in urunlerSnap.data!.docs) {
+                            final uData = doc.data() as Map<String, dynamic>;
+                            final String ad = uData['ad'] ?? '';
+                            final String kat = uData['kategori'] ?? 'Diğer';
+                            if (ad.isNotEmpty) {
+                              productToCategory[ad.toLowerCase().trim()] = kat;
+                            }
+                          }
+                        }
+
+                        return StreamBuilder<QuerySnapshot>(
+                          stream: FirebaseFirestore.instance
+                              .collection('urunler_siparisler')
+                              .where('firma', isEqualTo: currentFirmaName)
+                              .snapshots(),
+                          builder: (context, siparisSnap) {
+                            final sDocs = siparisSnap.data?.docs ?? [];
+                            final thisMonthSiparisler = sDocs.where((doc) {
+                              final sData = doc.data() as Map<String, dynamic>;
+                              final durum = sData['durum'] ?? 'Bekliyor';
+                              return durum == 'Teslim Edildi' && _isDocInSelectedMonth(doc, _maliOzetMonth);
+                            }).toList();
+
+                            double hijyenGelir = 0.0;
+                            double yemGelir = 0.0;
+                            double tohumGelir = 0.0;
+                            double ekipmanGelir = 0.0;
+                            double digerGelir = 0.0;
+
+                            for (var doc in thisMonthSiparisler) {
+                              final sData = doc.data() as Map<String, dynamic>;
+                              final List<dynamic> items = sData['kalemler'] ?? [];
+                              for (var item in items) {
+                                if (item is Map) {
+                                  final String urunName = item['urun'] ?? '';
+                                  final double totalItem = (item['toplam'] as num?)?.toDouble() ?? 0.0;
+                                  final String category = productToCategory[urunName.toLowerCase().trim()] ?? '';
+
+                                  if (category.toLowerCase() == 'yem') {
+                                    yemGelir += totalItem;
+                                  } else if (category.toLowerCase() == 'hijyen') {
+                                    hijyenGelir += totalItem;
+                                  } else if (category.toLowerCase() == 'tohum') {
+                                    tohumGelir += totalItem;
+                                  } else if (category.toLowerCase() == 'ekipman') {
+                                    ekipmanGelir += totalItem;
+                                  } else {
+                                    final lowerUrun = urunName.toLowerCase();
+                                    if (lowerUrun.contains('yem')) {
+                                      yemGelir += totalItem;
+                                    } else if (lowerUrun.contains('hijyen') || lowerUrun.contains('deterjan') || lowerUrun.contains('dezenfektan') || lowerUrun.contains('sabun')) {
+                                      hijyenGelir += totalItem;
+                                    } else if (lowerUrun.contains('tohum')) {
+                                      tohumGelir += totalItem;
+                                    } else if (lowerUrun.contains('ekipman') || lowerUrun.contains('makine') || lowerUrun.contains('pompa')) {
+                                      ekipmanGelir += totalItem;
+                                    } else {
+                                      digerGelir += totalItem;
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                            final double totalProductGelir = hijyenGelir + yemGelir + tohumGelir + ekipmanGelir + digerGelir;
+
+                            // 4. Financial Calculations based on selected month
+                            final double netOdeyecek = (grossMilkPrice - totalAvans - totalCeza - totalKesinti).clamp(0.0, double.infinity);
+                            final double odenen = totalTahsilat;
+                            final double kalan = (netOdeyecek - odenen).clamp(0.0, double.infinity);
+
+                            // devir balances calculations
+                            final double prevNetOwed = prevAlacak - prevTahsilatVal - prevAvansVal - prevKesintiVal - prevCezaVal;
+                            double devirBorc = 0.0;
+                            double devirAlacak = 0.0;
+                            if (prevNetOwed > 0) devirAlacak = prevNetOwed;
+                            else if (prevNetOwed < 0) devirBorc = prevNetOwed.abs();
+
+                            final double nextNetOwed = upToAlacak - upToTahsilatVal - upToAvansVal - upToKesintiVal - upToCezaVal;
+                            double devirBorcNext = 0.0;
+                            double devirAlacakNext = 0.0;
+                            if (nextNetOwed > 0) devirAlacakNext = nextNetOwed;
+                            else if (nextNetOwed < 0) devirBorcNext = nextNetOwed.abs();
+
+                            final double totalExpenses = grossMilkPrice + totalAvans + totalCeza + totalKesinti;
+                            final double totalIncomes = milkRevenue + totalProductGelir;
+                            final double netProfit = totalIncomes - totalExpenses;
+
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // Month Selector Banner (Gradient / Pill Style matching Mockup)
+                                Container(
+                                  margin: const EdgeInsets.symmetric(vertical: 8),
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primary50,
+                                    borderRadius: BorderRadius.circular(30),
+                                    border: Border.all(color: AppColors.primary100),
                                   ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(uretici, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w500)),
-                                        Text('$tarih • $saat', style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray400)),
-                                      ],
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      IconButton(
+                                        icon: const Icon(Icons.chevron_left_rounded, color: AppColors.primary600),
+                                        onPressed: () {
+                                          setState(() {
+                                            _maliOzetMonth = DateTime(_maliOzetMonth.year, _maliOzetMonth.month - 1, 1);
+                                          });
+                                        },
+                                      ),
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Icon(Icons.calendar_month_rounded, color: AppColors.primary600, size: 20),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            monthStr,
+                                            style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.primary700),
+                                          ),
+                                        ],
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(Icons.chevron_right_rounded, color: AppColors.primary600),
+                                        onPressed: () {
+                                          setState(() {
+                                            _maliOzetMonth = DateTime(_maliOzetMonth.year, _maliOzetMonth.month + 1, 1);
+                                          });
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+
+                                // 2x2 Primary Financial Metrics Grid (Mockup Layout)
+                                GridView.count(
+                                  crossAxisCount: isDesktop ? 4 : 2,
+                                  crossAxisSpacing: 12,
+                                  mainAxisSpacing: 12,
+                                  shrinkWrap: true,
+                                  physics: const NeverScrollableScrollPhysics(),
+                                  childAspectRatio: isDesktop ? 1.5 : (isTablet ? 1.4 : 1.3),
+                                  children: [
+                                    _buildMockupCard('Toplam Süt Tutarı', formatNumber.format(grossMilkPrice), Icons.water_drop_rounded, AppColors.primary600),
+                                    _buildMockupCard('Ödenecek Tutar', formatNumber.format(netOdeyecek), Icons.query_builder_rounded, AppColors.warning, valueColor: AppColors.warning),
+                                    _buildMockupCard('Yapılan Ödeme', formatNumber.format(odenen), Icons.check_circle_rounded, AppColors.success),
+                                    _buildMockupCard('Kalan Ödeme', formatNumber.format(kalan), Icons.arrow_upward_rounded, const Color(0xFF6366F1)),
+                                  ],
+                                ),
+                                const SizedBox(height: 16),
+
+                                // Carryover Balances (Borç / Alacak Details Card)
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: _buildMockupCarryoverCard(
+                                        'Önceki Aydan Devreden',
+                                        devirBorc,
+                                        devirAlacak,
+                                      ),
                                     ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: _buildMockupCarryoverCard(
+                                        'Diğer Aya Devreden',
+                                        devirBorcNext,
+                                        devirAlacakNext,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 16),
+
+                                // Expenses & Incomes Summary Cards
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: _buildMockupFinanceDetailsCard(
+                                        'Giderler Tutar',
+                                        formatNumber.format(totalExpenses),
+                                        Icons.arrow_downward_rounded,
+                                        AppColors.danger,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: _buildMockupFinanceDetailsCard(
+                                        'Gelirler tutar',
+                                        formatNumber.format(totalIncomes),
+                                        Icons.people_alt_rounded,
+                                        AppColors.success,
+                                        valueColor: AppColors.gray800,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 16),
+
+                                // Net profit highlight banner
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      colors: netProfit >= 0 
+                                          ? [const Color(0xFF10B981), const Color(0xFF059669)] 
+                                          : [const Color(0xFFEF4444), const Color(0xFFDC2626)],
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                    ),
+                                    borderRadius: BorderRadius.circular(16),
+                                    boxShadow: AppShadows.md,
                                   ),
-                                  Text(
-                                    '+ $tutarStr ₺',
-                                    style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.green),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 44,
+                                        height: 44,
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withOpacity(0.2),
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: const Center(
+                                          child: Icon(Icons.analytics_rounded, color: Colors.white, size: 24),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 16),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              'Net Kar / Zarar',
+                                              style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white),
+                                            ),
+                                            Text(
+                                              'Süt Satış ve Ürün Karının Toplamı',
+                                              style: GoogleFonts.inter(fontSize: 11, color: Colors.white.withOpacity(0.85)),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Text(
+                                        (netProfit >= 0 ? '+' : '') + formatNumber.format(netProfit) + ' ₺',
+                                        style: GoogleFonts.inter(fontWeight: FontWeight.w900, fontSize: 20, color: Colors.white),
+                                      ),
+                                    ],
                                   ),
-                                ],
-                              ),
+                                ),
+                                const SizedBox(height: 24),
+
+                                // AVANS VE TAHSİLAT Section
+                                Center(
+                                  child: Text(
+                                    'AVANS VE TAHSİLAT',
+                                    style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.gray400, letterSpacing: 0.8),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: _buildMockupAvansTahsilatCard(
+                                        'Bu Ay Verilen Avans',
+                                        formatNumber.format(totalAvans) + '₺',
+                                        Icons.payments_outlined,
+                                        AppColors.primary600,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: _buildMockupAvansTahsilatCard(
+                                        'Tahsilat',
+                                        formatNumber.format(totalTahsilat) + '₺',
+                                        Icons.account_balance_wallet_outlined,
+                                        AppColors.success,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 24),
+
+                                // ÜRÜN GELİRLERİ Section
+                                Center(
+                                  child: Text(
+                                    'ÜRÜN GELİRLERİ',
+                                    style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.gray400, letterSpacing: 0.8),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                Column(
+                                  children: [
+                                    _buildMockupProductRevenueRow('1. HİJYEN', formatNumber.format(hijyenGelir) + '₺', Icons.cleaning_services_rounded),
+                                    _buildMockupProductRevenueRow('2. YEM', formatNumber.format(yemGelir) + '₺', Icons.agriculture_rounded),
+                                    _buildMockupProductRevenueRow('3. TOHUM', formatNumber.format(tohumGelir) + '₺', Icons.grain_rounded),
+                                    _buildMockupProductRevenueRow('4. EKİPMAN', formatNumber.format(ekipmanGelir) + '₺', Icons.construction_rounded),
+                                    _buildMockupProductRevenueRow('5. DİĞER', formatNumber.format(digerGelir) + '₺', Icons.widgets_rounded),
+                                  ],
+                                ),
+                              ],
                             );
                           },
-                        ),
-                    ],
-                  ),
-                );
-
-                return Column(
-                  children: [
-                    statsGrid,
-                    const SizedBox(height: 24),
-                    recentCollectionsWidget,
-                  ],
+                        );
+                      },
+                    );
+                  },
                 );
               },
             );
@@ -1609,8 +2034,296 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
         );
       },
     );
-  },
-);
+  }
+
+  Widget _buildMockupCard(String label, String value, IconData icon, Color color, {Color? valueColor}) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.gray200),
+        boxShadow: AppShadows.sm,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Center(
+                  child: Icon(icon, color: color, size: 16),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  label,
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.gray500,
+                    height: 1.25,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          const Spacer(),
+          Text(
+            value,
+            style: GoogleFonts.inter(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: valueColor ?? AppColors.gray800,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMockupCarryoverCard(String title, double borc, double alacak) {
+    final formatNumber = NumberFormat('#,##0', 'tr_TR');
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.gray200),
+        boxShadow: AppShadows.sm,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: AppColors.gray700,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 10),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Borç :',
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  color: AppColors.gray400,
+                ),
+              ),
+              Text(
+                formatNumber.format(borc),
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: borc > 0 ? AppColors.danger : AppColors.gray600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 5),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Alacak :',
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  color: AppColors.gray400,
+                ),
+              ),
+              Text(
+                formatNumber.format(alacak),
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: alacak > 0 ? AppColors.success : AppColors.gray600,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMockupFinanceDetailsCard(String label, String value, IconData icon, Color color, {Color? valueColor}) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.gray200),
+        boxShadow: AppShadows.sm,
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Icon(icon, color: color, size: 18),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  label,
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.gray500,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: GoogleFonts.inter(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: valueColor ?? color,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMockupAvansTahsilatCard(String label, String value, IconData icon, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.gray200),
+        boxShadow: AppShadows.sm,
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Icon(icon, color: color, size: 16),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: GoogleFonts.inter(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.gray500,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: GoogleFonts.inter(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.gray800,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMockupProductRevenueRow(String label, String value, IconData icon) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.gray200),
+        boxShadow: AppShadows.sm,
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: AppColors.primary50,
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Icon(icon, color: AppColors.primary600, size: 14),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              label,
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: AppColors.gray700,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          Text(
+            value,
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              color: AppColors.primary600,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildListItemRow(int index, String name, String value, String change, Color trendColor) {
@@ -2161,8 +2874,8 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
               Expanded(
                 child: Column(
                   children: [
-                    _buildDonutLegend('A Kalite', '%45', '5.600 L', AppColors.primary600),
-                    _buildDonutLegend('B Kalite', '%35', '4.350 L', AppColors.success),
+                    _buildDonutLegend('Soğuk Süt', '%45', '5.600 L', AppColors.primary600),
+                    _buildDonutLegend('Sıcak Süt', '%35', '4.350 L', AppColors.success),
                     _buildDonutLegend('C kalite', '%15', '1.850 L', AppColors.warning),
                     _buildDonutLegend('D kalite', '%5', '650 L', AppColors.danger),
                   ],

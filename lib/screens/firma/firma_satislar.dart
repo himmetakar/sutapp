@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../providers/auth_provider.dart';
 import '../../config/theme.dart';
 import '../../widgets/common_widgets.dart';
+import '../../services/firestore_service.dart';
 
 class FirmaSatislarScreen extends StatefulWidget {
   const FirmaSatislarScreen({super.key});
@@ -106,9 +107,24 @@ class _FirmaSatislarScreenState extends State<FirmaSatislarScreen> {
                         .limit(1)
                         .get();
                     if (urunSnap.docs.isNotEmpty) {
-                      await urunSnap.docs.first.reference.update({
-                        'stok': FieldValue.increment(-amount),
+                      final uDoc = urunSnap.docs.first;
+                      final double currentStock = (uDoc['stok'] as num?)?.toDouble() ?? 0.0;
+                      final double minStok = (uDoc.data() as Map<String, dynamic>)['minStok']?.toDouble() ?? 10.0;
+                      final String birim = (uDoc.data() as Map<String, dynamic>)['birim'] ?? 'Adet';
+                      final double newStock = (currentStock - amount).clamp(0.0, double.infinity);
+                      await uDoc.reference.update({
+                        'stok': newStock,
                       });
+                      
+                      if (newStock <= minStok) {
+                        await FirestoreService().sendNotification(
+                          recipientName: currentFirmaName,
+                          role: 'firma',
+                          baslik: 'Kritik Stok Uyarısı',
+                          icerik: '$product ürünü kritik stok limitinin altına düştü! Güncel Stok: ${newStock.toStringAsFixed(0)} $birim',
+                          type: 'stok',
+                        );
+                      }
                     }
 
                     Navigator.pop(ctx);

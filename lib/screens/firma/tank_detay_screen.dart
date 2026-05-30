@@ -376,7 +376,12 @@ class _TankDetayScreenState extends State<TankDetayScreen> {
                                             final data = doc.data() as Map<String, dynamic>;
                                             final String producer = data['u'] ?? '-';
                                             final String time = data['s'] ?? '';
-                                            final String quality = data['b'] ?? 'A Kalite';
+                                            final rawQuality = data['kalite'] ?? data['tip'] ?? data['b'] ?? 'Soğuk Süt';
+                                            final String quality = (rawQuality == 'A Kalite' || rawQuality == 'Soğuk süt')
+                                                ? 'Soğuk Süt'
+                                                : (rawQuality == 'B Kalite' || rawQuality == 'Sıcak süt')
+                                                    ? 'Sıcak Süt'
+                                                    : rawQuality;
                                             final mVal = data['m'] ?? 0;
                                             final double m = mVal is num ? mVal.toDouble() : (double.tryParse(mVal.toString()) ?? 0.0);
 
