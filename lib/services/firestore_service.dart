@@ -738,6 +738,8 @@ class FirestoreService {
     String? odemeYontemi,
     String? aciklama,
     String? firma,
+    String? tip,
+    DateTime? date,
   }) async {
     String resolvedFirma = firma ?? '';
     if (resolvedFirma.isEmpty) {
@@ -750,16 +752,56 @@ class FirestoreService {
       }
     }
 
+    final targetDate = date ?? DateTime.now();
+
     await _db.collection('tahsilatlar').add({
       'uretici': producerName,
       'tutar': tutar,
       'odemeYontemi': odemeYontemi ?? 'Nakit',
       'aciklama': aciklama ?? '',
-      'tarih': DateFormat('dd.MM.yyyy').format(DateTime.now()),
-      'saat': DateFormat('HH:mm').format(DateTime.now()),
-      'timestamp': FieldValue.serverTimestamp(),
+      'tarih': DateFormat('dd.MM.yyyy').format(targetDate),
+      'saat': DateFormat('HH:mm').format(targetDate),
+      'timestamp': Timestamp.fromDate(targetDate),
       'firma': resolvedFirma,
+      if (tip != null) 'tip': tip,
     });
+  }
+
+  String getTahsilatType(Map<String, dynamic> data) {
+    if (data['tip'] != null) {
+      return data['tip'] as String;
+    }
+    // Legacy fallback
+    final desc = (data['aciklama'] as String? ?? '').toLowerCase();
+    
+    // Check for collection keywords first (even if they also contain the word "ödeme")
+    if (desc.contains('tahsilat') || 
+        desc.contains('tahsil') || 
+        desc.contains('yem') || 
+        desc.contains('avans geri') || 
+        desc.contains('borç') || 
+        desc.contains('borc') || 
+        desc.contains('ürün') || 
+        desc.contains('urun') || 
+        desc.contains('alım') || 
+        desc.contains('alim') || 
+        desc.contains('kabul')) {
+      return 'tahsilat';
+    }
+    
+    // Check for milk payment keywords
+    if (desc.contains('süt') || 
+        desc.contains('sut') || 
+        desc.contains('bedel') || 
+        desc.contains('ödeme') || 
+        desc.contains('odeme') || 
+        desc.contains('toplu') || 
+        desc.contains('hakediş') || 
+        desc.contains('hakedis')) {
+      return 'odeme';
+    }
+    
+    return 'tahsilat';
   }
 
   // --- DRIVER SPECIFIC STREAMS ---
@@ -1384,12 +1426,19 @@ class FirestoreService {
       });
     }
 
-    // 2. Total Payments (Tahsilat)
-    double totalTahsilat = 0.0;
+    // 2. Total Payments (Odeme) & Collections (Tahsilat)
+    double totalTahsilat = 0.0; // payments made by company to producer (called totalOdeme but keep return key as totalTahsilat for UI compatibility)
+    double totalProducerTahsilat = 0.0; // payments made by producer to company (actual collection)
     for (var doc in tahsilatlar) {
       final data = doc.data() as Map<String, dynamic>;
       final tVal = data['tutar'];
-      totalTahsilat += tVal is num ? tVal.toDouble() : (double.tryParse(tVal.toString()) ?? 0.0);
+      final val = tVal is num ? tVal.toDouble() : (double.tryParse(tVal.toString()) ?? 0.0);
+      final type = getTahsilatType(data);
+      if (type == 'tahsilat') {
+        totalProducerTahsilat += val;
+      } else {
+        totalTahsilat += val;
+      }
     }
 
     // 3. Active Advances (Avans)
@@ -1443,13 +1492,14 @@ class FirestoreService {
 
     final double totalKesinti = totalManualKesinti + dynamicKesintiSum;
 
-    // Net balance = gross milk receivable - payments - active advances - active kesintiler - active cezalar + devirler
-    final double netBalance = toplamAlacak - totalTahsilat - totalAvans - totalKesinti - totalCeza + totalDevir;
+    // Net balance = gross milk receivable - payments - active advances - active kesintiler - active cezalar + devirler + collections from producer
+    final double netBalance = toplamAlacak - totalTahsilat - totalAvans - totalKesinti - totalCeza + totalDevir + totalProducerTahsilat;
 
     return {
       'toplamLitre': toplamLitre,
       'toplamAlacak': toplamAlacak,
       'totalTahsilat': totalTahsilat,
+      'totalProducerTahsilat': totalProducerTahsilat,
       'totalAvans': totalAvans,
       'totalKesinti': totalKesinti,
       'totalCeza': totalCeza,

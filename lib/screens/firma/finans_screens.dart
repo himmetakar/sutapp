@@ -219,13 +219,20 @@ class _FinansalGenelBakisScreenState extends State<FinansalGenelBakisScreen> {
                           // Parse collections/revenue
                           if (tahsilatSnapshot.hasData) {
                             final docs = tahsilatSnapshot.data!.docs;
+                            final firestoreService = FirestoreService();
                             for (var doc in docs) {
                               final data = doc.data() as Map<String, dynamic>;
                               final t = (data['timestamp'] as Timestamp?)?.toDate();
                               if (t != null && t.year == _selectedDate.year && t.month == _selectedDate.month) {
-                                gelirCount++;
                                 final double val = (data['tutar'] as num?)?.toDouble() ?? 0.0;
-                                totalGelir += val;
+                                final type = firestoreService.getTahsilatType(data);
+                                if (type == 'tahsilat') {
+                                  gelirCount++;
+                                  totalGelir += val;
+                                } else {
+                                  giderCount++;
+                                  totalGider += val;
+                                }
                               }
                             }
                           }
@@ -2912,6 +2919,7 @@ class _OdemeGecmisiScreenState extends State<OdemeGecmisiScreen> {
 
           for (var doc in docs) {
             final data = doc.data() as Map<String, dynamic>;
+            if (FirestoreService().getTahsilatType(data) != 'odeme') continue;
             final timestamp = data['timestamp'] as Timestamp?;
             final date = timestamp?.toDate() ?? DateTime.now();
 

@@ -27,6 +27,7 @@ class _SutOdemeleriScreenState extends State<SutOdemeleriScreen> {
   
   final Set<String> _selectedProducers = {};
   final Map<String, TextEditingController> _paymentControllers = {};
+  final Map<String, double> _producerBalances = {};
   String _bulkPaymentMethod = 'Nakit';
 
   @override
@@ -34,6 +35,15 @@ class _SutOdemeleriScreenState extends State<SutOdemeleriScreen> {
     _searchCtrl.dispose();
     _paymentControllers.forEach((_, ctrl) => ctrl.dispose());
     super.dispose();
+  }
+
+  DateTime _getPaymentDate() {
+    final now = DateTime.now();
+    if (_selectedMonth.year == now.year && _selectedMonth.month == now.month) {
+      return now;
+    } else {
+      return DateTime(_selectedMonth.year, _selectedMonth.month, 1, now.hour, now.minute, now.second);
+    }
   }
 
   void _changeMonth(int delta) {
@@ -51,6 +61,11 @@ class _SutOdemeleriScreenState extends State<SutOdemeleriScreen> {
       _paymentControllers[producerName] = TextEditingController(
         text: defaultValue > 0 ? defaultValue.toStringAsFixed(2) : '',
       );
+    } else {
+      final ctrl = _paymentControllers[producerName]!;
+      if (ctrl.text.isEmpty && defaultValue > 0) {
+        ctrl.text = defaultValue.toStringAsFixed(2);
+      }
     }
     return _paymentControllers[producerName]!;
   }
@@ -141,7 +156,18 @@ class _SutOdemeleriScreenState extends State<SutOdemeleriScreen> {
                         odemeYontemi: odemeYontemi,
                         aciklama: aciklamaCtrl.text,
                         firma: currentFirma,
+                        tip: 'odeme',
+                        date: _getPaymentDate(),
                       );
+                      if (mounted) {
+                        setState(() {
+                          _selectedProducers.remove(producerName);
+                          final ctrl = _paymentControllers[producerName];
+                          if (ctrl != null) {
+                            ctrl.clear();
+                          }
+                        });
+                      }
                       Navigator.pop(ctx);
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(content: Text('$producerName için ${tutar.toStringAsFixed(2)} ₺ ödeme kaydedildi!'), backgroundColor: AppColors.success),
@@ -407,19 +433,31 @@ class _SutOdemeleriScreenState extends State<SutOdemeleriScreen> {
       });
     }
 
-    // Tahsilatlar
+    // Tahsilatlar & Odemeler
     for (var doc in tahsilatlar) {
       final data = doc.data() as Map<String, dynamic>;
       final dateStr = data['tarih'] ?? '-';
       final double tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
-      items.add({
-        'tarih': dateStr,
-        'tur': 'Ödeme (Süt Bedeli)',
-        'aciklama': '${data['odemeYontemi'] ?? 'Nakit'} - ${data['aciklama'] ?? ''}',
-        'alacak': 0.0,
-        'borc': tutar,
-        'color': Colors.red,
-      });
+      final type = _firestoreService.getTahsilatType(data);
+      if (type == 'tahsilat') {
+        items.add({
+          'tarih': dateStr,
+          'tur': 'Tahsilat (Ödeme Alındı)',
+          'aciklama': '${data['odemeYontemi'] ?? 'Nakit'} - ${data['aciklama'] ?? ''}',
+          'alacak': tutar,
+          'borc': 0.0,
+          'color': Colors.green,
+        });
+      } else {
+        items.add({
+          'tarih': dateStr,
+          'tur': 'Ödeme (Süt Bedeli)',
+          'aciklama': '${data['odemeYontemi'] ?? 'Nakit'} - ${data['aciklama'] ?? ''}',
+          'alacak': 0.0,
+          'borc': tutar,
+          'color': Colors.red,
+        });
+      }
     }
 
     // Avanslar
@@ -606,20 +644,29 @@ class _SutOdemeleriScreenState extends State<SutOdemeleriScreen> {
 
     for (var producerName in _selectedProducers) {
       final ctrl = _paymentControllers[producerName];
-      if (ctrl != null) {
+      double? amount;
+      if (ctrl != null && ctrl.text.trim().isNotEmpty) {
         final amountText = ctrl.text.trim().replaceAll(',', '.');
-        final double? amount = double.tryParse(amountText);
-        if (amount != null && amount > 0) {
-          await _firestoreService.recordTahsilat(
-            producerName: producerName,
-            tutar: amount,
-            odemeYontemi: _bulkPaymentMethod,
-            aciklama: '${DateFormat('MMMM yyyy', 'tr_TR').format(_selectedMonth)} Toplu Süt Ödemesi',
-            firma: currentFirmaName,
-          );
-          paidCount++;
-          totalPaidAmount += amount;
-        }
+        amount = double.tryParse(amountText);
+      }
+      
+      // Fallback to calculated monthKalan if empty or invalid
+      if (amount == null || amount <= 0) {
+        amount = _producerBalances[producerName] ?? 0.0;
+      }
+
+      if (amount > 0) {
+        await _firestoreService.recordTahsilat(
+          producerName: producerName,
+          tutar: amount,
+          odemeYontemi: _bulkPaymentMethod,
+          aciklama: '${DateFormat('MMMM yyyy', 'tr_TR').format(_selectedMonth)} Toplu Süt Ödemesi',
+          firma: currentFirmaName,
+          tip: 'odeme',
+          date: _getPaymentDate(),
+        );
+        paidCount++;
+        totalPaidAmount += amount;
       }
     }
 
@@ -789,21 +836,24 @@ class _SutOdemeleriScreenState extends State<SutOdemeleriScreen> {
                                     totalOutstandingCompanyDebt += monthAlacak;
                                     totalPaidThisMonth += monthOdenen;
                                     totalKalanThisMonth += monthKalan;
+                                    _producerBalances[name] = monthKalan;
 
-                                    compiledData.add({
-                                      'producer': p,
-                                      'fullLedger': fullLedger,
-                                      'monthLedger': monthLedger,
-                                      'monthAlacak': monthAlacak,
-                                      'monthOdenen': monthOdenen,
-                                      'monthKalan': monthKalan,
-                                      'collections': pCollections,
-                                      'tahsilatlar': pTahsilatlar,
-                                      'avanslar': pAvanslar,
-                                      'kesintiler': pKesintiler,
-                                      'cezalar': pCezalar,
-                                      'devirler': pDevirler,
-                                    });
+                                    if (monthKalan > 0.01) {
+                                      compiledData.add({
+                                        'producer': p,
+                                        'fullLedger': fullLedger,
+                                        'monthLedger': monthLedger,
+                                        'monthAlacak': monthAlacak,
+                                        'monthOdenen': monthOdenen,
+                                        'monthKalan': monthKalan,
+                                        'collections': pCollections,
+                                        'tahsilatlar': pTahsilatlar,
+                                        'avanslar': pAvanslar,
+                                        'kesintiler': pKesintiler,
+                                        'cezalar': pCezalar,
+                                        'devirler': pDevirler,
+                                      });
+                                    }
                                   }
 
                                   return Column(

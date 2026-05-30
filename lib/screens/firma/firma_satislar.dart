@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -34,13 +35,44 @@ class _FirmaSatislarScreenState extends State<FirmaSatislarScreen> {
       return;
     }
 
+    // Fetch products in stock
+    final productsQuery = await _db.collection('urunler')
+        .where('firma', isEqualTo: currentFirmaName)
+        .get();
+    final products = productsQuery.docs.map((doc) {
+      final data = doc.data();
+      return {
+        'id': doc.id,
+        'ad': data['ad'] as String? ?? '',
+        'stok': (data['stok'] as num?)?.toDouble() ?? 0.0,
+        'birim': data['birim'] as String? ?? 'Adet',
+        'fiyat': (data['fiyat'] as num?)?.toDouble() ?? 0.0,
+      };
+    }).where((p) => (p['ad'] as String).isNotEmpty && (p['stok'] as double) > 0).toList();
+
+    if (products.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Satış yapmak için stokta en az bir ürün bulunmalıdır! Lütfen önce fatura ekleyin veya stok girişi yapın.'),
+          backgroundColor: AppColors.danger,
+        ),
+      );
+      return;
+    }
+
     showDialog(
       context: context,
       builder: (ctx) {
         String? selectedProducer = producers.first;
-        final productCtrl = TextEditingController(text: 'Yem (Çuval)');
-        final amountCtrl = TextEditingController(text: '10');
-        final priceCtrl = TextEditingController(text: '5000'); // Toplam Tutar veya adet fiyatı
+        
+        // Product variables
+        String? selectedProductAd = products.first['ad'] as String;
+        double selectedProductPrice = products.first['fiyat'] as double;
+        double selectedProductStock = products.first['stok'] as double;
+        String selectedProductUnit = products.first['birim'] as String;
+
+        final amountCtrl = TextEditingController(text: '1');
+        final priceCtrl = TextEditingController(text: selectedProductPrice.toStringAsFixed(0));
         
         return StatefulBuilder(
           builder: (context, setState) {
@@ -61,15 +93,48 @@ class _FirmaSatislarScreenState extends State<FirmaSatislarScreen> {
                       decoration: const InputDecoration(contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
                     ),
                     const SizedBox(height: 12),
-                    TextField(
-                      controller: productCtrl,
-                      decoration: const InputDecoration(labelText: 'Satılan Ürün', hintText: 'Örn: Yem, Küspe, Saman'),
+                    Text('Satılan Ürün', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.gray500)),
+                    const SizedBox(height: 6),
+                    DropdownButtonFormField<String>(
+                      value: selectedProductAd,
+                      items: products.map((p) {
+                        final String ad = p['ad'] as String;
+                        final double stock = p['stok'] as double;
+                        final String birim = p['birim'] as String;
+                        return DropdownMenuItem(
+                          value: ad,
+                          child: Text('$ad (Stok: ${stock.toStringAsFixed(0)} $birim)'),
+                        );
+                      }).toList(),
+                      onChanged: (val) {
+                        setState(() {
+                          selectedProductAd = val;
+                          final matched = products.firstWhere((p) => p['ad'] == val);
+                          selectedProductPrice = matched['fiyat'] as double;
+                          selectedProductStock = matched['stok'] as double;
+                          selectedProductUnit = matched['birim'] as String;
+                          
+                          // Recalculate price when product changes
+                          final qty = double.tryParse(amountCtrl.text) ?? 1.0;
+                          priceCtrl.text = (qty * selectedProductPrice).toStringAsFixed(0);
+                        });
+                      },
+                      decoration: const InputDecoration(contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
                     ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: amountCtrl,
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      decoration: const InputDecoration(labelText: 'Miktar (Adet/Kg)', hintText: 'Örn: 10'),
+                      decoration: InputDecoration(
+                        labelText: 'Miktar ($selectedProductUnit)',
+                        hintText: 'Örn: 10',
+                      ),
+                      onChanged: (val) {
+                        final qty = double.tryParse(val) ?? 0.0;
+                        setState(() {
+                          priceCtrl.text = (qty * selectedProductPrice).toStringAsFixed(0);
+                        });
+                      },
                     ),
                     const SizedBox(height: 12),
                     TextField(
@@ -86,9 +151,24 @@ class _FirmaSatislarScreenState extends State<FirmaSatislarScreen> {
                   onPressed: () async {
                     final amount = double.tryParse(amountCtrl.text) ?? 1.0;
                     final price = double.tryParse(priceCtrl.text) ?? 0.0;
-                    final product = productCtrl.text.trim();
-
+                    final product = selectedProductAd ?? '';
+ 
                     if (selectedProducer == null || product.isEmpty || price <= 0) return;
+ 
+                    // Check if requested amount exceeds stock
+                    if (amount > selectedProductStock) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Yetersiz stok! En fazla ${selectedProductStock.toStringAsFixed(0)} $selectedProductUnit satabilirsiniz.'),
+                          backgroundColor: AppColors.danger,
+                        ),
+                      );
+                      return;
+                    }
+
+                    final rand = Random();
+                    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+                    final orderId = '#' + List.generate(6, (index) => chars[rand.nextInt(chars.length)]).join();
 
                     await _db.collection('satislar').add({
                       'uretici': selectedProducer,
@@ -98,6 +178,29 @@ class _FirmaSatislarScreenState extends State<FirmaSatislarScreen> {
                       'tarih': DateFormat('dd.MM.yyyy').format(DateTime.now()),
                       'firma': currentFirmaName,
                       'timestamp': FieldValue.serverTimestamp(),
+                      'orderId': orderId,
+                    });
+
+                    // Create corresponding order in urunler_siparisler
+                    await _db.collection('urunler_siparisler').add({
+                      'id': orderId,
+                      'uretici': selectedProducer,
+                      'firma': currentFirmaName,
+                      'durum': 'Bekliyor',
+                      'tarih': DateFormat('dd MMMM yyyy', 'tr_TR').format(DateTime.now()),
+                      'saat': DateFormat('HH:mm').format(DateTime.now()),
+                      'toplam': price,
+                      'isDirectSale': true,
+                      'timestamp': FieldValue.serverTimestamp(),
+                      'kalemler': [
+                        {
+                          'urun': product,
+                          'miktar': amount,
+                          'birim': selectedProductUnit,
+                          'birimFiyat': price / amount,
+                          'toplam': price,
+                        }
+                      ],
                     });
 
                     // Decrement stock in urunler
@@ -127,9 +230,26 @@ class _FirmaSatislarScreenState extends State<FirmaSatislarScreen> {
                       }
                     }
 
+                    // Send notifications
+                    await FirestoreService().sendNotification(
+                      recipientName: selectedProducer!,
+                      role: 'uretici',
+                      baslik: 'Yeni Sipariş Tanımlandı',
+                      icerik: '$currentFirmaName firması size $product satışı tanımladı. Sipariş durumu: Bekliyor.',
+                      type: 'siparis',
+                    );
+
+                    await _notifyDriversForProducer(
+                      currentFirmaName,
+                      selectedProducer!,
+                      orderId,
+                      customBaslik: 'Yeni Dağıtım Talebi (Bekliyor)',
+                      customIcerik: '$selectedProducer üreticisine ait $orderId nolu yeni bir sipariş girildi, teslimat bekliyor.',
+                    );
+
                     Navigator.pop(ctx);
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Satış başarıyla kaydedildi! Üretici hesabına borç olarak yansıtıldı.'), backgroundColor: AppColors.success),
+                      const SnackBar(content: Text('Satış başarıyla kaydedildi! Üretici hesabına borç olarak yansıtıldı ve sipariş oluşturuldu.'), backgroundColor: AppColors.success),
                     );
                   },
                   style: ElevatedButton.styleFrom(
@@ -161,8 +281,17 @@ class _FirmaSatislarScreenState extends State<FirmaSatislarScreen> {
               final product = data['urun'] as String? ?? '';
               final amount = (data['miktar'] as num?)?.toDouble() ?? 0.0;
               final currentFirmaName = data['firma'] as String? ?? '';
+              final orderId = data['orderId'] as String?;
 
               await doc.reference.delete();
+
+              // Delete corresponding order in urunler_siparisler
+              if (orderId != null && orderId.isNotEmpty) {
+                final orderQuery = await _db.collection('urunler_siparisler').where('id', isEqualTo: orderId).get();
+                for (var oDoc in orderQuery.docs) {
+                  await oDoc.reference.delete();
+                }
+              }
 
               // Increment stock back
               if (product.isNotEmpty && amount > 0) {
@@ -323,5 +452,57 @@ class _FirmaSatislarScreenState extends State<FirmaSatislarScreen> {
         },
       ),
     );
+  }
+
+  Future<void> _notifyDriversForProducer(String firma, String ureticiName, String orderId, {String? customBaslik, String? customIcerik}) async {
+    try {
+      final prodSnap = await _db
+          .collection('ureticiler')
+          .where('name', isEqualTo: ureticiName)
+          .limit(1)
+          .get();
+      
+      if (prodSnap.docs.isEmpty) return;
+      final pData = prodSnap.docs.first.data();
+      final String group = pData['group'] ?? '';
+      final String bolge = pData['bolge'] ?? '';
+      final String birlik = pData['birlik'] ?? 'Yok';
+
+      final atamalarSnap = await _db
+          .collection('toplayici_atamalari')
+          .where('firma', isEqualTo: firma)
+          .get();
+
+      final Set<String> driversToNotify = {};
+      for (var doc in atamalarSnap.docs) {
+        final data = doc.data();
+        final hTip = data['hedefTip'];
+        final hAd = data['hedefAd'];
+        final driver = data['toplayici'] as String? ?? '';
+
+        if (driver.isEmpty) continue;
+
+        if (hTip == 'uretici' && hAd == ureticiName) {
+          driversToNotify.add(driver);
+        } else if (hTip == 'grup' && group.isNotEmpty && hAd == group) {
+          driversToNotify.add(driver);
+        } else if ((hTip == 'birlik' || hTip == 'bolge') &&
+            ((bolge.isNotEmpty && hAd == bolge) || (birlik.isNotEmpty && birlik != 'Yok' && hAd == birlik))) {
+          driversToNotify.add(driver);
+        }
+      }
+
+      for (var driverName in driversToNotify) {
+        await FirestoreService().sendNotification(
+          recipientName: driverName,
+          role: 'surucu',
+          baslik: customBaslik ?? 'Yeni Dağıtım Görevi',
+          icerik: customIcerik ?? '$ureticiName üreticisine ait $orderId nolu sipariş hazırlandı, teslim alabilirsiniz.',
+          type: 'siparis',
+        );
+      }
+    } catch (e) {
+      print('Error notifying drivers: $e');
+    }
   }
 }

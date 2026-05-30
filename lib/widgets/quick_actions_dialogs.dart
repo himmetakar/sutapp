@@ -714,6 +714,7 @@ class _TahsilatEkleScreenState extends State<_TahsilatEkleScreen> {
         odemeYontemi: _odemeYontemi,
         aciklama: _aciklamaCtrl.text,
         firma: widget.currentFirmaName,
+        tip: 'tahsilat',
       );
 
       if (mounted) {

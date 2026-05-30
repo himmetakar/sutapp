@@ -348,12 +348,19 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
         }
         devirSum += pastMilkVal;
 
-        // Past tahsilatlar (payments by producer to company)
+        // Past tahsilatlar & odemeler
         for (var doc in tahsilatlar) {
           final ts = doc['timestamp'] as Timestamp?;
           if (ts == null) continue;
           if (ts.toDate().isBefore(startOfMonth)) {
-            devirSum += (doc['tutar'] as num?)?.toDouble() ?? 0.0;
+            final data = doc.data() as Map<String, dynamic>;
+            final type = FirestoreService().getTahsilatType(data);
+            final double tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
+            if (type == 'tahsilat') {
+              devirSum += tutar;
+            } else {
+              devirSum -= tutar;
+            }
           }
         }
 
@@ -569,7 +576,22 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
           return sum + ((data['tutar'] as num?)?.toDouble() ?? 0.0);
         });
 
-        double totalPayments = currentTah.fold(0.0, (sum, doc) {
+        final currentCollectionsList = currentTah.where((t) {
+          final data = t.data() as Map<String, dynamic>;
+          return FirestoreService().getTahsilatType(data) == 'tahsilat';
+        }).toList();
+
+        final currentPaymentsList = currentTah.where((t) {
+          final data = t.data() as Map<String, dynamic>;
+          return FirestoreService().getTahsilatType(data) == 'odeme';
+        }).toList();
+
+        double totalCollections = currentCollectionsList.fold(0.0, (sum, doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          return sum + ((data['tutar'] as num?)?.toDouble() ?? 0.0);
+        });
+
+        double totalOdemeler = currentPaymentsList.fold(0.0, (sum, doc) {
           final data = doc.data() as Map<String, dynamic>;
           return sum + ((data['tutar'] as num?)?.toDouble() ?? 0.0);
         });
@@ -587,11 +609,32 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
           }
         }
 
-        // Deductions (manual + dynamic: Bağkur, Stopaj, Borsa of Süt Geliri)
-        double totalManualKesinti = currentKes.where((k) => (k['durum'] ?? 'aktif') == 'aktif').fold(0.0, (sum, doc) {
+        bool isProductExpense(String text) {
+          final lower = text.toLowerCase();
+          return lower.contains('alım') || 
+                 lower.contains('alim') || 
+                 lower.contains('yem') || 
+                 lower.contains('sipariş') || 
+                 lower.contains('siparis') || 
+                 lower.contains('ürün') || 
+                 lower.contains('urun');
+        }
+
+        double totalManualYasalKesinti = 0.0;
+        double totalManualUrunGideri = 0.0;
+
+        for (var doc in currentKes) {
           final data = doc.data() as Map<String, dynamic>;
-          return sum + ((data['tutar'] as num?)?.toDouble() ?? 0.0);
-        });
+          if ((data['durum'] ?? 'aktif') == 'aktif') {
+            final tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
+            final typeStr = data['kesintiTuru'] ?? (data['aciklama'] != null ? data['aciklama'].toString() : 'Kesinti');
+            if (isProductExpense(typeStr)) {
+              totalManualUrunGideri += tutar;
+            } else {
+              totalManualYasalKesinti += tutar;
+            }
+          }
+        }
 
         final Map<String, double> computedDynamicDeductions = {};
         final Map<String, double> computedRates = {};
@@ -686,7 +729,9 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
             }
           }
         }
-        double totalKesinti = totalManualKesinti + totalDynamicKesinti;
+        double totalYasalKesinti = totalDynamicKesinti + totalManualYasalKesinti;
+        double totalUrunGideri = totalManualUrunGideri;
+        double totalKesinti = totalYasalKesinti + totalUrunGideri;
 
         double totalCorrections = currentDev.fold(0.0, (sum, doc) {
           final data = doc.data() as Map<String, dynamic>;
@@ -694,7 +739,7 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
         });
 
         // 4. Net values
-        final double donemSonuBakiye = milkVal + totalPayments - totalSales - totalAvans - totalCeza - totalKesinti + totalCorrections;
+        final double donemSonuBakiye = milkVal + totalCollections - totalOdemeler - totalSales - totalAvans - totalCeza - totalKesinti + totalCorrections;
         final double mevcutBakiye = donemSonuBakiye + devirSum;
         final double netOdenecek = mevcutBakiye;
 
@@ -814,24 +859,47 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
         }
 
         // Section 4: Tahsilatlar
-        if (currentTah.isNotEmpty) {
+        if (currentCollectionsList.isNotEmpty) {
           final List<Widget> rows = [];
-          for (var doc in currentTah) {
+          for (var doc in currentCollectionsList) {
             final data = doc.data() as Map<String, dynamic>;
             final tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
             final tarihStr = data['tarih'] ?? '';
             rows.add(_buildSectionRow(
-              leftText: data['aciklama'] ?? 'Tahsilat',
+              leftText: data['aciklama']?.toString().isNotEmpty == true ? data['aciklama'] : 'Tahsilat',
               rightText: '+ ${formatCurrency.format(tutar)}',
               rightColor: AppColors.success,
               rightSubtitle: tarihStr,
             ));
           }
-          rows.add(_buildSectionSummaryRow('Toplam Tahsilat', '+ ${formatCurrency.format(totalPayments)}', AppColors.success));
+          rows.add(_buildSectionSummaryRow('Toplam Tahsilat', '+ ${formatCurrency.format(totalCollections)}', AppColors.success));
 
           sections.add(_buildSectionCard(
             title: 'Tahsilatlar',
             icon: Icons.move_to_inbox_rounded,
+            children: rows,
+          ));
+        }
+
+        // Section 4b: Yapılan Ödemeler
+        if (currentPaymentsList.isNotEmpty) {
+          final List<Widget> rows = [];
+          for (var doc in currentPaymentsList) {
+            final data = doc.data() as Map<String, dynamic>;
+            final tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
+            final tarihStr = data['tarih'] ?? '';
+            rows.add(_buildSectionRow(
+              leftText: data['aciklama']?.toString().isNotEmpty == true ? data['aciklama'] : 'Ödeme Yapıldı',
+              rightText: '- ${formatCurrency.format(tutar)}',
+              rightColor: Colors.red[800],
+              rightSubtitle: tarihStr,
+            ));
+          }
+          rows.add(_buildSectionSummaryRow('Toplam Ödeme', '- ${formatCurrency.format(totalOdemeler)}', Colors.red[800]!));
+
+          sections.add(_buildSectionCard(
+            title: 'Yapılan Ödemeler',
+            icon: Icons.payments_rounded,
             children: rows,
           ));
         }
@@ -869,7 +937,7 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
         }
 
         // Section 6: Kesintiler
-        if (milkVal > 0 || totalManualKesinti > 0) {
+        if (milkVal > 0 || (totalManualYasalKesinti + totalManualUrunGideri) > 0) {
           final List<Widget> rows = [];
           if (milkVal > 0) {
             for (var type in dynamicColumns) {
@@ -914,11 +982,13 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
         sections.add(
           _buildNetPayableCard(
             sutGeliri: milkVal,
-            tahsilatlar: totalPayments,
+            tahsilatlar: totalCollections,
+            odemeler: totalOdemeler,
             alinanUrunler: totalSales,
             alinanAvanslar: totalAvans,
             cezalar: totalCeza,
-            kesintiler: totalKesinti,
+            kesintiler: totalYasalKesinti,
+            urunGiderleri: totalUrunGideri,
             devir: devirSum,
           ),
         );
@@ -983,7 +1053,8 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
                   totalLitre: toplamLitre,
                   totalSales: totalSales,
                   totalAvans: totalAvans,
-                  totalPayments: totalPayments,
+                  totalCollections: totalCollections,
+                  totalOdemeler: totalOdemeler,
                   totalCeza: totalCeza,
                   totalKesinti: totalKesinti,
                   devir: devirSum,
@@ -1140,13 +1211,15 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
   Widget _buildNetPayableCard({
     required double sutGeliri,
     required double tahsilatlar,
+    required double odemeler,
     required double alinanUrunler,
     required double alinanAvanslar,
     required double cezalar,
     required double kesintiler,
+    required double urunGiderleri,
     required double devir,
   }) {
-    final double donemSonuBakiye = sutGeliri + tahsilatlar - alinanUrunler - alinanAvanslar - cezalar - kesintiler;
+    final double donemSonuBakiye = sutGeliri + tahsilatlar - odemeler - alinanUrunler - alinanAvanslar - cezalar - kesintiler - urunGiderleri;
     final double mevcutBakiye = donemSonuBakiye + devir;
     
     // Eğer mevcut bakiye eksi ise net ödenecek 0 olmalıdır.
@@ -1185,6 +1258,8 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
             _buildNetRow('Süt Geliri', '+ ${formatCurrency.format(sutGeliri)}', Colors.green[800]!),
           if (tahsilatlar > 0)
             _buildNetRow('Tahsilatlar', '+ ${formatCurrency.format(tahsilatlar)}', Colors.green[800]!),
+          if (odemeler > 0)
+            _buildNetRow('Yapılan Ödemeler', '- ${formatCurrency.format(odemeler)}', Colors.red[800]!),
           if (alinanUrunler > 0)
             _buildNetRow('Alınan Ürünler', '- ${formatCurrency.format(alinanUrunler)}', Colors.red[800]!),
           if (alinanAvanslar > 0)
@@ -1316,14 +1391,18 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
       final data = doc.data() as Map<String, dynamic>;
       final tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
       final ts = data['timestamp'] as Timestamp?;
+      final type = FirestoreService().getTahsilatType(data);
+      final isOdeme = type == 'odeme';
       allTx.add({
         'ts': ts?.toDate() ?? DateTime.now(),
-        'title': 'Ödeme Alındı (${data['odemeYontemi'] ?? 'Nakit'})',
+        'title': isOdeme
+            ? 'Yapılan Ödeme (${data['odemeYontemi'] ?? 'Nakit'})'
+            : 'Tahsilat Alındı (${data['odemeYontemi'] ?? 'Nakit'})',
         'subtitle': data['aciklama'] ?? '',
         'amount': tutar,
-        'isPositive': true,
-        'icon': Icons.move_to_inbox_rounded,
-        'color': AppColors.success,
+        'isPositive': !isOdeme,
+        'icon': isOdeme ? Icons.payments_rounded : Icons.move_to_inbox_rounded,
+        'color': isOdeme ? Colors.red : AppColors.success,
       });
     }
 
@@ -1482,7 +1561,8 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
     required double totalLitre,
     required double totalSales,
     required double totalAvans,
-    required double totalPayments,
+    required double totalCollections,
+    required double totalOdemeler,
     required double totalCeza,
     required double totalKesinti,
     required double devir,
@@ -1528,7 +1608,7 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
         return sum + ((data['tutar'] as num?)?.toDouble() ?? 0.0);
       });
 
-      final double donemSonuBakiye = milkVal + totalPayments - totalSales - totalAvans - totalCeza - totalKesinti;
+      final double donemSonuBakiye = milkVal + totalCollections - totalOdemeler - totalSales - totalAvans - totalCeza - totalKesinti;
       final double mevcutBakiye = donemSonuBakiye + devir;
       final double netOdenecek = mevcutBakiye;
 
@@ -1699,8 +1779,10 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
                     pw.Text(sanitize('NET ODEME HESAP TABLOSU'), style: pw.TextStyle(font: fontBold, fontSize: 11, color: PdfColors.teal800)),
                     pw.SizedBox(height: 6),
                     _buildPdfNetRow('Sut Geliri:', '+ ${formatCurrency.format(milkVal)}', fontRegular),
-                    if (totalPayments > 0)
-                      _buildPdfNetRow('Tahsilatlar:', '+ ${formatCurrency.format(totalPayments)}', fontRegular),
+                    if (totalCollections > 0)
+                      _buildPdfNetRow('Tahsilatlar:', '+ ${formatCurrency.format(totalCollections)}', fontRegular),
+                    if (totalOdemeler > 0)
+                      _buildPdfNetRow('Yapilan Odemeler:', '- ${formatCurrency.format(totalOdemeler)}', fontRegular),
                     if (totalSales > 0)
                       _buildPdfNetRow('Alinan Urunler:', '- ${formatCurrency.format(totalSales)}', fontRegular),
                     if (totalAvans > 0)

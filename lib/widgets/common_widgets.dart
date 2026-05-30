@@ -726,15 +726,19 @@ class _SearchableDropdownState extends State<SearchableDropdown> {
                           borderRadius: BorderRadius.all(Radius.circular(8)),
                           borderSide: BorderSide(color: Colors.red),
                         ),
-                        suffixIcon: IconButton(
-                          icon: const Icon(Icons.arrow_drop_down, color: AppColors.gray500),
-                          onPressed: () {
+                        suffixIcon: InkWell(
+                          borderRadius: BorderRadius.circular(20),
+                          onTap: () {
                             if (focusNode.hasFocus) {
                               focusNode.unfocus();
                             } else {
                               focusNode.requestFocus();
                             }
                           },
+                          child: const Padding(
+                            padding: EdgeInsets.all(8.0),
+                            child: Icon(Icons.arrow_drop_down, color: AppColors.gray500),
+                          ),
                         ),
                       ),
                     );

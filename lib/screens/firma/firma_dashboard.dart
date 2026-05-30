@@ -1535,29 +1535,51 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
         
         // Month
         final thisMonthTahsilatlar = tDocs.where((doc) => _isDocInSelectedMonth(doc, _maliOzetMonth)).toList();
-        double totalTahsilat = 0.0;
+        double totalOdeme = 0.0;
+        double totalProducerTahsilat = 0.0;
+        final fs = FirestoreService();
         for (var doc in thisMonthTahsilatlar) {
-          final tVal = doc['tutar'];
-          if (tVal is num) totalTahsilat += tVal.toDouble();
-          else if (tVal is String) totalTahsilat += double.tryParse(tVal) ?? 0.0;
+          final data = doc.data() as Map<String, dynamic>;
+          final tVal = data['tutar'];
+          final val = tVal is num ? tVal.toDouble() : (double.tryParse(tVal.toString()) ?? 0.0);
+          final type = fs.getTahsilatType(data);
+          if (type == 'tahsilat') {
+            totalProducerTahsilat += val;
+          } else {
+            totalOdeme += val;
+          }
         }
 
         // Previous
         final prevTahsilatlar = tDocs.where((doc) => _isDocBeforeSelectedMonth(doc, _maliOzetMonth)).toList();
-        double prevTahsilatVal = 0.0;
+        double prevOdemeVal = 0.0;
+        double prevProducerTahsilatVal = 0.0;
         for (var doc in prevTahsilatlar) {
-          final tVal = doc['tutar'];
-          if (tVal is num) prevTahsilatVal += tVal.toDouble();
-          else if (tVal is String) prevTahsilatVal += double.tryParse(tVal) ?? 0.0;
+          final data = doc.data() as Map<String, dynamic>;
+          final tVal = data['tutar'];
+          final val = tVal is num ? tVal.toDouble() : (double.tryParse(tVal.toString()) ?? 0.0);
+          final type = fs.getTahsilatType(data);
+          if (type == 'tahsilat') {
+            prevProducerTahsilatVal += val;
+          } else {
+            prevOdemeVal += val;
+          }
         }
 
         // Up to
         final upToTahsilatlar = tDocs.where((doc) => _isDocUpToSelectedMonth(doc, _maliOzetMonth)).toList();
-        double upToTahsilatVal = 0.0;
+        double upToOdemeVal = 0.0;
+        double upToProducerTahsilatVal = 0.0;
         for (var doc in upToTahsilatlar) {
-          final tVal = doc['tutar'];
-          if (tVal is num) upToTahsilatVal += tVal.toDouble();
-          else if (tVal is String) upToTahsilatVal += double.tryParse(tVal) ?? 0.0;
+          final data = doc.data() as Map<String, dynamic>;
+          final tVal = data['tutar'];
+          final val = tVal is num ? tVal.toDouble() : (double.tryParse(tVal.toString()) ?? 0.0);
+          final type = fs.getTahsilatType(data);
+          if (type == 'tahsilat') {
+            upToProducerTahsilatVal += val;
+          } else {
+            upToOdemeVal += val;
+          }
         }
 
         return StreamBuilder<QuerySnapshot>(
@@ -1788,24 +1810,24 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
 
                             // 4. Financial Calculations based on selected month
                             final double netOdeyecek = (grossMilkPrice - totalAvans - totalCeza - totalKesinti).clamp(0.0, double.infinity);
-                            final double odenen = totalTahsilat;
+                            final double odenen = totalOdeme;
                             final double kalan = (netOdeyecek - odenen).clamp(0.0, double.infinity);
 
                             // devir balances calculations
-                            final double prevNetOwed = prevAlacak - prevTahsilatVal - prevAvansVal - prevKesintiVal - prevCezaVal;
+                            final double prevNetOwed = prevAlacak - prevOdemeVal + prevProducerTahsilatVal - prevAvansVal - prevKesintiVal - prevCezaVal;
                             double devirBorc = 0.0;
                             double devirAlacak = 0.0;
                             if (prevNetOwed > 0) devirAlacak = prevNetOwed;
                             else if (prevNetOwed < 0) devirBorc = prevNetOwed.abs();
 
-                            final double nextNetOwed = upToAlacak - upToTahsilatVal - upToAvansVal - upToKesintiVal - upToCezaVal;
+                            final double nextNetOwed = upToAlacak - upToOdemeVal + upToProducerTahsilatVal - upToAvansVal - upToKesintiVal - upToCezaVal;
                             double devirBorcNext = 0.0;
                             double devirAlacakNext = 0.0;
                             if (nextNetOwed > 0) devirAlacakNext = nextNetOwed;
                             else if (nextNetOwed < 0) devirBorcNext = nextNetOwed.abs();
 
                             final double totalExpenses = grossMilkPrice + totalAvans + totalCeza + totalKesinti;
-                            final double totalIncomes = milkRevenue + totalProductGelir;
+                            final double totalIncomes = milkRevenue + totalProductGelir + totalProducerTahsilat;
                             final double netProfit = totalIncomes - totalExpenses;
 
                             return Column(
@@ -1994,7 +2016,7 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
                                     Expanded(
                                       child: _buildMockupAvansTahsilatCard(
                                         'Tahsilat',
-                                        formatNumber.format(totalTahsilat) + '₺',
+                                        formatNumber.format(totalProducerTahsilat) + '₺',
                                         Icons.account_balance_wallet_outlined,
                                         AppColors.success,
                                       ),

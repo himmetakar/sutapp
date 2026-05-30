@@ -193,7 +193,8 @@ class _SurucuTeslimatlarScreenState extends State<SurucuTeslimatlarScreen> with 
     });
 
     // If marked Delivered, perform stock deduction & record payment kesinti
-    if (newStatus == 'Teslim Edildi') {
+    final isDirectSale = data['isDirectSale'] as bool? ?? false;
+    if (newStatus == 'Teslim Edildi' && !isDirectSale) {
       for (var item in items) {
         final String urunName = item['urun'];
         final double miktar = (item['miktar'] as num).toDouble();

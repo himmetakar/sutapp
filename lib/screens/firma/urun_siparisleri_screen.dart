@@ -420,59 +420,62 @@ class _UrunSiparisleriScreenState extends State<UrunSiparisleriScreen> {
                                               customIcerik: '$uretici üreticisine ait $orderId nolu sipariş teslim edildi.',
                                             );
                                             
-                                            final List<Map<String, dynamic>> itemsList = data.containsKey('kalemler') && data['kalemler'] is List
-                                                ? List<Map<String, dynamic>>.from((data['kalemler'] as List).map((e) => Map<String, dynamic>.from(e as Map)))
-                                                : [
-                                                    {
-                                                      'urun': urun,
-                                                      'miktar': miktar,
-                                                      'birim': birim,
-                                                      'birimFiyat': birimFiyat,
-                                                      'toplam': toplam,
-                                                    }
-                                                  ];
+                                            final isDirectSale = data['isDirectSale'] as bool? ?? false;
+                                            if (!isDirectSale) {
+                                              final List<Map<String, dynamic>> itemsList = data.containsKey('kalemler') && data['kalemler'] is List
+                                                  ? List<Map<String, dynamic>>.from((data['kalemler'] as List).map((e) => Map<String, dynamic>.from(e as Map)))
+                                                  : [
+                                                      {
+                                                        'urun': urun,
+                                                        'miktar': miktar,
+                                                        'birim': birim,
+                                                        'birimFiyat': birimFiyat,
+                                                        'toplam': toplam,
+                                                      }
+                                                    ];
 
-                                            for (var item in itemsList) {
-                                              final String uName = item['urun'] ?? '';
-                                              final double qty = (item['miktar'] as num?)?.toDouble() ?? 1.0;
-                                              final double totalItem = (item['toplam'] as num?)?.toDouble() ?? 0.0;
+                                              for (var item in itemsList) {
+                                                final String uName = item['urun'] ?? '';
+                                                final double qty = (item['miktar'] as num?)?.toDouble() ?? 1.0;
+                                                final double totalItem = (item['toplam'] as num?)?.toDouble() ?? 0.0;
 
-                                              // Subtract stock
-                                              final urunQuery = await FirebaseFirestore.instance
-                                                  .collection('urunler')
-                                                  .where('ad', isEqualTo: uName)
-                                                  .where('firma', isEqualTo: currentFirmaName)
-                                                  .limit(1)
-                                                  .get();
-                                              if (urunQuery.docs.isNotEmpty) {
-                                                final uDoc = urunQuery.docs.first;
-                                                final double currentStock = (uDoc['stok'] as num?)?.toDouble() ?? 0.0;
-                                                final double minStok = (uDoc.data() as Map<String, dynamic>)['minStok']?.toDouble() ?? 10.0;
-                                                final String birimVal = (uDoc.data() as Map<String, dynamic>)['birim'] ?? 'Adet';
-                                                final double newStock = (currentStock - qty).clamp(0.0, double.infinity);
-                                                await uDoc.reference.update({'stok': newStock});
-                                                
-                                                if (newStock <= minStok) {
-                                                  await FirestoreService().sendNotification(
-                                                    recipientName: currentFirmaName,
-                                                    role: 'firma',
-                                                    baslik: 'Kritik Stok Uyarısı',
-                                                    icerik: '$uName ürünü kritik stok limitinin altına düştü! Güncel Stok: ${newStock.toStringAsFixed(0)} $birimVal',
-                                                    type: 'stok',
-                                                  );
+                                                // Subtract stock
+                                                final urunQuery = await FirebaseFirestore.instance
+                                                    .collection('urunler')
+                                                    .where('ad', isEqualTo: uName)
+                                                    .where('firma', isEqualTo: currentFirmaName)
+                                                    .limit(1)
+                                                    .get();
+                                                if (urunQuery.docs.isNotEmpty) {
+                                                  final uDoc = urunQuery.docs.first;
+                                                  final double currentStock = (uDoc['stok'] as num?)?.toDouble() ?? 0.0;
+                                                  final double minStok = (uDoc.data() as Map<String, dynamic>)['minStok']?.toDouble() ?? 10.0;
+                                                  final String birimVal = (uDoc.data() as Map<String, dynamic>)['birim'] ?? 'Adet';
+                                                  final double newStock = (currentStock - qty).clamp(0.0, double.infinity);
+                                                  await uDoc.reference.update({'stok': newStock});
+                                                  
+                                                  if (newStock <= minStok) {
+                                                    await FirestoreService().sendNotification(
+                                                      recipientName: currentFirmaName,
+                                                      role: 'firma',
+                                                      baslik: 'Kritik Stok Uyarısı',
+                                                      icerik: '$uName ürünü kritik stok limitinin altına düştü! Güncel Stok: ${newStock.toStringAsFixed(0)} $birimVal',
+                                                      type: 'stok',
+                                                    );
+                                                  }
                                                 }
-                                              }
 
-                                              // Record payment deduction
-                                              await FirebaseFirestore.instance.collection('kesintiler').add({
-                                                'uretici': uretici,
-                                                'tutar': totalItem,
-                                                'kesintiTuru': '$uName Alımı',
-                                                'durum': 'aktif',
-                                                'tarih': DateFormat('dd.MM.yyyy').format(DateTime.now()),
-                                                'timestamp': FieldValue.serverTimestamp(),
-                                                'firma': currentFirmaName,
-                                              });
+                                                // Record payment deduction
+                                                await FirebaseFirestore.instance.collection('kesintiler').add({
+                                                  'uretici': uretici,
+                                                  'tutar': totalItem,
+                                                  'kesintiTuru': '$uName Alımı',
+                                                  'durum': 'aktif',
+                                                  'tarih': DateFormat('dd.MM.yyyy').format(DateTime.now()),
+                                                  'timestamp': FieldValue.serverTimestamp(),
+                                                  'firma': currentFirmaName,
+                                                });
+                                              }
                                             }
                                           }),
                                         if (durum != 'Teslim Edildi' && durum != 'İptal')
@@ -481,6 +484,45 @@ class _UrunSiparisleriScreenState extends State<UrunSiparisleriScreen> {
                                           }),
                                         if (durum != 'Teslim Edildi' && durum != 'İptal')
                                           _buildActionButton('İptal', Colors.orange, () async {
+                                            final isDirectSale = data['isDirectSale'] as bool? ?? false;
+                                            if (isDirectSale) {
+                                              // Delete corresponding satislar record
+                                              final satisQuery = await FirebaseFirestore.instance
+                                                  .collection('satislar')
+                                                  .where('orderId', isEqualTo: orderId)
+                                                  .get();
+                                              for (var sDoc in satisQuery.docs) {
+                                                await sDoc.reference.delete();
+                                              }
+                                              
+                                              // Increment stock back
+                                              final List<Map<String, dynamic>> itemsList = data.containsKey('kalemler') && data['kalemler'] is List
+                                                  ? List<Map<String, dynamic>>.from((data['kalemler'] as List).map((e) => Map<String, dynamic>.from(e as Map)))
+                                                  : [
+                                                      {
+                                                        'urun': urun,
+                                                        'miktar': miktar,
+                                                      }
+                                                    ];
+                                              for (var item in itemsList) {
+                                                final String uName = item['urun'] ?? '';
+                                                final double qty = (item['miktar'] as num?)?.toDouble() ?? 1.0;
+                                                if (uName.isNotEmpty && qty > 0) {
+                                                  final urunSnap = await FirebaseFirestore.instance
+                                                      .collection('urunler')
+                                                      .where('firma', isEqualTo: currentFirmaName)
+                                                      .where('ad', isEqualTo: uName)
+                                                      .limit(1)
+                                                      .get();
+                                                  if (urunSnap.docs.isNotEmpty) {
+                                                    await urunSnap.docs.first.reference.update({
+                                                      'stok': FieldValue.increment(qty),
+                                                    });
+                                                  }
+                                                }
+                                              }
+                                            }
+
                                             await doc.reference.update({'durum': 'İptal'});
                                             await FirestoreService().sendNotification(
                                               recipientName: uretici,
@@ -514,6 +556,46 @@ class _UrunSiparisleriScreenState extends State<UrunSiparisleriScreen> {
                                             ),
                                           );
                                           if (confirm == true) {
+                                            final isDirectSale = data['isDirectSale'] as bool? ?? false;
+                                            if (isDirectSale) {
+                                              // Delete corresponding satislar record
+                                              final satisQuery = await FirebaseFirestore.instance
+                                                  .collection('satislar')
+                                                  .where('orderId', isEqualTo: orderId)
+                                                  .get();
+                                              for (var sDoc in satisQuery.docs) {
+                                                await sDoc.reference.delete();
+                                              }
+                                              
+                                              // Increment stock back (only if durum wasn't already Teslim Edildi or Iptal which would have handled stock)
+                                              if (durum != 'Teslim Edildi' && durum != 'İptal') {
+                                                final List<Map<String, dynamic>> itemsList = data.containsKey('kalemler') && data['kalemler'] is List
+                                                    ? List<Map<String, dynamic>>.from((data['kalemler'] as List).map((e) => Map<String, dynamic>.from(e as Map)))
+                                                    : [
+                                                        {
+                                                          'urun': urun,
+                                                          'miktar': miktar,
+                                                        }
+                                                      ];
+                                                for (var item in itemsList) {
+                                                  final String uName = item['urun'] ?? '';
+                                                  final double qty = (item['miktar'] as num?)?.toDouble() ?? 1.0;
+                                                  if (uName.isNotEmpty && qty > 0) {
+                                                    final urunSnap = await FirebaseFirestore.instance
+                                                        .collection('urunler')
+                                                        .where('firma', isEqualTo: currentFirmaName)
+                                                        .where('ad', isEqualTo: uName)
+                                                        .limit(1)
+                                                        .get();
+                                                    if (urunSnap.docs.isNotEmpty) {
+                                                      await urunSnap.docs.first.reference.update({
+                                                        'stok': FieldValue.increment(qty),
+                                                      });
+                                                    }
+                                                  }
+                                                }
+                                              }
+                                            }
                                             await doc.reference.delete();
                                           }
                                         }),

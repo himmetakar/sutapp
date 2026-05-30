@@ -22,6 +22,15 @@ class _MusteriCezalariScreenState extends State<MusteriCezalariScreen> {
   String _searchQuery = '';
   final _searchCtrl = TextEditingController();
   String _selectedStatus = 'tumu'; // tumu, aktif, odendi, iptal
+  late Stream<QuerySnapshot> _cezalarStream;
+
+  @override
+  void initState() {
+    super.initState();
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final currentFirmaName = auth.user?.displayName ?? '';
+    _cezalarStream = FirestoreService().getCezalarStream(firma: currentFirmaName);
+  }
 
   @override
   void dispose() {
@@ -136,7 +145,7 @@ class _MusteriCezalariScreenState extends State<MusteriCezalariScreen> {
       ),
       backgroundColor: AppColors.gray50,
       body: StreamBuilder<QuerySnapshot>(
-        stream: FirestoreService().getCezalarStream(firma: currentFirmaName),
+        stream: _cezalarStream,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -469,6 +478,15 @@ class _CezaKesScreenState extends State<CezaKesScreen> {
   final _aciklamaCtrl = TextEditingController();
   String _cezaTipi = 'miktarsal'; // 'miktarsal' | 'oransal'
   DateTime _cezaTarihi = DateTime.now();
+  late Stream<QuerySnapshot> _producersStream;
+
+  @override
+  void initState() {
+    super.initState();
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final currentFirmaName = auth.user?.displayName ?? '';
+    _producersStream = FirestoreService().getProducersStream(firma: currentFirmaName);
+  }
 
   @override
   void dispose() {
@@ -508,7 +526,7 @@ class _CezaKesScreenState extends State<CezaKesScreen> {
       ),
       backgroundColor: AppColors.gray50,
       body: StreamBuilder<QuerySnapshot>(
-        stream: FirestoreService().getProducersStream(firma: currentFirmaName),
+        stream: _producersStream,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());

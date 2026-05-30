@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../providers/auth_provider.dart';
 import '../../config/theme.dart';
 import '../../widgets/common_widgets.dart';
+import '../../services/firestore_service.dart';
 
 class FirmaTahsilatScreen extends StatefulWidget {
   const FirmaTahsilatScreen({super.key});
@@ -234,6 +235,7 @@ class _FirmaTahsilatScreenState extends State<FirmaTahsilatScreen> {
                       'saat': DateFormat('HH:mm').format(DateTime.now()),
                       'timestamp': Timestamp.fromDate(periodDate),
                       'firma': currentFirmaName,
+                      'tip': 'tahsilat',
                     });
 
                     if (ctx.mounted) {
@@ -319,9 +321,11 @@ class _FirmaTahsilatScreenState extends State<FirmaTahsilatScreen> {
           int monthlyCount = 0;
           final List<QueryDocumentSnapshot> filteredDocs = [];
 
+          final firestoreService = FirestoreService();
           for (var doc in rawDocs) {
             if (_isDocInSelectedMonth(doc, _selectedDate)) {
               final data = doc.data() as Map<String, dynamic>;
+              if (firestoreService.getTahsilatType(data) != 'tahsilat') continue;
               final uretici = data['uretici'] as String? ?? '';
               final aciklama = data['aciklama'] as String? ?? '';
               final tutarVal = data['tutar'] ?? 0.0;

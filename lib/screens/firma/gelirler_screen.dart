@@ -30,6 +30,7 @@ class _GelirlerScreenState extends State<GelirlerScreen> {
 
   double _totalCollected = 0.0;
   int _collectedCount = 0;
+  double _totalPaidOut = 0.0;
 
   double _milkCost = 0.0;
   double _operatingExpenses = 0.0;
@@ -164,7 +165,7 @@ class _GelirlerScreenState extends State<GelirlerScreen> {
         }
       }
 
-      // 3. Fetch Tahsilatlar (Collected payments from Buyer companies)
+      // 3. Fetch Tahsilatlar (Collected payments / collections)
       final tahsilatSnap = await FirebaseFirestore.instance
           .collection('tahsilatlar')
           .where('firma', isEqualTo: currentFirmaName)
@@ -172,14 +173,21 @@ class _GelirlerScreenState extends State<GelirlerScreen> {
 
       double tempCollected = 0.0;
       int tempCollectedCount = 0;
+      double tempPaidOut = 0.0;
 
+      final firestoreService = FirestoreService();
       for (var doc in tahsilatSnap.docs) {
         final data = doc.data();
-        final date = _getDocDate(data['timestamp']);
+        final date = _getDocDate(data['timestamp'] ?? data['tarih']);
         if (_isWithinFilter(date)) {
           final double tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
-          tempCollected += tutar;
-          tempCollectedCount++;
+          final type = firestoreService.getTahsilatType(data);
+          if (type == 'tahsilat') {
+            tempCollected += tutar;
+            tempCollectedCount++;
+          } else {
+            tempPaidOut += tutar;
+          }
         }
       }
 
@@ -223,7 +231,6 @@ class _GelirlerScreenState extends State<GelirlerScreen> {
           doc['name'] as String: doc.data() as Map<String, dynamic>
       };
 
-      final firestoreService = FirestoreService();
       double tempMilkCost = 0.0;
 
       for (var doc in toplamalarSnap.docs) {
@@ -292,6 +299,7 @@ class _GelirlerScreenState extends State<GelirlerScreen> {
 
         _totalCollected = tempCollected;
         _collectedCount = tempCollectedCount;
+        _totalPaidOut = tempPaidOut;
 
         _milkCost = tempMilkCost;
         _operatingExpenses = tempExpenses;
@@ -314,10 +322,10 @@ class _GelirlerScreenState extends State<GelirlerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Gelirler = Firmalardan gelen süt ödemeleri (tahsilatlar) + Üreticiye satılan ürünler (kesintiler)
+    // Gelirler = Üreticilerden gelen ödemeler (tahsilatlar) + Üreticiye satılan ürünler (kesintiler)
     final double totalRevenue = _totalCollected + _totalDeductions;
-    // Giderler = Üretici hesap ödemeleri (avanslar) + Genel giderler / tedarikçi ödemeleri (giderler)
-    final double totalExpenses = _totalAvans + _operatingExpenses;
+    // Giderler = Üretici hesap ödemeleri (avanslar + süt ödemeleri) + Genel giderler / tedarikçi ödemeleri (giderler)
+    final double totalExpenses = _totalAvans + _operatingExpenses + _totalPaidOut;
     // Net profit or loss (Gelirler - Giderler)
     final double netProfitLoss = totalRevenue - totalExpenses;
     final bool isProfit = netProfitLoss >= 0;

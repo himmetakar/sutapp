@@ -1640,6 +1640,273 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
     return results;
   }
 
+  void _showEditOrderDialog(BuildContext context, DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    final uretici = data['uretici'] ?? '';
+    final orderId = data['id'] ?? '';
+    
+    // Parse items list
+    final List<Map<String, dynamic>> items = data.containsKey('kalemler') && data['kalemler'] is List
+        ? List<Map<String, dynamic>>.from((data['kalemler'] as List).map((e) => Map<String, dynamic>.from(e as Map)))
+        : [
+            {
+              'urun': data['urun'] ?? 'Ürün',
+              'miktar': (data['miktar'] as num?)?.toDouble() ?? 1.0,
+              'birim': data['birim'] ?? 'Adet',
+              'birimFiyat': (data['birimFiyat'] as num?)?.toDouble() ?? 0.0,
+              'toplam': (data['toplam'] as num?)?.toDouble() ?? 0.0,
+            }
+          ];
+
+    // Create controllers for each item quantity
+    final List<TextEditingController> qtyControllers = items.map((item) {
+      final double qty = (item['miktar'] as num?)?.toDouble() ?? 1.0;
+      final String initialVal = qty % 1 == 0 ? qty.toInt().toString() : qty.toString();
+      return TextEditingController(text: initialVal);
+    }).toList();
+
+    // Create controllers for unit prices to allow editing prices as well
+    final List<TextEditingController> priceControllers = items.map((item) {
+      final double price = (item['birimFiyat'] as num?)?.toDouble() ?? 0.0;
+      return TextEditingController(text: price.toStringAsFixed(2));
+    }).toList();
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            double newOrderTotal = 0.0;
+            List<Map<String, dynamic>> updatedItems = [];
+
+            for (int i = 0; i < items.length; i++) {
+              final item = items[i];
+              final double unitPrice = double.tryParse(priceControllers[i].text) ?? 0.0;
+              final double qty = double.tryParse(qtyControllers[i].text) ?? 0.0;
+              final double itemTotal = qty * unitPrice;
+              newOrderTotal += itemTotal;
+
+              updatedItems.add({
+                'urun': item['urun'],
+                'miktar': qty,
+                'birim': item['birim'],
+                'birimFiyat': unitPrice,
+                'toplam': itemTotal,
+              });
+            }
+
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Siparişi Düzenle ($orderId)',
+                      style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () {
+                      for (var controller in qtyControllers) {
+                        controller.dispose();
+                      }
+                      for (var controller in priceControllers) {
+                        controller.dispose();
+                      }
+                      Navigator.pop(ctx);
+                    },
+                  ),
+                ],
+              ),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Alıcı: $uretici',
+                        style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.gray700),
+                      ),
+                      const SizedBox(height: 12),
+                      const Divider(),
+                      const SizedBox(height: 8),
+                      ListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: items.length,
+                        itemBuilder: (context, index) {
+                          final item = items[index];
+                          final String uAd = item['urun'] ?? '';
+                          final String unit = item['birim'] ?? 'Adet';
+                          
+                          final double updatedQty = double.tryParse(qtyControllers[index].text) ?? 0.0;
+                          final double updatedPrice = double.tryParse(priceControllers[index].text) ?? 0.0;
+                          final double totalItem = updatedQty * updatedPrice;
+
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 16.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  uAd,
+                                  style: GoogleFonts.inter(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13,
+                                    color: AppColors.gray800,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: TextField(
+                                        controller: qtyControllers[index],
+                                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                        decoration: InputDecoration(
+                                          labelText: 'Miktar ($unit)',
+                                          labelStyle: GoogleFonts.inter(fontSize: 12),
+                                          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                        ),
+                                        onChanged: (_) {
+                                          setStateDialog(() {});
+                                        },
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: TextField(
+                                        controller: priceControllers[index],
+                                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                        decoration: InputDecoration(
+                                          labelText: 'Birim Fiyat (₺)',
+                                          labelStyle: GoogleFonts.inter(fontSize: 12),
+                                          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                        ),
+                                        onChanged: (_) {
+                                          setStateDialog(() {});
+                                        },
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Column(
+                                      crossAxisAlignment: CrossAxisAlignment.end,
+                                      children: [
+                                        Text(
+                                          'Tutar',
+                                          style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray400),
+                                        ),
+                                        Text(
+                                          '${totalItem.toStringAsFixed(2)} ₺',
+                                          style: GoogleFonts.inter(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                            color: AppColors.gray800,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                      const Divider(),
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Yeni Sipariş Toplamı:',
+                            style: GoogleFonts.inter(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.gray700,
+                            ),
+                          ),
+                          Text(
+                            '${newOrderTotal.toStringAsFixed(2)} ₺',
+                            style: GoogleFonts.inter(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.primary600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    for (var controller in qtyControllers) {
+                      controller.dispose();
+                    }
+                    for (var controller in priceControllers) {
+                      controller.dispose();
+                    }
+                    Navigator.pop(ctx);
+                  },
+                  child: Text('İptal', style: GoogleFonts.inter(color: AppColors.gray500)),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    // Update the order in Firebase
+                    await doc.reference.update({
+                      'kalemler': updatedItems,
+                      'toplam': newOrderTotal,
+                      // Root fields to keep legacy compatibility
+                      if (updatedItems.isNotEmpty) ...{
+                        'urun': updatedItems.first['urun'],
+                        'miktar': updatedItems.first['miktar'],
+                        'birimFiyat': updatedItems.first['birimFiyat'],
+                        'toplam': newOrderTotal,
+                      }
+                    });
+
+                    for (var controller in qtyControllers) {
+                      controller.dispose();
+                    }
+                    for (var controller in priceControllers) {
+                      controller.dispose();
+                    }
+                    Navigator.pop(ctx);
+                    
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Sipariş başarıyla güncellendi!'),
+                          backgroundColor: AppColors.success,
+                        ),
+                      );
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary600,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  child: const Text('Güncelle'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   // ==========================================
   // 5. ORDERS VIEW (SIPARIS YONETIMI)
   // ==========================================
@@ -1915,63 +2182,105 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
                                         customIcerik: '$uretici üreticisine ait $orderId nolu sipariş teslim edildi.',
                                       );
                                       
-                                      final List<Map<String, dynamic>> itemsList = data.containsKey('kalemler') && data['kalemler'] is List
-                                          ? List<Map<String, dynamic>>.from((data['kalemler'] as List).map((e) => Map<String, dynamic>.from(e as Map)))
-                                          : [
-                                              {
-                                                'urun': urun,
-                                                'miktar': miktar,
-                                                'birim': birim,
-                                                'birimFiyat': birimFiyat,
-                                                'toplam': toplam,
-                                              }
-                                            ];
+                                      final isDirectSale = data['isDirectSale'] as bool? ?? false;
+                                      if (!isDirectSale) {
+                                        final List<Map<String, dynamic>> itemsList = data.containsKey('kalemler') && data['kalemler'] is List
+                                            ? List<Map<String, dynamic>>.from((data['kalemler'] as List).map((e) => Map<String, dynamic>.from(e as Map)))
+                                            : [
+                                                {
+                                                  'urun': urun,
+                                                  'miktar': miktar,
+                                                  'birim': birim,
+                                                  'birimFiyat': birimFiyat,
+                                                  'toplam': toplam,
+                                                }
+                                              ];
 
-                                      for (var item in itemsList) {
-                                        final String uName = item['urun'] ?? '';
-                                        final double qty = (item['miktar'] as num?)?.toDouble() ?? 1.0;
-                                        final double totalItem = (item['toplam'] as num?)?.toDouble() ?? 0.0;
+                                        for (var item in itemsList) {
+                                          final String uName = item['urun'] ?? '';
+                                          final double qty = (item['miktar'] as num?)?.toDouble() ?? 1.0;
+                                          final double totalItem = (item['toplam'] as num?)?.toDouble() ?? 0.0;
 
-                                        // Subtract stock
-                                        final urunQuery = await FirebaseFirestore.instance
-                                            .collection('urunler')
-                                            .where('ad', isEqualTo: uName)
-                                            .where('firma', isEqualTo: currentFirmaName)
-                                            .limit(1)
-                                            .get();
-                                        if (urunQuery.docs.isNotEmpty) {
-                                          final uDoc = urunQuery.docs.first;
-                                          final double currentStock = (uDoc['stok'] as num?)?.toDouble() ?? 0.0;
-                                          final double minStok = (uDoc.data() as Map<String, dynamic>)['minStok']?.toDouble() ?? 10.0;
-                                          final String birimVal = (uDoc.data() as Map<String, dynamic>)['birim'] ?? 'Adet';
-                                          final double newStock = (currentStock - qty).clamp(0.0, double.infinity);
-                                          await uDoc.reference.update({'stok': newStock});
-                                          
-                                          if (newStock <= minStok) {
-                                            await FirestoreService().sendNotification(
-                                              recipientName: currentFirmaName,
-                                              role: 'firma',
-                                              baslik: 'Kritik Stok Uyarısı',
-                                              icerik: '$uName ürünü kritik stok limitinin altına düştü! Güncel Stok: ${newStock.toStringAsFixed(0)} $birimVal',
-                                              type: 'stok',
-                                            );
+                                          // Subtract stock
+                                          final urunQuery = await FirebaseFirestore.instance
+                                              .collection('urunler')
+                                              .where('ad', isEqualTo: uName)
+                                              .where('firma', isEqualTo: currentFirmaName)
+                                              .limit(1)
+                                              .get();
+                                          if (urunQuery.docs.isNotEmpty) {
+                                            final uDoc = urunQuery.docs.first;
+                                            final double currentStock = (uDoc['stok'] as num?)?.toDouble() ?? 0.0;
+                                            final double minStok = (uDoc.data() as Map<String, dynamic>)['minStok']?.toDouble() ?? 10.0;
+                                            final String birimVal = (uDoc.data() as Map<String, dynamic>)['birim'] ?? 'Adet';
+                                            final double newStock = (currentStock - qty).clamp(0.0, double.infinity);
+                                            await uDoc.reference.update({'stok': newStock});
+                                            
+                                            if (newStock <= minStok) {
+                                              await FirestoreService().sendNotification(
+                                                recipientName: currentFirmaName,
+                                                role: 'firma',
+                                                baslik: 'Kritik Stok Uyarısı',
+                                                icerik: '$uName ürünü kritik stok limitinin altına düştü! Güncel Stok: ${newStock.toStringAsFixed(0)} $birimVal',
+                                                type: 'stok',
+                                              );
+                                            }
                                           }
-                                        }
 
-                                        // Record payment deduction (Kesinti)
-                                        await FirebaseFirestore.instance.collection('kesintiler').add({
-                                          'uretici': uretici,
-                                          'tutar': totalItem,
-                                          'kesintiTuru': '$uName Alımı',
-                                          'durum': 'aktif',
-                                          'tarih': DateFormat('dd.MM.yyyy').format(DateTime.now()),
-                                          'timestamp': FieldValue.serverTimestamp(),
-                                          'firma': currentFirmaName,
-                                        });
+                                          // Record payment deduction (Kesinti)
+                                          await FirebaseFirestore.instance.collection('kesintiler').add({
+                                            'uretici': uretici,
+                                            'tutar': totalItem,
+                                            'kesintiTuru': '$uName Alımı',
+                                            'durum': 'aktif',
+                                            'tarih': DateFormat('dd.MM.yyyy').format(DateTime.now()),
+                                            'timestamp': FieldValue.serverTimestamp(),
+                                            'firma': currentFirmaName,
+                                          });
+                                        }
                                       }
                                     }),
                                   if (durum != 'Teslim Edildi' && durum != 'İptal')
                                     _buildOrderActionButton('İptal', Colors.orange, () async {
+                                      final isDirectSale = data['isDirectSale'] as bool? ?? false;
+                                      if (isDirectSale) {
+                                        // Delete corresponding satislar record
+                                        final satisQuery = await FirebaseFirestore.instance
+                                            .collection('satislar')
+                                            .where('orderId', isEqualTo: orderId)
+                                            .get();
+                                        for (var sDoc in satisQuery.docs) {
+                                          await sDoc.reference.delete();
+                                        }
+                                        
+                                        // Increment stock back
+                                        final List<Map<String, dynamic>> itemsList = data.containsKey('kalemler') && data['kalemler'] is List
+                                            ? List<Map<String, dynamic>>.from((data['kalemler'] as List).map((e) => Map<String, dynamic>.from(e as Map)))
+                                            : [
+                                                {
+                                                  'urun': urun,
+                                                  'miktar': miktar,
+                                                }
+                                              ];
+                                        for (var item in itemsList) {
+                                          final String uName = item['urun'] ?? '';
+                                          final double qty = (item['miktar'] as num?)?.toDouble() ?? 1.0;
+                                          if (uName.isNotEmpty && qty > 0) {
+                                            final urunSnap = await FirebaseFirestore.instance
+                                                .collection('urunler')
+                                                .where('firma', isEqualTo: currentFirmaName)
+                                                .where('ad', isEqualTo: uName)
+                                                .limit(1)
+                                                .get();
+                                            if (urunSnap.docs.isNotEmpty) {
+                                              await urunSnap.docs.first.reference.update({
+                                                'stok': FieldValue.increment(qty),
+                                              });
+                                            }
+                                          }
+                                        }
+                                      }
+
                                       await doc.reference.update({'durum': 'İptal'});
                                       await FirestoreService().sendNotification(
                                         recipientName: uretici,
@@ -1987,6 +2296,10 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
                                         customBaslik: 'Sipariş İptal Edildi',
                                         customIcerik: '$uretici üreticisine ait $orderId nolu sipariş iptal edildi.',
                                       );
+                                    }),
+                                  if (durum != 'Teslim Edildi' && durum != 'İptal')
+                                    _buildOrderActionButton('Düzenle', Colors.blue, () {
+                                      _showEditOrderDialog(context, doc);
                                     }),
                                   _buildOrderActionButton('Sil', Colors.red, () async {
                                     final confirm = await showDialog<bool>(
