@@ -1148,7 +1148,11 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
   }) {
     final double donemSonuBakiye = sutGeliri + tahsilatlar - alinanUrunler - alinanAvanslar - cezalar - kesintiler;
     final double mevcutBakiye = donemSonuBakiye + devir;
-    final double netOdenecek = mevcutBakiye;
+    
+    // Eğer mevcut bakiye eksi ise net ödenecek 0 olmalıdır.
+    final double netOdenecek = mevcutBakiye >= 0 ? mevcutBakiye : 0.0;
+    final double odenen = netOdenecek;
+    final double digerAyaDevir = mevcutBakiye < 0 ? mevcutBakiye : 0.0;
 
     final formatCurrency = NumberFormat.currency(locale: 'tr_TR', symbol: '₺');
 
@@ -1214,6 +1218,18 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
             'Net Ödenecek',
             '${netOdenecek >= 0 ? '+' : ''} ${formatCurrency.format(netOdenecek)}',
             netOdenecek >= 0 ? Colors.green[800]! : Colors.red[800]!,
+          ),
+          const SizedBox(height: 8),
+          _buildNetSummaryRow(
+            'Ödenen',
+            '${odenen >= 0 ? '+' : ''} ${formatCurrency.format(odenen)}',
+            odenen >= 0 ? Colors.green[800]! : Colors.red[800]!,
+          ),
+          const SizedBox(height: 8),
+          _buildNetSummaryRow(
+            'Diğer Aya Devir',
+            '${digerAyaDevir >= 0 ? '+' : ''} ${formatCurrency.format(digerAyaDevir)}',
+            digerAyaDevir >= 0 ? Colors.green[800]! : Colors.red[800]!,
           ),
         ],
       ),
