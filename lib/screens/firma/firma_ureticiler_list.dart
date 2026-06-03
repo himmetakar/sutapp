@@ -2179,16 +2179,25 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
                                   Row(children: [
                                     const Icon(Icons.phone_rounded, size: 11, color: AppColors.gray400),
                                     const SizedBox(width: 4),
-                                    Text(phone, style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500)),
+                                    Expanded(
+                                      child: Text(
+                                        phone,
+                                        style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
                                   ]),
                                   const SizedBox(height: 5),
-                                  Row(children: [
-                                    StatusBadge.info(group),
-                                    if (birlik != 'Yok') ...[
-                                      const SizedBox(width: 6),
-                                      StatusBadge.active(birlik),
+                                  Wrap(
+                                    spacing: 6,
+                                    runSpacing: 4,
+                                    children: [
+                                      StatusBadge.info(group),
+                                      if (birlik != 'Yok') ...[
+                                        StatusBadge.active(birlik),
+                                      ],
                                     ],
-                                  ]),
+                                  ),
                                   const SizedBox(height: 5),
                                   Row(
                                     children: [
