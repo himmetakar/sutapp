@@ -144,15 +144,36 @@ class _FirmaTanklarState extends State<FirmaTanklar> {
 
   Future<List<TankHistoryEntry>> _fetchTankHistory(String tankAdi, String tip) async {
     final db = FirebaseFirestore.instance;
-    
+
     if (tip == 'arac') {
-      final snap = await db.collection('toplamalar')
-          .where('tank', isEqualTo: tankAdi)
-          .get();
-      
+      // Find the timestamp of the last time this tank was emptied (boşaltıldı)
+      // That is: the most recent teslimatlar entry where kaynakTank == tankAdi
+      DateTime? lastEmptyTime;
+      try {
+        final emptySnap = await db
+            .collection('teslimatlar')
+            .where('kaynakTank', isEqualTo: tankAdi)
+            .orderBy('timestamp', descending: true)
+            .limit(1)
+            .get();
+        if (emptySnap.docs.isNotEmpty) {
+          final ts = emptySnap.docs.first.data()['timestamp'];
+          if (ts is Timestamp) {
+            lastEmptyTime = ts.toDate();
+          }
+        }
+      } catch (_) {}
+
+      // Fetch toplamalar for this tank, only AFTER the last emptying
+      Query query = db.collection('toplamalar').where('tank', isEqualTo: tankAdi);
+      if (lastEmptyTime != null) {
+        query = query.where('timestamp', isGreaterThan: Timestamp.fromDate(lastEmptyTime));
+      }
+      final snap = await query.get();
+
       final List<TankHistoryEntry> list = [];
       for (var doc in snap.docs) {
-        final data = doc.data();
+        final data = doc.data() as Map<String, dynamic>;
         final u = data['u'] ?? 'Bilinmeyen Üretici';
         final double m = (data['m'] as num?)?.toDouble() ?? 0.0;
         final s = data['s'] ?? '';
@@ -163,7 +184,7 @@ class _FirmaTanklarState extends State<FirmaTanklar> {
         } else if (data['tarih'] is String) {
           date = _parseDateStr(data['tarih']);
         }
-        
+
         list.add(TankHistoryEntry(
           title: u,
           subtitle: s,
@@ -175,10 +196,62 @@ class _FirmaTanklarState extends State<FirmaTanklar> {
       list.sort((a, b) => b.date.compareTo(a.date));
       return list;
     } else {
+      // Merkez tankı: find last outgoing event timestamp
+      DateTime? lastEmptyTime;
+      try {
+        // Check last outgoing transfer (kaynakTank) or satış
+        final transferSnap = await db
+            .collection('teslimatlar')
+            .where('kaynakTank', isEqualTo: tankAdi)
+            .orderBy('timestamp', descending: true)
+            .limit(1)
+            .get();
+        final satisSnap = await db
+            .collection('sut_satislari')
+            .where('kaynakTank', isEqualTo: tankAdi)
+            .orderBy('timestamp', descending: true)
+            .limit(1)
+            .get();
+
+        DateTime? t1, t2;
+        if (transferSnap.docs.isNotEmpty) {
+          final ts = transferSnap.docs.first.data()['timestamp'];
+          if (ts is Timestamp) t1 = ts.toDate();
+        }
+        if (satisSnap.docs.isNotEmpty) {
+          final ts = satisSnap.docs.first.data()['timestamp'];
+          if (ts is Timestamp) t2 = ts.toDate();
+        }
+
+        if (t1 != null && t2 != null) {
+          lastEmptyTime = t1.isAfter(t2) ? t1 : t2;
+        } else {
+          lastEmptyTime = t1 ?? t2;
+        }
+      } catch (_) {}
+
+      // Incoming transfers after last empty
+      Query inQuery = db.collection('teslimatlar').where('hedefTank', isEqualTo: tankAdi);
+      if (lastEmptyTime != null) {
+        inQuery = inQuery.where('timestamp', isGreaterThan: Timestamp.fromDate(lastEmptyTime));
+      }
+
+      // Outgoing transfers after last empty
+      Query outTransferQuery = db.collection('teslimatlar').where('kaynakTank', isEqualTo: tankAdi);
+      if (lastEmptyTime != null) {
+        outTransferQuery = outTransferQuery.where('timestamp', isGreaterThan: Timestamp.fromDate(lastEmptyTime));
+      }
+
+      // Outgoing sales after last empty
+      Query satisQuery = db.collection('sut_satislari').where('kaynakTank', isEqualTo: tankAdi);
+      if (lastEmptyTime != null) {
+        satisQuery = satisQuery.where('timestamp', isGreaterThan: Timestamp.fromDate(lastEmptyTime));
+      }
+
       final futures = await Future.wait([
-        db.collection('teslimatlar').where('hedefTank', isEqualTo: tankAdi).get(),
-        db.collection('teslimatlar').where('kaynakTank', isEqualTo: tankAdi).get(),
-        db.collection('sut_satislari').where('kaynakTank', isEqualTo: tankAdi).get(),
+        inQuery.get(),
+        outTransferQuery.get(),
+        satisQuery.get(),
       ]);
 
       final incomingTransfers = futures[0].docs;
@@ -188,7 +261,7 @@ class _FirmaTanklarState extends State<FirmaTanklar> {
       final List<TankHistoryEntry> list = [];
 
       for (var doc in incomingTransfers) {
-        final data = doc.data();
+        final data = doc.data() as Map<String, dynamic>;
         final double m = (data['miktar'] as num?)?.toDouble() ?? 0.0;
         final plaka = data['plaka'] ?? '';
         final kaynak = data['kaynakTank'] ?? '';
@@ -211,7 +284,7 @@ class _FirmaTanklarState extends State<FirmaTanklar> {
       }
 
       for (var doc in outgoingTransfers) {
-        final data = doc.data();
+        final data = doc.data() as Map<String, dynamic>;
         final double m = (data['miktar'] as num?)?.toDouble() ?? 0.0;
         final plaka = data['plaka'] ?? '';
         final hedef = data['hedefTank'] ?? '';
@@ -234,7 +307,7 @@ class _FirmaTanklarState extends State<FirmaTanklar> {
       }
 
       for (var doc in sales) {
-        final data = doc.data();
+        final data = doc.data() as Map<String, dynamic>;
         final double m = (data['miktar'] as num?)?.toDouble() ?? 0.0;
         final alici = data['aliciFirma'] ?? '';
         final not_ = data['not'] ?? '';

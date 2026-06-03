@@ -196,6 +196,72 @@ class FirestoreService {
           await cariFirmalarRef.add(cf);
         }
       }
+
+      // Fidanım Süt specific data check and additions
+      final fidComp = await companiesRef.where('ad', isEqualTo: 'Fidanım Süt').limit(1).get();
+      if (fidComp.docs.isEmpty) {
+        await companiesRef.add({
+          'ad': 'Fidanım Süt',
+          'tel': '0352 999 8877',
+          'adres': 'Melikgazi / Kayseri',
+          'yetkili': 'Hakan Fidan',
+          'maxPersonel': 10,
+          'maxUretici': 100,
+          'maxArac': 5,
+          'maxMesaj': 20,
+          'abonelikBitis': Timestamp.fromDate(DateTime.now().add(const Duration(days: 365))),
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+        
+        await _tanks.add({'ad': 'Fidanım Merkez Tankı', 'kap': 20000.0, 'stok': 0.0, 'tip': 'merkez', 'arac': '', 'firma': 'Fidanım Süt'});
+        await _tanks.add({'ad': 'Fidanım Tank-01', 'kap': 4000.0, 'stok': 0.0, 'tip': 'arac', 'arac': '34 FID 50', 'firma': 'Fidanım Süt'});
+        
+        await _drivers.add({'ad': 'Hasan', 'soyad': 'Fidan', 'tel': '0532 100 0003', 'email': 'hasanfidan@sutapp.com', 'tc': '345678901**', 'uretici': 1, 'active': true, 'firma': 'Fidanım Süt'});
+        
+        await _vehicles.add({
+          'plaka': '34 FID 50',
+          'suruculer': ['Hasan Fidan'],
+          'tanklar': [
+            {'ad': 'Fidanım Tank-01', 'stok': 0.0, 'kap': 4000.0}
+          ],
+          'active': true,
+          'firma': 'Fidanım Süt'
+        });
+        
+        await _producers.add({'name': 'Anıl Demir', 'phone': '0537 888 7766', 'group': 'Fidanım Köyü', 'bolge': 'Melikgazi', 'total': 0.0, 'avg': 50.0, 'firmalar': ['Fidanım Süt']});
+      }
+
+      // ── CLEANUP: Remove Kemal Demir completely from the system ──
+      // This runs every time to ensure the old demo user is purged.
+      final kemalProducers = await _producers.where('name', isEqualTo: 'Kemal Demir').get();
+      for (var doc in kemalProducers.docs) {
+        await doc.reference.delete();
+      }
+      final kemalAtamalar = await _db.collection('toplayici_atamalari').where('hedefAd', isEqualTo: 'Kemal Demir').get();
+      for (var doc in kemalAtamalar.docs) {
+        await doc.reference.delete();
+      }
+
+      // Ensure Anıl Demir exists as Fidanım Süt producer
+      final anilCheck = await _producers.where('name', isEqualTo: 'Anıl Demir').limit(1).get();
+      if (anilCheck.docs.isEmpty) {
+        await _producers.add({
+          'name': 'Anıl Demir',
+          'phone': '0537 888 7766',
+          'group': 'Fidanım Köyü',
+          'bolge': 'Melikgazi',
+          'total': 0.0,
+          'avg': 50.0,
+          'firmalar': ['Fidanım Süt'],
+        });
+      } else {
+        // Fix phone if it has the old duplicate value
+        final anilDoc = anilCheck.docs.first;
+        final anilData = anilDoc.data() as Map<String, dynamic>;
+        if (anilData['phone'] == '0532 999 8877') {
+          await anilDoc.reference.update({'phone': '0537 888 7766'});
+        }
+      }
     } catch (e) {
       print('Mock initialization error: $e');
     }
@@ -258,6 +324,9 @@ class FirestoreService {
     required String firma,
     String? lastMilkType,
     String? customerType,
+    String? mapsLink,
+    double? latitude,
+    double? longitude,
   }) async {
     // Try to find by phone first, then by name
     QuerySnapshot query = await _producers.where('phone', isEqualTo: phone).limit(1).get();
@@ -278,6 +347,13 @@ class FirestoreService {
       if (customerType != null) {
         updates['customerType'] = customerType;
       }
+      if (mapsLink != null && mapsLink.isNotEmpty) {
+        updates['mapsLink'] = mapsLink;
+      }
+      if (latitude != null && longitude != null) {
+        updates['latitude'] = latitude;
+        updates['longitude'] = longitude;
+      }
       await doc.reference.update(updates);
     } else {
       final data = <String, dynamic>{
@@ -293,6 +369,13 @@ class FirestoreService {
         data['lastMilkType'] = lastMilkType;
       }
       data['customerType'] = customerType ?? 'sut';
+      if (mapsLink != null && mapsLink.isNotEmpty) {
+        data['mapsLink'] = mapsLink;
+      }
+      if (latitude != null && longitude != null) {
+        data['latitude'] = latitude;
+        data['longitude'] = longitude;
+      }
       await _producers.add(data);
     }
   }
@@ -732,6 +815,144 @@ class FirestoreService {
     } catch (_) {}
   }
 
+  Future<void> approveToplayiciTeklif(String notificationId, String teklifId) async {
+    final db = FirebaseFirestore.instance;
+    final teklifRef = db.collection('toplayici_teklifleri').doc(teklifId);
+    final docSnap = await teklifRef.get();
+    if (!docSnap.exists) {
+      throw Exception('Teklif bulunamadı.');
+    }
+
+    final data = docSnap.data() as Map<String, dynamic>;
+    final durum = data['durum'] ?? 'beklemede';
+    if (durum != 'beklemede') {
+      throw Exception('Bu teklif zaten işlenmiş.');
+    }
+
+    final tip = data['tip'] as String?;
+    final toplayici = data['toplayici'] as String? ?? '';
+    final firma = data['firma'] as String? ?? '';
+
+    if (tip == 'ekle') {
+      final yeniData = data['yeniData'] as Map<String, dynamic>?;
+      if (yeniData != null) {
+        final name = yeniData['name'] as String? ?? '';
+        final phone = yeniData['phone'] as String? ?? '';
+        final group = yeniData['group'] as String? ?? '';
+        final bolge = yeniData['bolge'] as String? ?? '';
+        final avg = (yeniData['avg'] ?? 50.0) as num;
+        final lat = yeniData['latitude'] as double?;
+        final lng = yeniData['longitude'] as double?;
+        final mapsLink = yeniData['mapsLink'] as String?;
+        final milkType = yeniData['lastMilkType'] as String? ?? 'Soğuk Süt';
+
+        // 1. Create producer
+        await db.collection('ureticiler').add({
+          'name': name,
+          'phone': phone,
+          'group': group,
+          'bolge': bolge,
+          'avg': avg.toDouble(),
+          'total': 0.0,
+          'firmalar': [firma],
+          if (lat != null) 'latitude': lat,
+          if (lng != null) 'longitude': lng,
+          if (mapsLink != null) 'mapsLink': mapsLink,
+          'lastMilkType': milkType,
+        });
+
+        // 2. Automatically assign the producer to the collector/toplayici
+        await db.collection('toplayici_atamalari').add({
+          'toplayici': toplayici,
+          'hedefTip': 'uretici',
+          'hedefAd': name,
+          'firma': firma,
+          'timestamp': FieldValue.serverTimestamp(),
+        });
+      }
+    } else if (tip == 'duzenle') {
+      final ureticiId = data['ureticiId'] as String?;
+      final yeniData = data['yeniData'] as Map<String, dynamic>?;
+      final eskiData = data['eskiData'] as Map<String, dynamic>?;
+      if (ureticiId != null && yeniData != null) {
+        final name = yeniData['name'] as String? ?? '';
+        final phone = yeniData['phone'] as String? ?? '';
+        final group = yeniData['group'] as String? ?? '';
+        final bolge = yeniData['bolge'] as String? ?? '';
+        final lat = yeniData['latitude'] as double?;
+        final lng = yeniData['longitude'] as double?;
+        final mapsLink = yeniData['mapsLink'] as String?;
+        final milkType = yeniData['lastMilkType'] as String?;
+
+        // 1. Update producer
+        await db.collection('ureticiler').doc(ureticiId).update({
+          'name': name,
+          'phone': phone,
+          'group': group,
+          'bolge': bolge,
+          'latitude': lat,
+          'longitude': lng,
+          'mapsLink': mapsLink,
+          if (milkType != null) 'lastMilkType': milkType,
+        });
+
+        // 2. Update assignments in toplayici_atamalari if name changed
+        final oldName = eskiData?['name'] as String? ?? '';
+        if (oldName.isNotEmpty && name.isNotEmpty && oldName != name) {
+          final atamalar = await db.collection('toplayici_atamalari')
+              .where('hedefAd', isEqualTo: oldName)
+              .where('firma', isEqualTo: firma)
+              .get();
+          for (var doc in atamalar.docs) {
+            await doc.reference.update({'hedefAd': name});
+          }
+        }
+      }
+    } else if (tip == 'silme') {
+      final ureticiId = data['ureticiId'] as String?;
+      final eskiData = data['eskiData'] as Map<String, dynamic>?;
+      final ureticiAd = eskiData?['name'] as String? ?? '';
+      if (ureticiId != null) {
+        // 1. Get producer to check companies
+        final prodSnap = await db.collection('ureticiler').doc(ureticiId).get();
+        if (prodSnap.exists) {
+          final pData = prodSnap.data() as Map<String, dynamic>;
+          final firmalar = List<String>.from(pData['firmalar'] ?? []);
+          firmalar.remove(firma);
+          if (firmalar.isEmpty) {
+            // Delete producer document completely
+            await prodSnap.reference.delete();
+          } else {
+            // Just remove this firma from the producer
+            await prodSnap.reference.update({'firmalar': firmalar});
+          }
+        }
+
+        // 2. Delete assignments in toplayici_atamalari
+        if (ureticiAd.isNotEmpty) {
+          final atamalar = await db.collection('toplayici_atamalari')
+              .where('hedefAd', isEqualTo: ureticiAd)
+              .where('firma', isEqualTo: firma)
+              .get();
+          for (var doc in atamalar.docs) {
+            await doc.reference.delete();
+          }
+        }
+      }
+    }
+
+    // Update status to onaylandi
+    await teklifRef.update({'durum': 'onaylandi'});
+    // Mark notification read
+    await markNotificationRead(notificationId);
+  }
+
+  Future<void> rejectToplayiciTeklif(String notificationId, String teklifId) async {
+    final db = FirebaseFirestore.instance;
+    await db.collection('toplayici_teklifleri').doc(teklifId).update({'durum': 'reddedildi'});
+    await markNotificationRead(notificationId);
+  }
+
   Future<void> recordTahsilat({
     required String producerName,
     required double tutar,
@@ -1011,6 +1232,7 @@ class FirestoreService {
     required String baslik,
     required String icerik,
     required String type,
+    Map<String, dynamic>? extraData,
   }) async {
     // 1. Search for recipient in 'users' collection to get their UID
     String? uid;
@@ -1048,6 +1270,7 @@ class FirestoreService {
       'timestamp': FieldValue.serverTimestamp(),
       'read': false,
       'type': type,
+      if (extraData != null) ...extraData,
     });
   }
 
@@ -1314,10 +1537,15 @@ class FirestoreService {
     required List<QueryDocumentSnapshot> kesintiler,
     required List<QueryDocumentSnapshot> cezalar,
     List<QueryDocumentSnapshot>? devirler,
+    List<QueryDocumentSnapshot>? satislar,
     required String producerName,
     required String bolge,
     required String group,
     Map<String, dynamic>? kesintiAyarlari,
+    List<String>? dynamicColumns,
+    double? bagkurOran,
+    double? stopajOran,
+    double? borsaOran,
   }) {
     final priceList = prices.map((d) => d.data() as Map<String, dynamic>).toList();
 
@@ -1328,27 +1556,35 @@ class FirestoreService {
 
     // Resolve deduction settings schedule
     final Map<String, dynamic> activeSchedule = {};
-    final defaultRates = {
-      'Bağkur': 2.10,
-      'Stopaj': 1.00,
-      'Borsa': 0.20,
-    };
+    final List<String> activeCols = dynamicColumns ?? ['Bağkur', 'Stopaj', 'Borsa'];
+    final double defaultBagkur = bagkurOran ?? 2.10;
+    final double defaultStopaj = stopajOran ?? 1.00;
+    final double defaultBorsa = borsaOran ?? 0.20;
 
-    if (kesintiAyarlari != null && kesintiAyarlari.isNotEmpty) {
-      kesintiAyarlari.forEach((key, val) {
-        if (val is Map) {
-          activeSchedule[key] = Map<String, dynamic>.from(val);
+    for (var type in activeCols) {
+      if (kesintiAyarlari != null && kesintiAyarlari.containsKey(type)) {
+        final s = kesintiAyarlari[type];
+        if (s is Map) {
+          activeSchedule[type] = {
+            'oran': (s['oran'] as num?)?.toDouble() ?? 0.0,
+            'aktif': s['aktif'] == true,
+            'baslangic': s['baslangic'] as String?,
+            'bitis': s['bitis'] as String?,
+          };
         }
-      });
-    } else {
-      defaultRates.forEach((key, val) {
-        activeSchedule[key] = {
-          'oran': val,
+      } else {
+        double rate = 0.0;
+        if (type == 'Bağkur') rate = defaultBagkur;
+        else if (type == 'Stopaj') rate = defaultStopaj;
+        else if (type == 'Borsa') rate = defaultBorsa;
+
+        activeSchedule[type] = {
+          'oran': rate,
           'aktif': true,
           'baslangic': null,
           'bitis': null,
         };
-      });
+      }
     }
 
     for (var doc in collections) {
@@ -1480,6 +1716,16 @@ class FirestoreService {
       }
     }
 
+    // 5b. Active Sales (Satislar)
+    double totalSales = 0.0;
+    if (satislar != null) {
+      for (var doc in satislar) {
+        final data = doc.data() as Map<String, dynamic>;
+        final sVal = data['tutar'];
+        totalSales += sVal is num ? sVal.toDouble() : (double.tryParse(sVal.toString()) ?? 0.0);
+      }
+    }
+
     // 6. Devir/Düzeltme (Carryover balance)
     double totalDevir = 0.0;
     if (devirler != null) {
@@ -1492,8 +1738,8 @@ class FirestoreService {
 
     final double totalKesinti = totalManualKesinti + dynamicKesintiSum;
 
-    // Net balance = gross milk receivable - payments - active advances - active kesintiler - active cezalar + devirler + collections from producer
-    final double netBalance = toplamAlacak - totalTahsilat - totalAvans - totalKesinti - totalCeza + totalDevir + totalProducerTahsilat;
+    // Net balance = gross milk receivable - payments - active advances - active kesintiler - active cezalar - active sales + devirler + collections from producer
+    final double netBalance = toplamAlacak - totalTahsilat - totalAvans - totalKesinti - totalCeza - totalSales + totalDevir + totalProducerTahsilat;
 
     return {
       'toplamLitre': toplamLitre,
@@ -1504,6 +1750,7 @@ class FirestoreService {
       'totalKesinti': totalKesinti,
       'totalCeza': totalCeza,
       'totalDevir': totalDevir,
+      'totalSales': totalSales,
       'netBalance': netBalance,
     };
   }

@@ -88,7 +88,17 @@ class _GelirlerScreenState extends State<GelirlerScreen> {
     if (field == null) return null;
     if (field is Timestamp) return field.toDate();
     if (field is DateTime) return field;
-    if (field is String) return DateTime.tryParse(field);
+    if (field is String) {
+      try {
+        return DateFormat('dd.MM.yyyy').parse(field);
+      } catch (_) {
+        try {
+          return DateFormat('dd MMMM yyyy', 'tr_TR').parse(field);
+        } catch (_) {
+          return DateTime.tryParse(field);
+        }
+      }
+    }
     return null;
   }
 
@@ -271,7 +281,8 @@ class _GelirlerScreenState extends State<GelirlerScreen> {
         final data = doc.data();
         final durum = data['durum'] as String? ?? 'aktif';
         if (durum == 'aktif') {
-          final date = _getDocDate(data['timestamp']);
+          final rawDate = data['tahsilEdilecegiTarih'] ?? data['verildigiTarih'] ?? data['tarih'] ?? data['timestamp'];
+          final date = _getDocDate(rawDate);
           if (_isWithinFilter(date)) {
             final double tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
             tempAvans += tutar;

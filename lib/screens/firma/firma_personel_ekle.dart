@@ -334,11 +334,17 @@ class _FirmaPersonelEkleScreenState extends State<FirmaPersonelEkleScreen> {
                     TextFormField(
                       controller: _telCtrl,
                       keyboardType: TextInputType.phone,
+                      maxLength: 11,
                       decoration: const InputDecoration(
                         hintText: 'Örn: 0532 123 4567',
                         fillColor: Color(0xFFF8FAFC),
+                        counterText: '',
                       ),
-                      validator: (v) => (v == null || v.trim().isEmpty) ? 'Lütfen telefon girin' : null,
+                      validator: (v) {
+                        if (v == null || v.trim().isEmpty) return 'Lütfen telefon girin';
+                        if (v.trim().length != 11) return 'Telefon numarası 11 haneli olmalıdır';
+                        return null;
+                      },
                     ),
                     const SizedBox(height: 16),
 

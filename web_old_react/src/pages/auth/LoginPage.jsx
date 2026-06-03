@@ -11,13 +11,21 @@ export default function LoginPage() {
   const [statusMessage, setStatusMessage] = useState('');
 
   const formatPhoneNumber = (input) => {
-    const cleaned = input.trim();
-    if (!cleaned) return '';
-    if (cleaned.startsWith('+')) return cleaned;
-    if (cleaned.startsWith('0')) {
-      return `+90${cleaned.substring(1)}`;
+    if (!input) return '';
+    // Strip all non-digit characters
+    let digits = input.replace(/\D/g, '');
+    
+    if (digits.startsWith('00')) {
+      digits = digits.substring(2);
     }
-    return `+90${cleaned}`;
+    if (digits.startsWith('0')) {
+      digits = digits.substring(1);
+    }
+    
+    if (digits.startsWith('90') && digits.length === 12) {
+      return `+${digits}`;
+    }
+    return `+90${digits}`;
   };
 
   const handleSendCode = async (e) => {
@@ -25,8 +33,8 @@ export default function LoginPage() {
     setError('');
     setStatusMessage('');
     const formatted = formatPhoneNumber(phone);
-    if (!formatted || formatted.length < 10) {
-      setError('Lütfen geçerli bir telefon numarası girin.');
+    if (!formatted || formatted.length !== 13 || !formatted.startsWith('+90')) {
+      setError('Lütfen geçerli bir telefon numarası girin (örn: 555 123 4567).');
       return;
     }
 

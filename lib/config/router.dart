@@ -3,6 +3,7 @@ import '../providers/auth_provider.dart';
 import '../models/user_model.dart';
 import '../screens/auth/login_screen.dart';
 import '../screens/auth/register_screen.dart';
+import '../screens/auth/splash_screen.dart';
 import '../screens/shell/app_shell.dart';
 import '../screens/admin/admin_dashboard.dart';
 import '../screens/admin/admin_firmalar.dart';
@@ -38,6 +39,8 @@ import '../screens/firma/urun_siparisleri_screen.dart';
 import '../screens/surucu/surucu_dashboard.dart';
 import '../screens/surucu/surucu_profil.dart';
 import '../screens/surucu/surucu_teslimatlar.dart';
+import '../screens/surucu/surucu_ureticiler_screen.dart';
+import '../screens/surucu/surucu_sut_bosalt.dart';
 import '../screens/uretici/uretici_dashboard.dart';
 import '../screens/uretici/uretici_faturalar.dart';
 import '../screens/uretici/uretici_profil.dart';
@@ -47,6 +50,7 @@ import '../screens/firma/firma_gruplar.dart';
 import '../screens/firma/firma_birlikler.dart';
 import '../screens/firma/firma_atamalar.dart';
 import '../screens/firma/firma_satislar.dart';
+import '../screens/firma/firma_satis_ekle.dart';
 import '../screens/firma/firma_hesap_ozeti.dart';
 import '../screens/firma/firma_aylik_sut.dart';
 import '../screens/firma/firma_ureticiler_list.dart';
@@ -67,12 +71,15 @@ import '../screens/uretici/dijital_sut_karti.dart';
 GoRouter createRouter(AuthProvider auth) {
   return GoRouter(
     refreshListenable: auth,
-    initialLocation: '/login',
+    initialLocation: '/splash',
     redirect: (context, state) {
       final loggedIn = auth.isLoggedIn;
       final needsRegistration = auth.needsRegistration;
       final loggingIn = state.matchedLocation == '/login';
       final registering = state.matchedLocation == '/register';
+      final splashing = state.matchedLocation == '/splash';
+
+      if (splashing) return null;
 
       if (needsRegistration) {
         if (registering) return null;
@@ -95,6 +102,7 @@ GoRouter createRouter(AuthProvider auth) {
       return null;
     },
     routes: [
+      GoRoute(path: '/splash', builder: (_, __) => const SplashScreen()),
       GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
       GoRoute(path: '/register', builder: (_, __) => const RegisterScreen()),
 
@@ -140,7 +148,8 @@ GoRouter createRouter(AuthProvider auth) {
           GoRoute(path: '/firma/gruplar', builder: (_, __) => const FirmaGruplarScreen()),
           GoRoute(path: '/firma/birlikler', builder: (_, __) => const FirmaBirliklerScreen()),
           GoRoute(path: '/firma/atamalar', builder: (_, __) => const FirmaAtamalarScreen()),
-          GoRoute(path: '/firma/satislar', builder: (_, __) => const FirmaSatislarScreen()),
+          GoRoute(path: '/firma/satislar', builder: (_, __) => const FirmaSatisEkleScreen()),
+          GoRoute(path: '/firma/satislar/ekle', builder: (_, __) => const FirmaSatisEkleScreen()),
           GoRoute(
             path: '/firma/hesap-ozeti',
             builder: (context, state) {
@@ -231,6 +240,9 @@ GoRouter createRouter(AuthProvider auth) {
           GoRoute(path: '/surucu', builder: (_, __) => const SurucuDashboard()),
           GoRoute(path: '/surucu/toplama', builder: (_, __) => const SurucuDashboard(showSutAlDirectly: true)),
           GoRoute(path: '/surucu/teslimatlar', builder: (_, __) => const SurucuTeslimatlarScreen()),
+          GoRoute(path: '/surucu/ureticiler', builder: (_, __) => const SurucuUreticilerScreen()),
+          GoRoute(path: '/surucu/ureticiler/ekle', builder: (_, __) => const SurucuUreticilerScreen(openAddDialog: true)),
+          GoRoute(path: '/surucu/sut-bosalt', builder: (_, __) => const SurucuSutBosaltScreen()),
           GoRoute(path: '/surucu/profil', builder: (_, __) => const SurucuProfilScreen()),
         ],
       ),

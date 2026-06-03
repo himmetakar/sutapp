@@ -269,20 +269,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       // Header
-                      RichText(
-                        text: TextSpan(
-                          style: GoogleFonts.inter(fontSize: 32, fontWeight: FontWeight.w800),
-                          children: const [
-                            TextSpan(text: 'Süt', style: TextStyle(color: AppColors.primary600)),
-                            TextSpan(text: 'App', style: TextStyle(color: AppColors.gray800)),
-                          ],
-                        ),
+                      Image.asset(
+                        'assets/images/sutapp-logo.png',
+                        height: 80,
+                        fit: BoxFit.contain,
                       ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'Hesabınızı Tamamlayın',
-                        style: GoogleFonts.inter(fontSize: 14, color: AppColors.gray600, fontWeight: FontWeight.w500),
-                      ),
+                      const SizedBox(height: 12),
                       const SizedBox(height: 20),
 
                       // Card

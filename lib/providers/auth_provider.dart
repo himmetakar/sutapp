@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -237,7 +238,8 @@ class AuthProvider extends ChangeNotifier {
         verificationFailed: (FirebaseAuthException e) {
           _loading = false;
           notifyListeners();
-          onError(e.message ?? 'Telefon doğrulaması başarısız oldu.');
+          debugPrint('FirebaseAuth verifyPhoneNumber failed: code=${e.code}, message=${e.message}');
+          onError(e.message ?? 'Telefon doğrulaması başarısız oldu. Hata Kodu: ${e.code}');
         },
         codeSent: (String verificationId, int? resendToken) {
           _verificationId = verificationId;
@@ -252,6 +254,7 @@ class AuthProvider extends ChangeNotifier {
     } catch (e) {
       _loading = false;
       notifyListeners();
+      debugPrint('verifyPhone error: $e');
       onError(e.toString());
     }
   }
@@ -337,13 +340,28 @@ class AuthProvider extends ChangeNotifier {
     await Future.delayed(const Duration(milliseconds: 400));
 
     final baseUser = AppUser.demo(role);
+    
+    // Generate unique email and phone for custom-named demo users
+    final String demoEmail;
+    final String demoPhone;
+    if (customName != null) {
+      final safeName = customName.toLowerCase().replaceAll(' ', '').replaceAll(RegExp(r'[^a-z0-9]'), '');
+      demoEmail = '$safeName@sutapp.com';
+      // Generate a unique phone from name hash
+      final hash = customName.hashCode.abs() % 9000000 + 1000000;
+      demoPhone = '0532 ${hash.toString().substring(0, 3)} ${hash.toString().substring(3, 7)}';
+    } else {
+      demoEmail = baseUser.email;
+      demoPhone = baseUser.phone ?? '0532 000 0000';
+    }
+
     _user = AppUser(
       uid: customName != null ? 'demo_${role.name}_${customName.hashCode}' : baseUser.uid,
       displayName: customName ?? baseUser.displayName,
-      email: baseUser.email,
+      email: demoEmail,
       role: role,
       firmaId: baseUser.firmaId,
-      phone: baseUser.phone,
+      phone: demoPhone,
       il: baseUser.il,
       ilce: baseUser.ilce,
       mahalleKoy: baseUser.mahalleKoy,

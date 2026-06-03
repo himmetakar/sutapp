@@ -46,7 +46,12 @@ class _FirmaSuruculerState extends State<FirmaSuruculer> {
               TextField(
                 controller: telCtrl,
                 keyboardType: TextInputType.phone,
-                decoration: const InputDecoration(labelText: 'Telefon', hintText: 'Örn: 0530 123 4567'),
+                maxLength: 11,
+                decoration: const InputDecoration(
+                  labelText: 'Telefon',
+                  hintText: 'Örn: 0530 123 4567',
+                  counterText: '',
+                ),
               ),
               const SizedBox(height: 12),
               TextField(

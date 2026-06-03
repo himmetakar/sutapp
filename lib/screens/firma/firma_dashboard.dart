@@ -739,13 +739,13 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
         _loadStaffPerformance(currentFirmaName, false),
       ]),
       builder: (context, snap) {
-        final Map<String, List<Map<String, dynamic>>> trends = snap.data != null
+        final Map<String, List<Map<String, dynamic>>> trends = (snap.data != null && snap.data!.isNotEmpty && snap.data![0] is Map)
             ? snap.data![0] as Map<String, List<Map<String, dynamic>>>
             : {'up': [], 'down': []};
-        final List<String> noMilkToday = snap.data != null
+        final List<String> noMilkToday = (snap.data != null && snap.data!.length > 1 && snap.data![1] is List<String>)
             ? snap.data![1] as List<String>
             : [];
-        final List<Map<String, dynamic>> staffPerf = snap.data != null
+        final List<Map<String, dynamic>> staffPerf = (snap.data != null && snap.data!.length > 2 && snap.data![2] is List<Map<String, dynamic>>)
             ? snap.data![2] as List<Map<String, dynamic>>
             : [];
 
@@ -854,10 +854,10 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
         _loadStaffPerformance(currentFirmaName, true),
       ]),
       builder: (context, snap) {
-        final Map<String, List<Map<String, dynamic>>> trends = snap.data != null
+        final Map<String, List<Map<String, dynamic>>> trends = (snap.data != null && snap.data!.isNotEmpty && snap.data![0] is Map)
             ? snap.data![0] as Map<String, List<Map<String, dynamic>>>
             : {'up': [], 'down': []};
-        final List<Map<String, dynamic>> staffPerf = snap.data != null
+        final List<Map<String, dynamic>> staffPerf = (snap.data != null && snap.data!.length > 1 && snap.data![1] is List<Map<String, dynamic>>)
             ? snap.data![1] as List<Map<String, dynamic>>
             : [];
 
@@ -1296,16 +1296,36 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
               ),
             ),
             Expanded(
-              child: FutureBuilder<QuerySnapshot>(
-                future: FirebaseFirestore.instance
-                    .collection('toplamalar')
-                    .where('tank', isEqualTo: tankAdi)
-                    .get(),
+              child: FutureBuilder<List<QueryDocumentSnapshot>>(
+                future: () async {
+                  final db = FirebaseFirestore.instance;
+                  // Find the last time this (arac) tank was emptied
+                  DateTime? lastEmptyTime;
+                  try {
+                    final emptySnap = await db
+                        .collection('teslimatlar')
+                        .where('kaynakTank', isEqualTo: tankAdi)
+                        .orderBy('timestamp', descending: true)
+                        .limit(1)
+                        .get();
+                    if (emptySnap.docs.isNotEmpty) {
+                      final ts = emptySnap.docs.first.data()['timestamp'];
+                      if (ts is Timestamp) lastEmptyTime = ts.toDate();
+                    }
+                  } catch (_) {}
+
+                  Query q = db.collection('toplamalar').where('tank', isEqualTo: tankAdi);
+                  if (lastEmptyTime != null) {
+                    q = q.where('timestamp', isGreaterThan: Timestamp.fromDate(lastEmptyTime));
+                  }
+                  final snap = await q.get();
+                  return snap.docs;
+                }(),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
                   }
-                  final rawDocs = snapshot.data?.docs ?? [];
+                  final rawDocs = snapshot.data ?? [];
                   if (rawDocs.isEmpty) {
                     return Center(
                       child: Text(
@@ -1396,26 +1416,31 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
     );
   }
 
+  DateTime? _parseDocDate(Map<String, dynamic> data) {
+    final rawDate = data['tarih'] ?? data['verildigiTarih'] ?? data['vereseTarih'] ?? data['tarihStr'];
+    if (rawDate != null) {
+      final str = rawDate.toString();
+      try {
+        return DateFormat('dd.MM.yyyy').parse(str);
+      } catch (_) {
+        try {
+          return DateFormat('dd MMMM yyyy', 'tr_TR').parse(str);
+        } catch (_) {}
+      }
+    }
+    if (data['timestamp'] != null) {
+      return (data['timestamp'] as Timestamp).toDate();
+    }
+    return null;
+  }
+
   bool _isDocInSelectedMonth(DocumentSnapshot doc, DateTime selectedMonth) {
     final data = doc.data() as Map<String, dynamic>?;
     if (data == null) return false;
 
-    if (data['timestamp'] != null) {
-      final date = (data['timestamp'] as Timestamp).toDate();
+    final date = _parseDocDate(data);
+    if (date != null) {
       return date.month == selectedMonth.month && date.year == selectedMonth.year;
-    }
-
-    final rawDate = data['tarih'] ?? data['verildigiTarih'] ?? data['vereseTarih'] ?? data['tarihStr'];
-    if (rawDate != null) {
-      try {
-        final parsed = DateFormat('dd.MM.yyyy').parse(rawDate.toString());
-        return parsed.month == selectedMonth.month && parsed.year == selectedMonth.year;
-      } catch (_) {
-        try {
-          final parsed2 = DateFormat('dd MMMM yyyy', 'tr_TR').parse(rawDate.toString());
-          return parsed2.month == selectedMonth.month && parsed2.year == selectedMonth.year;
-        } catch (_) {}
-      }
     }
     return false;
   }
@@ -1424,22 +1449,7 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
     final data = doc.data() as Map<String, dynamic>?;
     if (data == null) return false;
 
-    DateTime? date;
-    if (data['timestamp'] != null) {
-      date = (data['timestamp'] as Timestamp).toDate();
-    } else {
-      final rawDate = data['tarih'] ?? data['verildigiTarih'] ?? data['vereseTarih'] ?? data['tarihStr'];
-      if (rawDate != null) {
-        try {
-          date = DateFormat('dd.MM.yyyy').parse(rawDate.toString());
-        } catch (_) {
-          try {
-            date = DateFormat('dd MMMM yyyy', 'tr_TR').parse(rawDate.toString());
-          } catch (_) {}
-        }
-      }
-    }
-
+    final date = _parseDocDate(data);
     if (date != null) {
       if (date.year < selectedMonth.year) return true;
       if (date.year == selectedMonth.year && date.month < selectedMonth.month) return true;
@@ -1451,22 +1461,7 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
     final data = doc.data() as Map<String, dynamic>?;
     if (data == null) return false;
 
-    DateTime? date;
-    if (data['timestamp'] != null) {
-      date = (data['timestamp'] as Timestamp).toDate();
-    } else {
-      final rawDate = data['tarih'] ?? data['verildigiTarih'] ?? data['vereseTarih'] ?? data['tarihStr'];
-      if (rawDate != null) {
-        try {
-          date = DateFormat('dd.MM.yyyy').parse(rawDate.toString());
-        } catch (_) {
-          try {
-            date = DateFormat('dd MMMM yyyy', 'tr_TR').parse(rawDate.toString());
-          } catch (_) {}
-        }
-      }
-    }
-
+    final date = _parseDocDate(data);
     if (date != null) {
       if (date.year < selectedMonth.year) return true;
       if (date.year == selectedMonth.year && date.month <= selectedMonth.month) return true;
@@ -1520,10 +1515,30 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
 
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
-          .collection('tahsilatlar')
-          .where('firma', isEqualTo: currentFirmaName)
+          .collection('ureticiler')
+          .where('firmalar', arrayContains: currentFirmaName)
           .snapshots(),
-      builder: (context, tahsilatSnap) {
+      builder: (context, ureticiSnap) {
+        final producers = ureticiSnap.hasData
+            ? ureticiSnap.data!.docs.map((doc) => doc.data() as Map<String, dynamic>).toList()
+            : [];
+
+        return StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection('devirler')
+              .where('firma', isEqualTo: currentFirmaName)
+              .snapshots(),
+          builder: (context, devirlerSnap) {
+            final devirDocs = devirlerSnap.data?.docs ?? [];
+            final prevDevirler = devirDocs.where((doc) => _isDocBeforeSelectedMonth(doc, _maliOzetMonth)).toList();
+            final upToDevirler = devirDocs.where((doc) => _isDocUpToSelectedMonth(doc, _maliOzetMonth)).toList();
+
+            return StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('tahsilatlar')
+                  .where('firma', isEqualTo: currentFirmaName)
+                  .snapshots(),
+              builder: (context, tahsilatSnap) {
         if (tahsilatSnap.connectionState == ConnectionState.waiting) {
           return const Center(child: Padding(
             padding: EdgeInsets.all(40.0),
@@ -1813,18 +1828,156 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
                             final double odenen = totalOdeme;
                             final double kalan = (netOdeyecek - odenen).clamp(0.0, double.infinity);
 
-                            // devir balances calculations
-                            final double prevNetOwed = prevAlacak - prevOdemeVal + prevProducerTahsilatVal - prevAvansVal - prevKesintiVal - prevCezaVal;
+                            // devir balances calculations (Summing per producer to prevent netting out different producers)
                             double devirBorc = 0.0;
                             double devirAlacak = 0.0;
-                            if (prevNetOwed > 0) devirAlacak = prevNetOwed;
-                            else if (prevNetOwed < 0) devirBorc = prevNetOwed.abs();
-
-                            final double nextNetOwed = upToAlacak - upToOdemeVal + upToProducerTahsilatVal - upToAvansVal - upToKesintiVal - upToCezaVal;
                             double devirBorcNext = 0.0;
                             double devirAlacakNext = 0.0;
-                            if (nextNetOwed > 0) devirAlacakNext = nextNetOwed;
-                            else if (nextNetOwed < 0) devirBorcNext = nextNetOwed.abs();
+
+                            for (var producer in producers) {
+                              final String name = (producer['name'] as String? ?? '').trim();
+                              if (name.isEmpty) continue;
+
+                              // 1. PREVIOUS ( Önceki Aydan Devreden )
+                              double pPrevMilk = 0.0;
+                              for (var doc in prevCollections) {
+                                if ((doc['u'] as String? ?? '').trim() == name) {
+                                  final m = doc['m'];
+                                  pPrevMilk += m is num ? m.toDouble() : (double.tryParse(m.toString()) ?? 0.0);
+                                }
+                              }
+                              final double pPrevAlacak = pPrevMilk * 23.0;
+
+                              double pPrevOdeme = 0.0;
+                              double pPrevProducerTahsilat = 0.0;
+                              for (var doc in prevTahsilatlar) {
+                                if ((doc['uretici'] as String? ?? '').trim() == name) {
+                                  final tVal = doc['tutar'];
+                                  final val = tVal is num ? tVal.toDouble() : (double.tryParse(tVal.toString()) ?? 0.0);
+                                  final type = fs.getTahsilatType(doc.data() as Map<String, dynamic>);
+                                  if (type == 'tahsilat') {
+                                    pPrevProducerTahsilat += val;
+                                  } else {
+                                    pPrevOdeme += val;
+                                  }
+                                }
+                              }
+
+                              double pPrevAvans = 0.0;
+                              for (var doc in prevAvanslar) {
+                                if ((doc['uretici'] as String? ?? '').trim() == name) {
+                                  final aVal = doc['tutar'];
+                                  pPrevAvans += aVal is num ? aVal.toDouble() : (double.tryParse(aVal.toString()) ?? 0.0);
+                                }
+                              }
+
+                              double pPrevKesinti = 0.0;
+                              for (var doc in prevKesintiler) {
+                                if ((doc['uretici'] as String? ?? '').trim() == name) {
+                                  final kVal = doc['tutar'];
+                                  pPrevKesinti += kVal is num ? kVal.toDouble() : (double.tryParse(kVal.toString()) ?? 0.0);
+                                }
+                              }
+
+                              double pPrevCeza = 0.0;
+                              for (var doc in prevCezalar) {
+                                if ((doc['uretici'] as String? ?? '').trim() == name) {
+                                  final data = doc.data() as Map<String, dynamic>;
+                                  final tip = data['tip'] as String? ?? 'miktarsal';
+                                  if (tip == 'oransal') {
+                                    final double oran = (data['oran'] as num?)?.toDouble() ?? 0.0;
+                                    pPrevCeza += pPrevAlacak * (oran / 100.0);
+                                  } else {
+                                    pPrevCeza += (data['tutar'] as num?)?.toDouble() ?? 0.0;
+                                  }
+                                }
+                              }
+
+                              double pPrevDevir = 0.0;
+                              for (var doc in prevDevirler) {
+                                if ((doc['uretici'] as String? ?? '').trim() == name) {
+                                  final dVal = doc['tutar'];
+                                  pPrevDevir += dVal is num ? dVal.toDouble() : (double.tryParse(dVal.toString()) ?? 0.0);
+                                }
+                              }
+
+                              final double pPrevNetOwed = pPrevAlacak - pPrevOdeme + pPrevProducerTahsilat - pPrevAvans - pPrevKesinti - pPrevCeza + pPrevDevir;
+                              if (pPrevNetOwed > 0) {
+                                devirAlacak += pPrevNetOwed;
+                              } else if (pPrevNetOwed < 0) {
+                                devirBorc += pPrevNetOwed; // Sum negative values
+                              }
+
+                              // 2. NEXT ( Diğer Aya Devreden )
+                              double pUpToMilk = 0.0;
+                              for (var doc in upToCollections) {
+                                if ((doc['u'] as String? ?? '').trim() == name) {
+                                  final m = doc['m'];
+                                  pUpToMilk += m is num ? m.toDouble() : (double.tryParse(m.toString()) ?? 0.0);
+                                }
+                              }
+                              final double pUpToAlacak = pUpToMilk * 23.0;
+
+                              double pUpToOdeme = 0.0;
+                              double pUpToProducerTahsilat = 0.0;
+                              for (var doc in upToTahsilatlar) {
+                                if ((doc['uretici'] as String? ?? '').trim() == name) {
+                                  final tVal = doc['tutar'];
+                                  final val = tVal is num ? tVal.toDouble() : (double.tryParse(tVal.toString()) ?? 0.0);
+                                  final type = fs.getTahsilatType(doc.data() as Map<String, dynamic>);
+                                  if (type == 'tahsilat') {
+                                    pUpToProducerTahsilat += val;
+                                  } else {
+                                    pUpToOdeme += val;
+                                  }
+                                }
+                              }
+
+                              double pUpToAvans = 0.0;
+                              for (var doc in upToAvanslar) {
+                                if ((doc['uretici'] as String? ?? '').trim() == name) {
+                                  final aVal = doc['tutar'];
+                                  pUpToAvans += aVal is num ? aVal.toDouble() : (double.tryParse(aVal.toString()) ?? 0.0);
+                                }
+                              }
+
+                              double pUpToKesinti = 0.0;
+                              for (var doc in upToKesintiler) {
+                                if ((doc['uretici'] as String? ?? '').trim() == name) {
+                                  final kVal = doc['tutar'];
+                                  pUpToKesinti += kVal is num ? kVal.toDouble() : (double.tryParse(kVal.toString()) ?? 0.0);
+                                }
+                              }
+
+                              double pUpToCeza = 0.0;
+                              for (var doc in upToCezalar) {
+                                if ((doc['uretici'] as String? ?? '').trim() == name) {
+                                  final data = doc.data() as Map<String, dynamic>;
+                                  final tip = data['tip'] as String? ?? 'miktarsal';
+                                  if (tip == 'oransal') {
+                                    final double oran = (data['oran'] as num?)?.toDouble() ?? 0.0;
+                                    pUpToCeza += pUpToAlacak * (oran / 100.0);
+                                  } else {
+                                    pUpToCeza += (data['tutar'] as num?)?.toDouble() ?? 0.0;
+                                  }
+                                }
+                              }
+
+                              double pUpToDevir = 0.0;
+                              for (var doc in upToDevirler) {
+                                if ((doc['uretici'] as String? ?? '').trim() == name) {
+                                  final dVal = doc['tutar'];
+                                  pUpToDevir += dVal is num ? dVal.toDouble() : (double.tryParse(dVal.toString()) ?? 0.0);
+                                }
+                              }
+
+                              final double pNextNetOwed = pUpToAlacak - pUpToOdeme + pUpToProducerTahsilat - pUpToAvans - pUpToKesinti - pUpToCeza + pUpToDevir;
+                              if (pNextNetOwed > 0) {
+                                devirAlacakNext += pNextNetOwed;
+                              } else if (pNextNetOwed < 0) {
+                                devirBorcNext += pNextNetOwed; // Sum negative values
+                              }
+                            }
 
                             final double totalExpenses = grossMilkPrice + totalAvans + totalCeza + totalKesinti;
                             final double totalIncomes = milkRevenue + totalProductGelir + totalProducerTahsilat;
@@ -2056,7 +2209,11 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
         );
       },
     );
-  }
+  },
+);
+},
+);
+}
 
   Widget _buildMockupCard(String label, String value, IconData icon, Color color, {Color? valueColor}) {
     return Container(
@@ -2144,10 +2301,11 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Borç :',
+                'Borçlu :',
                 style: GoogleFonts.inter(
                   fontSize: 12,
-                  color: AppColors.gray400,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF10B981),
                 ),
               ),
               Text(
@@ -2155,7 +2313,7 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
                 style: GoogleFonts.inter(
                   fontSize: 12,
                   fontWeight: FontWeight.bold,
-                  color: borc > 0 ? AppColors.danger : AppColors.gray600,
+                  color: const Color(0xFF10B981),
                 ),
               ),
             ],
@@ -2165,10 +2323,11 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Alacak :',
+                'Alacaklı :',
                 style: GoogleFonts.inter(
                   fontSize: 12,
-                  color: AppColors.gray400,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFFEF4444),
                 ),
               ),
               Text(
@@ -2176,7 +2335,7 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
                 style: GoogleFonts.inter(
                   fontSize: 12,
                   fontWeight: FontWeight.bold,
-                  color: alacak > 0 ? AppColors.success : AppColors.gray600,
+                  color: const Color(0xFFEF4444),
                 ),
               ),
             ],

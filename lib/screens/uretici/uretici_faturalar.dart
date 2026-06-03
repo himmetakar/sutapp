@@ -7,6 +7,7 @@ import '../../config/theme.dart';
 import '../../widgets/common_widgets.dart';
 import '../../providers/auth_provider.dart';
 import '../../utils/file_download_helper.dart';
+import '../../widgets/milk_loading_indicator.dart';
 
 class UreticiFaturalarScreen extends StatefulWidget {
   const UreticiFaturalarScreen({super.key});
@@ -181,7 +182,7 @@ class _UreticiFaturalarScreenState extends State<UreticiFaturalarScreen> {
                 .snapshots(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
+                return const Center(child: MilkLoadingIndicator(size: 70));
               }
 
               final docs = snapshot.data?.docs ?? [];
@@ -422,7 +423,7 @@ class _UreticiFaturalarScreenState extends State<UreticiFaturalarScreen> {
                 .snapshots(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
+                return const Center(child: MilkLoadingIndicator(size: 60));
               }
 
               final docs = snapshot.data?.docs ?? [];

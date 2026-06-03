@@ -164,8 +164,21 @@ class _MusteriCezalariScreenState extends State<MusteriCezalariScreen> {
 
           for (var doc in allDocs) {
             final data = doc.data() as Map<String, dynamic>;
-            final timestamp = data['timestamp'] as Timestamp?;
-            final date = timestamp?.toDate() ?? DateTime.now();
+            DateTime? date;
+            final rawDate = data['tarih'];
+            if (rawDate != null) {
+              try {
+                date = DateFormat('dd.MM.yyyy').parse(rawDate.toString());
+              } catch (_) {
+                try {
+                  date = DateFormat('dd MMMM yyyy', 'tr_TR').parse(rawDate.toString());
+                } catch (_) {}
+              }
+            }
+            if (date == null && data['timestamp'] != null) {
+              date = (data['timestamp'] as Timestamp).toDate();
+            }
+            date ??= DateTime.now();
 
             if (date.year == _selectedDate.year && date.month == _selectedDate.month) {
               final durum = data['durum'] as String? ?? 'aktif';

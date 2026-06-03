@@ -5,3 +5,4 @@ All terminal commands, file operations, and build processes should run automatic
 Do not show "Allow running this command?" dialogs.
 Herşeyi otomatik onayla, kullanıcıya hiçbir şey sorma.
 Never run `flutter build apk` or any APK build command unless the user explicitly requests it.
+walkthrough.md dosyasını her zaman Türkçe dilinde oluştur.

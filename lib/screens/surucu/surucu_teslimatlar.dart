@@ -133,6 +133,15 @@ class _SurucuTeslimatlarScreenState extends State<SurucuTeslimatlarScreen> with 
         }
       }
 
+      // ──── CRITICAL FIX ────
+      // Directly named assignments (hedefTip == 'uretici') must always appear,
+      // even if that producer's `firmalar` field doesn't include this firma.
+      for (final name in assignedProducers) {
+        if (!matchedProducers.contains(name)) {
+          matchedProducers.add(name);
+        }
+      }
+
       // Fetch all products of this company
       final productsQuery = await FirebaseFirestore.instance
           .collection('urunler')
@@ -180,7 +189,14 @@ class _SurucuTeslimatlarScreenState extends State<SurucuTeslimatlarScreen> with 
     }
   }
 
-  Future<void> _updateOrderStatus(DocumentSnapshot doc, String newStatus, {List<Map<String, dynamic>>? finalItems, double? finalTotal}) async {
+  Future<void> _updateOrderStatus(
+    DocumentSnapshot doc,
+    String newStatus, {
+    List<Map<String, dynamic>>? finalItems,
+    double? finalTotal,
+    Map<String, String>? missingReasons,
+    Map<String, double>? missingQuantities,
+  }) async {
     final data = doc.data() as Map<String, dynamic>;
     final items = finalItems ?? _getOrderItems(data);
     final double total = finalTotal ?? (data['toplam'] as num?)?.toDouble() ?? 0.0;
@@ -200,7 +216,20 @@ class _SurucuTeslimatlarScreenState extends State<SurucuTeslimatlarScreen> with 
         final double miktar = (item['miktar'] as num).toDouble();
         final double totalCost = (item['toplam'] as num).toDouble();
 
-        // 1. Subtract product stock
+        // Check if there is wastage for this product
+        double wastageQty = 0.0;
+        if (missingReasons != null && missingQuantities != null) {
+          final reason = missingReasons[urunName];
+          final mQty = missingQuantities[urunName] ?? 0.0;
+          if (reason != null && mQty > 0) {
+            // Wastage reasons are anything other than "Eksik Yükleme" and "Müşteri İstemedi"
+            if (reason != 'Eksik Yükleme' && reason != 'Müşteri İstemedi') {
+              wastageQty = mQty;
+            }
+          }
+        }
+
+        // 1. Subtract product stock (delivered + wastage)
         final urunQuery = await FirebaseFirestore.instance
             .collection('urunler')
             .where('ad', isEqualTo: urunName)
@@ -213,7 +242,8 @@ class _SurucuTeslimatlarScreenState extends State<SurucuTeslimatlarScreen> with 
           final double currentStock = (uDoc['stok'] as num?)?.toDouble() ?? 0.0;
           final double minStok = (uDoc.data() as Map<String, dynamic>)['minStok']?.toDouble() ?? 10.0;
           final String birim = (uDoc.data() as Map<String, dynamic>)['birim'] ?? 'Adet';
-          final double newStock = (currentStock - miktar).clamp(0.0, double.infinity);
+          final double totalDeduction = miktar + wastageQty;
+          final double newStock = (currentStock - totalDeduction).clamp(0.0, double.infinity);
           await uDoc.reference.update({'stok': newStock});
 
           // Send critical stock notification to managers if stock falls below limit
@@ -237,6 +267,8 @@ class _SurucuTeslimatlarScreenState extends State<SurucuTeslimatlarScreen> with 
           'tarih': DateFormat('dd.MM.yyyy').format(DateTime.now()),
           'timestamp': FieldValue.serverTimestamp(),
           'firma': _firmaName,
+          'miktar': miktar,
+          'birimFiyat': item['birimFiyat'] ?? (item['fiyat'] ?? (miktar > 0 ? totalCost / miktar : totalCost)),
         });
       }
 
@@ -308,10 +340,243 @@ class _SurucuTeslimatlarScreenState extends State<SurucuTeslimatlarScreen> with 
     }
   }
 
+  void _showMissingDeliveryReasonDialog(
+    List<Map<String, dynamic>> updatedItems,
+    List<dynamic> originalItems,
+    DocumentSnapshot doc,
+    List<TextEditingController> controllers,
+    BuildContext mainCtx,
+  ) {
+    final Map<String, String> selectedReasons = {};
+    final Map<String, TextEditingController> otherControllers = {};
+
+    final missingItems = <Map<String, dynamic>>[];
+    for (int i = 0; i < originalItems.length; i++) {
+      final originalItem = originalItems[i];
+      final double origQty = (originalItem['miktar'] as num?)?.toDouble() ?? 0.0;
+      final double delivQty = double.tryParse(controllers[i].text) ?? 0.0;
+
+      if (delivQty < origQty) {
+        final double missingQty = origQty - delivQty;
+        final urunName = originalItem['urun'] as String;
+        missingItems.add({
+          'urun': urunName,
+          'origQty': origQty,
+          'delivQty': delivQty,
+          'missingQty': missingQty,
+          'birim': originalItem['birim'] ?? 'Adet',
+        });
+        selectedReasons[urunName] = 'Eksik Yükleme'; // Default reason
+        otherControllers[urunName] = TextEditingController();
+      }
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (dialogCtx, setStateDialog) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: Text('Eksik Teslimat Nedeni Seçin', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Aşağıdaki ürünler eksik teslim edilmektedir. Lütfen her biri için eksiklik nedenini seçiniz:',
+                        style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray500),
+                      ),
+                      const SizedBox(height: 12),
+                      ...missingItems.map((item) {
+                        final String urunName = item['urun'];
+                        final String birim = item['birim'];
+                        final double missingQty = item['missingQty'];
+                        final String reason = selectedReasons[urunName]!;
+
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 16),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: AppColors.gray50,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: AppColors.gray200),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '$urunName (${missingQty.toStringAsFixed(0)} $birim Eksik)',
+                                style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.gray800),
+                              ),
+                              const SizedBox(height: 8),
+                              DropdownButtonFormField<String>(
+                                value: reason,
+                                decoration: const InputDecoration(
+                                  labelText: 'Eksiklik Nedeni',
+                                  contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                  border: OutlineInputBorder(),
+                                ),
+                                items: const [
+                                  DropdownMenuItem(value: 'Eksik Yükleme', child: Text('Eksik Yükleme')),
+                                  DropdownMenuItem(value: 'Bozuk Ambalaj', child: Text('Bozuk Ambalaj')),
+                                  DropdownMenuItem(value: 'Kayıp', child: Text('Kayıp')),
+                                  DropdownMenuItem(value: 'Müşteri İstemedi', child: Text('Müşteri İstemedi')),
+                                  DropdownMenuItem(value: 'Diğer', child: Text('Diğer (Açıklama yazınız)')),
+                                ],
+                                onChanged: (val) {
+                                  if (val != null) {
+                                    setStateDialog(() {
+                                      selectedReasons[urunName] = val;
+                                    });
+                                  }
+                                },
+                              ),
+                              if (reason == 'Diğer') ...[
+                                const SizedBox(height: 8),
+                                TextFormField(
+                                  controller: otherControllers[urunName],
+                                  decoration: const InputDecoration(
+                                    labelText: 'Açıklama *',
+                                    hintText: 'Nedenini yazınız...',
+                                    contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                    border: OutlineInputBorder(),
+                                  ),
+                                  validator: (v) => v == null || v.trim().isEmpty ? 'Lütfen açıklama girin' : null,
+                                ),
+                              ],
+                            ],
+                          ),
+                        );
+                      }),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    otherControllers.forEach((_, c) => c.dispose());
+                  },
+                  child: Text('Geri', style: GoogleFonts.inter(color: AppColors.gray500)),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    // Validation: if "Diğer" is selected, explanation is required
+                    bool valid = true;
+                    for (var item in missingItems) {
+                      final String urunName = item['urun'];
+                      final String reason = selectedReasons[urunName]!;
+                      if (reason == 'Diğer' && otherControllers[urunName]!.text.trim().isEmpty) {
+                        valid = false;
+                        break;
+                      }
+                    }
+
+                    if (!valid) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Lütfen "Diğer" seçilen ürünler için açıklama giriniz.'),
+                          backgroundColor: AppColors.danger,
+                        ),
+                      );
+                      return;
+                    }
+
+                    // 1. Save missing delivery records to Firebase
+                    final docData = doc.data() as Map<String, dynamic>;
+                    final orderId = docData['id'] ?? '';
+                    final uretici = docData['uretici'] ?? '';
+
+                    final Map<String, String> reasonsMap = {};
+                    final Map<String, double> qtysMap = {};
+
+                    for (var item in missingItems) {
+                      final String urunName = item['urun'];
+                      final String reason = selectedReasons[urunName]!;
+                      final String aciklama = otherControllers[urunName]!.text.trim();
+                      final double missingQty = item['missingQty'];
+
+                      reasonsMap[urunName] = reason;
+                      qtysMap[urunName] = missingQty;
+
+                      await FirebaseFirestore.instance.collection('eksik_teslimatlar').add({
+                        'orderId': orderId,
+                        'uretici': uretici,
+                        'toplayici': _driverName,
+                        'urun': urunName,
+                        'istenenMiktar': item['origQty'],
+                        'teslimEdilenMiktar': item['delivQty'],
+                        'eksikMiktar': missingQty,
+                        'birim': item['birim'],
+                        'neden': reason,
+                        'aciklama': reason == 'Diğer' ? aciklama : '',
+                        'tarih': DateFormat('dd.MM.yyyy').format(DateTime.now()),
+                        'timestamp': FieldValue.serverTimestamp(),
+                        'firma': _firmaName,
+                      });
+                    }
+
+                    // 2. Finalize order delivery
+                    double newOrderTotal = 0.0;
+                    for (int i = 0; i < originalItems.length; i++) {
+                      final double qty = double.tryParse(controllers[i].text) ?? 0.0;
+                      final double unitPrice = (originalItems[i]['birimFiyat'] as num?)?.toDouble() ?? 0.0;
+                      newOrderTotal += qty * unitPrice;
+                    }
+
+                    await _updateOrderStatus(
+                      doc,
+                      'Teslim Edildi',
+                      finalItems: updatedItems,
+                      finalTotal: newOrderTotal,
+                      missingReasons: reasonsMap,
+                      missingQuantities: qtysMap,
+                    );
+
+                    Navigator.pop(ctx); // Close reason dialog
+                    Navigator.pop(mainCtx); // Close main delivery dialog
+
+                    otherControllers.forEach((_, c) => c.dispose());
+
+                    for (var controller in controllers) {
+                      try {
+                        controller.dispose();
+                      } catch (_) {}
+                    }
+
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Sipariş eksik teslimat bildirilerek başarıyla teslim edildi!'),
+                          backgroundColor: AppColors.success,
+                        ),
+                      );
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('Onayla ve Teslim Et'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   void _showDeliverOrderDialog(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
     final items = _getOrderItems(data);
-    
+
     // Create controllers for each item quantity
     final List<TextEditingController> controllers = items.map((item) {
       final double qty = (item['miktar'] as num?)?.toDouble() ?? 1.0;
@@ -323,7 +588,7 @@ class _SurucuTeslimatlarScreenState extends State<SurucuTeslimatlarScreen> with 
       context: context,
       builder: (ctx) {
         return StatefulBuilder(
-          builder: (context, setStateDialog) {
+          builder: (dialogCtx, setStateDialog) {
             double newOrderTotal = 0.0;
             List<Map<String, dynamic>> updatedItems = [];
 
@@ -355,10 +620,14 @@ class _SurucuTeslimatlarScreenState extends State<SurucuTeslimatlarScreen> with 
                   IconButton(
                     icon: const Icon(Icons.close),
                     onPressed: () {
-                      for (var controller in controllers) {
-                        controller.dispose();
-                      }
                       Navigator.pop(ctx);
+                      Future.delayed(const Duration(milliseconds: 300), () {
+                        for (var controller in controllers) {
+                          try {
+                            controller.dispose();
+                          } catch (_) {}
+                        }
+                      });
                     },
                   ),
                 ],
@@ -487,33 +756,96 @@ class _SurucuTeslimatlarScreenState extends State<SurucuTeslimatlarScreen> with 
               actions: [
                 TextButton(
                   onPressed: () {
-                    for (var controller in controllers) {
-                      controller.dispose();
-                    }
                     Navigator.pop(ctx);
+                    Future.delayed(const Duration(milliseconds: 300), () {
+                      for (var controller in controllers) {
+                        try {
+                          controller.dispose();
+                        } catch (_) {}
+                      }
+                    });
                   },
                   child: Text('İptal', style: GoogleFonts.inter(color: AppColors.gray500)),
                 ),
                 ElevatedButton(
                   onPressed: () async {
-                    await _updateOrderStatus(
-                      doc,
-                      'Teslim Edildi',
-                      finalItems: updatedItems,
-                      finalTotal: newOrderTotal,
-                    );
+                    // Check if there is any short/missing delivery or invalid input
+                    bool hasMissing = false;
+                    bool hasNegative = false;
+                    double totalDelivered = 0.0;
 
-                    for (var controller in controllers) {
-                      controller.dispose();
+                    for (int i = 0; i < items.length; i++) {
+                      final double currentQty = (items[i]['miktar'] as num?)?.toDouble() ?? 1.0;
+                      final double updatedQty = double.tryParse(controllers[i].text) ?? 0.0;
+                      if (updatedQty < 0) {
+                        hasNegative = true;
+                      }
+                      if (updatedQty < currentQty) {
+                        hasMissing = true;
+                      }
+                      totalDelivered += updatedQty;
                     }
-                    Navigator.pop(ctx);
-                    
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Sipariş başarıyla teslim edildi!'),
-                        backgroundColor: AppColors.success,
-                      ),
-                    );
+
+                    print("[TeslimEt] items count: ${items.length}");
+                    for (int i = 0; i < items.length; i++) {
+                      print("[TeslimEt] item $i: miktar=${items[i]['miktar']} (type: ${items[i]['miktar'].runtimeType}), controller.text=${controllers[i].text}");
+                    }
+                    print("[TeslimEt] hasMissing=$hasMissing, hasNegative=$hasNegative, totalDelivered=$totalDelivered");
+
+                    if (hasNegative) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Teslim edilen miktar negatif olamaz.'),
+                          backgroundColor: AppColors.danger,
+                        ),
+                      );
+                      return;
+                    }
+
+                    if (totalDelivered <= 0) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Teslim edilen toplam miktar 0 olamaz. Siparişi iptal etmek için lütfen "İptal" butonunu kullanın.'),
+                          backgroundColor: AppColors.danger,
+                        ),
+                      );
+                      return;
+                    }
+
+                    if (hasMissing) {
+                      _showMissingDeliveryReasonDialog(
+                        updatedItems,
+                        items,
+                        doc,
+                        controllers,
+                        ctx,
+                      );
+                    } else {
+                      await _updateOrderStatus(
+                        doc,
+                        'Teslim Edildi',
+                        finalItems: updatedItems,
+                        finalTotal: newOrderTotal,
+                      );
+
+                      Navigator.pop(ctx);
+                      Future.delayed(const Duration(milliseconds: 300), () {
+                        for (var controller in controllers) {
+                          try {
+                            controller.dispose();
+                          } catch (_) {}
+                        }
+                      });
+
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Sipariş başarıyla teslim edildi!'),
+                            backgroundColor: AppColors.success,
+                          ),
+                        );
+                      }
+                    }
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.green,
@@ -550,8 +882,8 @@ class _SurucuTeslimatlarScreenState extends State<SurucuTeslimatlarScreen> with 
           unselectedLabelColor: AppColors.gray500,
           labelStyle: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 13),
           tabs: const [
-            Tab(text: 'Bekleyenler'),
             Tab(text: 'Aktif Siparişler'),
+            Tab(text: 'Bekleyenler'),
             Tab(text: 'Geçmiş Teslimatlar'),
           ],
         ),
@@ -614,8 +946,8 @@ class _SurucuTeslimatlarScreenState extends State<SurucuTeslimatlarScreen> with 
           return TabBarView(
             controller: _tabController,
             children: [
-              _buildOrdersList(pendingOrders, 'pending'),
               _buildOrdersList(activeOrders, 'active'),
+              _buildOrdersList(pendingOrders, 'pending'),
               _buildOrdersList(historyOrders, 'history'),
             ],
           );
@@ -796,7 +1128,7 @@ class _SurucuTeslimatlarScreenState extends State<SurucuTeslimatlarScreen> with 
                         ElevatedButton.icon(
                           onPressed: () => _showDeliverOrderDialog(doc),
                           icon: const Icon(Icons.done_all_rounded, size: 16),
-                          label: const Text('Teslim Edildi'),
+                          label: const Text('Ürünü Teslim Ettim'),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.green,
                             foregroundColor: Colors.white,
@@ -840,12 +1172,14 @@ class _SurucuTeslimatlarScreenState extends State<SurucuTeslimatlarScreen> with 
 
                           if (confirm == true) {
                             await _updateOrderStatus(doc, 'İptal');
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Sipariş iptal edildi!'),
-                                backgroundColor: AppColors.success,
-                              ),
-                            );
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Sipariş iptal edildi!'),
+                                  backgroundColor: AppColors.success,
+                                ),
+                              );
+                            }
                           }
                         },
                         icon: const Icon(Icons.cancel_outlined, size: 16),

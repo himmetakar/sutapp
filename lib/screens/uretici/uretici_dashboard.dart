@@ -29,6 +29,16 @@ class UreticiDashboard extends StatelessWidget {
   DateTime? _getDocDate(QueryDocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>?;
     if (data == null) return null;
+    final rawDate = data['tahsilEdilecegiTarih'] ?? data['verildigiTarih'];
+    if (rawDate != null) {
+      try {
+        return DateFormat('dd.MM.yyyy').parse(rawDate.toString());
+      } catch (_) {
+        try {
+          return DateFormat('dd MMMM yyyy', 'tr_TR').parse(rawDate.toString());
+        } catch (_) {}
+      }
+    }
     final ts = data['timestamp'] as Timestamp?;
     if (ts != null) return ts.toDate();
     final dateStr = data['tarih'] as String?;
@@ -68,10 +78,26 @@ class UreticiDashboard extends StatelessWidget {
           }
         }
 
-        return StreamBuilder<QuerySnapshot>(
-          stream: firestoreService.getMilkPricesStream(firma: currentFirma),
-          builder: (context, pricesSnap) {
-            final priceDocs = pricesSnap.data?.docs ?? [];
+        return StreamBuilder<DocumentSnapshot>(
+          stream: FirebaseFirestore.instance.collection('finans_ayarlari').doc(currentFirma).snapshots(),
+          builder: (context, settingsSnap) {
+            final sData = settingsSnap.data?.data() as Map<String, dynamic>? ?? {};
+            final double bagkurOran = (sData['bagkurOran'] as num?)?.toDouble() ?? 2.10;
+            final double stopajOran = (sData['stopajOran'] as num?)?.toDouble() ?? 1.00;
+            final double borsaOran = (sData['borsaOran'] as num?)?.toDouble() ?? 0.20;
+            final dynamicColsList = sData['kesintiTurleri'] as List?;
+            final List<String> dynamicColumns = [];
+            if (dynamicColsList != null) {
+              dynamicColumns.addAll(dynamicColsList.map((e) => e.toString()));
+            }
+            if (dynamicColumns.isEmpty) {
+              dynamicColumns.addAll(['Bağkur', 'Stopaj', 'Borsa']);
+            }
+
+            return StreamBuilder<QuerySnapshot>(
+              stream: firestoreService.getMilkPricesStream(firma: currentFirma),
+              builder: (context, pricesSnap) {
+                final priceDocs = pricesSnap.data?.docs ?? [];
 
             return StreamBuilder<QuerySnapshot>(
               stream: firestoreService.getProducerCollectionsStream(producerName),
@@ -151,7 +177,6 @@ class UreticiDashboard extends StatelessWidget {
                                   .snapshots(),
                               builder: (context, cezalarSnap) {
                                 final cDocs = cezalarSnap.data?.docs ?? [];
-
                                 return StreamBuilder<QuerySnapshot>(
                                   stream: FirebaseFirestore.instance
                                       .collection('devirler')
@@ -160,245 +185,273 @@ class UreticiDashboard extends StatelessWidget {
                                   builder: (context, devirlerSnap) {
                                     final devirDocs = devirlerSnap.data?.docs ?? [];
 
-                                    final ledger = firestoreService.calculateLedger(
-                                      collections: docs,
-                                      prices: priceDocs,
-                                      tahsilatlar: tDocs,
-                                      avanslar: aDocs,
-                                      kesintiler: kDocs,
-                                      cezalar: cDocs,
-                                      producerName: producerName,
-                                      bolge: bolge,
-                                      group: group,
-                                      kesintiAyarlari: producerSnap.hasData && producerSnap.data!.docs.isNotEmpty
-                                          ? (producerSnap.data!.docs.first.data() as Map<String, dynamic>)['kesintiAyarlari'] as Map<String, dynamic>?
-                                          : null,
-                                    );
+                                    return StreamBuilder<QuerySnapshot>(
+                                      stream: FirebaseFirestore.instance
+                                          .collection('satislar')
+                                          .where('uretici', isEqualTo: producerName)
+                                          .snapshots(),
+                                      builder: (context, satislarSnap) {
+                                        final sDocs = satislarSnap.data?.docs ?? [];
 
-                                    final double toplamAlacak = ledger['toplamAlacak'];
-                                    final double totalTahsilat = ledger['totalTahsilat'];
-                                    final double totalAvans = ledger['totalAvans'];
-                                    final double totalKesinti = ledger['totalKesinti'];
-                                    final double totalCeza = ledger['totalCeza'];
+                                        final ledger = firestoreService.calculateLedger(
+                                          collections: docs,
+                                          prices: priceDocs,
+                                          tahsilatlar: tDocs,
+                                          avanslar: aDocs,
+                                          kesintiler: kDocs,
+                                          cezalar: cDocs,
+                                          satislar: sDocs,
+                                          producerName: producerName,
+                                          bolge: bolge,
+                                          group: group,
+                                          kesintiAyarlari: producerSnap.hasData && producerSnap.data!.docs.isNotEmpty
+                                              ? (producerSnap.data!.docs.first.data() as Map<String, dynamic>)['kesintiAyarlari'] as Map<String, dynamic>?
+                                              : null,
+                                          dynamicColumns: dynamicColumns,
+                                          bagkurOran: bagkurOran,
+                                          stopajOran: stopajOran,
+                                          borsaOran: borsaOran,
+                                        );
 
-                                    // Calculate prior collections & balances
-                                    final startOfThisMonth = DateTime(now.year, now.month, 1);
+                                        final double toplamAlacak = ledger['toplamAlacak'];
+                                        final double totalTahsilat = ledger['totalTahsilat'];
+                                        final double totalAvans = ledger['totalAvans'];
+                                        final double totalKesinti = ledger['totalKesinti'];
+                                        final double totalCeza = ledger['totalCeza'];
 
-                                    final priorDocs = docs.where((doc) {
-                                      final date = _getDocDate(doc);
-                                      return date != null && date.isBefore(startOfThisMonth);
-                                    }).toList();
+                                        // Calculate prior collections & balances
+                                        final startOfThisMonth = DateTime(now.year, now.month, 1);
 
-                                    final priorTDocs = tDocs.where((doc) {
-                                      final date = _getDocDate(doc);
-                                      return date != null && date.isBefore(startOfThisMonth);
-                                    }).toList();
+                                        final priorDocs = docs.where((doc) {
+                                          final date = _getDocDate(doc);
+                                          return date != null && date.isBefore(startOfThisMonth);
+                                        }).toList();
 
-                                    final priorADocs = aDocs.where((doc) {
-                                      final date = _getDocDate(doc);
-                                      return date != null && date.isBefore(startOfThisMonth);
-                                    }).toList();
+                                        final priorTDocs = tDocs.where((doc) {
+                                          final date = _getDocDate(doc);
+                                          return date != null && date.isBefore(startOfThisMonth);
+                                        }).toList();
 
-                                    final priorKDocs = kDocs.where((doc) {
-                                      final date = _getDocDate(doc);
-                                      return date != null && date.isBefore(startOfThisMonth);
-                                    }).toList();
+                                        final priorADocs = aDocs.where((doc) {
+                                          final date = _getDocDate(doc);
+                                          return date != null && date.isBefore(startOfThisMonth);
+                                        }).toList();
 
-                                    final priorCDocs = cDocs.where((doc) {
-                                      final date = _getDocDate(doc);
-                                      return date != null && date.isBefore(startOfThisMonth);
-                                    }).toList();
+                                        final priorKDocs = kDocs.where((doc) {
+                                          final date = _getDocDate(doc);
+                                          return date != null && date.isBefore(startOfThisMonth);
+                                        }).toList();
 
-                                    final priorLedger = firestoreService.calculateLedger(
-                                      collections: priorDocs,
-                                      prices: priceDocs,
-                                      tahsilatlar: priorTDocs,
-                                      avanslar: priorADocs,
-                                      kesintiler: priorKDocs,
-                                      cezalar: priorCDocs,
-                                      producerName: producerName,
-                                      bolge: bolge,
-                                      group: group,
-                                      kesintiAyarlari: producerSnap.hasData && producerSnap.data!.docs.isNotEmpty
-                                          ? (producerSnap.data!.docs.first.data() as Map<String, dynamic>)['kesintiAyarlari'] as Map<String, dynamic>?
-                                          : null,
-                                    );
+                                        final priorCDocs = cDocs.where((doc) {
+                                          final date = _getDocDate(doc);
+                                          return date != null && date.isBefore(startOfThisMonth);
+                                        }).toList();
 
-                                    double priorDevirSum = 0.0;
-                                    double totalDevir = 0.0;
-                                    for (var doc in devirDocs) {
-                                      final date = _getDocDate(doc);
-                                      final data = doc.data() as Map<String, dynamic>;
-                                      final val = data['tutar'];
-                                      final double valDouble = val is num ? val.toDouble() : (double.tryParse(val.toString()) ?? 0.0);
-                                      totalDevir += valDouble;
-                                      if (date != null && date.isBefore(startOfThisMonth)) {
-                                        priorDevirSum += valDouble;
-                                      }
-                                    }
+                                        final priorSDocs = sDocs.where((doc) {
+                                          final date = _getDocDate(doc);
+                                          return date != null && date.isBefore(startOfThisMonth);
+                                        }).toList();
 
-                                    final double bekleyenOdeme = priorLedger['netBalance'] + priorDevirSum;
-                                    final double netAlacak = ledger['netBalance'] + totalDevir;
+                                        final priorLedger = firestoreService.calculateLedger(
+                                          collections: priorDocs,
+                                          prices: priceDocs,
+                                          tahsilatlar: priorTDocs,
+                                          avanslar: priorADocs,
+                                          kesintiler: priorKDocs,
+                                          cezalar: priorCDocs,
+                                          satislar: priorSDocs,
+                                          producerName: producerName,
+                                          bolge: bolge,
+                                          group: group,
+                                          kesintiAyarlari: producerSnap.hasData && producerSnap.data!.docs.isNotEmpty
+                                              ? (producerSnap.data!.docs.first.data() as Map<String, dynamic>)['kesintiAyarlari'] as Map<String, dynamic>?
+                                              : null,
+                                          dynamicColumns: dynamicColumns,
+                                          bagkurOran: bagkurOran,
+                                          stopajOran: stopajOran,
+                                          borsaOran: borsaOran,
+                                        );
 
-                                    final currentDay = now.day;
-                                    final double gunlukOrtalama = currentDay > 0 ? (ayTotal / currentDay) : 0.0;
+                                        double priorDevirSum = 0.0;
+                                        double totalDevir = 0.0;
+                                        for (var doc in devirDocs) {
+                                          final date = _getDocDate(doc);
+                                          final data = doc.data() as Map<String, dynamic>;
+                                          final val = data['tutar'];
+                                          final double valDouble = val is num ? val.toDouble() : (double.tryParse(val.toString()) ?? 0.0);
+                                          totalDevir += valDouble;
+                                          if (date != null && date.isBefore(startOfThisMonth)) {
+                                            priorDevirSum += valDouble;
+                                          }
+                                        }
 
-                                    bool siparisIzni = true;
-                                    if (producerSnap.hasData && producerSnap.data!.docs.isNotEmpty) {
-                                      final pDoc = producerSnap.data!.docs.first.data() as Map<String, dynamic>;
-                                      siparisIzni = pDoc['siparisIzni'] ?? true;
-                                    }
+                                        final double bekleyenOdeme = priorLedger['netBalance'] + priorDevirSum;
+                                        final double netAlacak = ledger['netBalance'] + totalDevir;
 
-                                    return LayoutBuilder(
-                                      builder: (context, constraints) {
-                                        final isDesktop = constraints.maxWidth >= 1024;
-                                        final isTablet = constraints.maxWidth >= 640 && constraints.maxWidth < 1024;
+                                        final currentDay = now.day;
+                                        final double gunlukOrtalama = currentDay > 0 ? (ayTotal / currentDay) : 0.0;
 
-                                        return ListView(
-                                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-                                          children: [
-                                            // Header
-                                            StreamBuilder<QuerySnapshot>(
-                                              stream: FirebaseFirestore.instance
-                                                  .collection('firmalar')
-                                                  .where('ad', isEqualTo: currentFirma)
-                                                  .limit(1)
-                                                  .snapshots(),
-                                              builder: (context, companySnap) {
-                                                String? logoUrl;
-                                                if (companySnap.hasData && companySnap.data!.docs.isNotEmpty) {
-                                                  final companyData = companySnap.data!.docs.first.data() as Map<String, dynamic>;
-                                                  logoUrl = companyData['logoUrl'] as String?;
-                                                }
+                                        bool siparisIzni = true;
+                                        if (producerSnap.hasData && producerSnap.data!.docs.isNotEmpty) {
+                                          final pDoc = producerSnap.data!.docs.first.data() as Map<String, dynamic>;
+                                          siparisIzni = pDoc['siparisIzni'] ?? true;
+                                        }
 
-                                                return Row(
-                                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                  children: [
-                                                    Expanded(
-                                                      child: Column(
-                                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                                        children: [
-                                                           Row(
-                                                             children: [
-                                                               Text(
-                                                                 'Üretici Paneli',
-                                                                 style: GoogleFonts.inter(
-                                                                   fontSize: isDesktop ? 22 : 18,
-                                                                   fontWeight: FontWeight.w700,
-                                                                   color: AppColors.gray900,
-                                                                 ),
+                                        return LayoutBuilder(
+                                          builder: (context, constraints) {
+                                            final isDesktop = constraints.maxWidth >= 1024;
+                                            final isTablet = constraints.maxWidth >= 640 && constraints.maxWidth < 1024;
+
+                                            return ListView(
+                                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                                              children: [
+                                                // Header
+                                                StreamBuilder<QuerySnapshot>(
+                                                  stream: FirebaseFirestore.instance
+                                                      .collection('firmalar')
+                                                      .where('ad', isEqualTo: currentFirma)
+                                                      .limit(1)
+                                                      .snapshots(),
+                                                  builder: (context, companySnap) {
+                                                    String? logoUrl;
+                                                    if (companySnap.hasData && companySnap.data!.docs.isNotEmpty) {
+                                                      final companyData = companySnap.data!.docs.first.data() as Map<String, dynamic>;
+                                                      logoUrl = companyData['logoUrl'] as String?;
+                                                    }
+
+                                                    return Row(
+                                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                      children: [
+                                                        Expanded(
+                                                          child: Column(
+                                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                                            children: [
+                                                               Row(
+                                                                 children: [
+                                                                   Text(
+                                                                     'Üretici Paneli',
+                                                                     style: GoogleFonts.inter(
+                                                                       fontSize: isDesktop ? 22 : 18,
+                                                                       fontWeight: FontWeight.w700,
+                                                                       color: AppColors.gray900,
+                                                                     ),
+                                                                   ),
+                                                                   const SizedBox(width: 8),
+                                                                   ElevatedButton.icon(
+                                                                     onPressed: () => context.push('/uretici/dijital-kart'),
+                                                                     icon: const Icon(Icons.badge_rounded, size: 13),
+                                                                     label: Text(
+                                                                       'Dijital Süt Kartı',
+                                                                       style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.bold),
+                                                                     ),
+                                                                     style: ElevatedButton.styleFrom(
+                                                                       backgroundColor: AppColors.primary600,
+                                                                       foregroundColor: Colors.white,
+                                                                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                                                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                                                       minimumSize: Size.zero,
+                                                                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                                                     ),
+                                                                   ),
+                                                                 ],
                                                                ),
-                                                               const SizedBox(width: 8),
-                                                               ElevatedButton.icon(
-                                                                 onPressed: () => context.push('/uretici/dijital-kart'),
-                                                                 icon: const Icon(Icons.badge_rounded, size: 13),
-                                                                 label: Text(
-                                                                   'Dijital Süt Kartı',
-                                                                   style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.bold),
-                                                                 ),
-                                                                 style: ElevatedButton.styleFrom(
-                                                                   backgroundColor: AppColors.primary600,
-                                                                   foregroundColor: Colors.white,
-                                                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                                                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                                                   minimumSize: Size.zero,
-                                                                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                                                 ),
-                                                               ),
-                                                             ],
-                                                           ),
-                                                          const SizedBox(height: 4),
-                                                          Text(
-                                                            'Süt teslimatlarınızı ve güncel geçmişinizi buradan inceleyebilirsiniz.',
-                                                            style: GoogleFonts.inter(
-                                                              fontSize: isDesktop ? 12 : 11,
-                                                              color: AppColors.gray500,
-                                                              fontWeight: FontWeight.w400,
-                                                            ),
-                                                          ),
-                                                        ],
-                                                      ),
-                                                    ),
-                                                    Padding(
-                                                      padding: const EdgeInsets.only(left: 12),
-                                                      child: Column(
-                                                        mainAxisSize: MainAxisSize.min,
-                                                        children: [
-                                                          Container(
-                                                            width: 60,
-                                                            height: 60,
-                                                            decoration: BoxDecoration(
-                                                              borderRadius: BorderRadius.circular(12),
-                                                              border: Border.all(color: AppColors.gray200, width: 1.5),
-                                                              color: Colors.white,
-                                                              image: logoUrl != null && logoUrl.isNotEmpty
-                                                                  ? DecorationImage(
-                                                                      image: logoUrl.startsWith('data:image')
-                                                                          ? MemoryImage(base64Decode(logoUrl.substring(logoUrl.indexOf(',') + 1))) as ImageProvider
-                                                                          : NetworkImage(logoUrl),
-                                                                      fit: BoxFit.cover,
-                                                                    )
-                                                                  : null,
-                                                            ),
-                                                            child: logoUrl == null || logoUrl.isEmpty
-                                                                ? Center(
-                                                                    child: Icon(Icons.business_rounded, color: AppColors.gray400, size: 24),
-                                                                  )
-                                                                : null,
-                                                          ),
-                                                          if (currentFirma.isNotEmpty) ...[
-                                                            const SizedBox(height: 6),
-                                                            SizedBox(
-                                                              width: 72,
-                                                              child: Text(
-                                                                currentFirma,
-                                                                textAlign: TextAlign.center,
-                                                                maxLines: 2,
-                                                                overflow: TextOverflow.ellipsis,
+                                                              if (producerName.isNotEmpty) ...[
+                                                                const SizedBox(height: 4),
+                                                                Text(
+                                                                  producerName,
+                                                                  style: GoogleFonts.inter(
+                                                                    fontSize: isDesktop ? 14 : 12,
+                                                                    fontWeight: FontWeight.w600,
+                                                                    color: AppColors.primary600,
+                                                                  ),
+                                                                ),
+                                                              ],
+                                                              const SizedBox(height: 4),
+                                                              Text(
+                                                                'Süt teslimatlarınızı ve güncel geçmişinizi buradan inceleyebilirsiniz.',
                                                                 style: GoogleFonts.inter(
-                                                                  fontSize: 11.5,
-                                                                  fontWeight: FontWeight.bold,
-                                                                  color: AppColors.gray800,
-                                                                  height: 1.1,
+                                                                  fontSize: isDesktop ? 12 : 11,
+                                                                  color: AppColors.gray500,
+                                                                  fontWeight: FontWeight.w400,
                                                                 ),
                                                               ),
-                                                            ),
-                                                          ],
-                                                        ],
-                                                      ),
-                                                    ),
-                                                  ],
-                                                );
-                                              }
-                                            ),
-                                            const SizedBox(height: 20),
+                                                            ],
+                                                          ),
+                                                        ),
+                                                        Padding(
+                                                          padding: const EdgeInsets.only(left: 12),
+                                                          child: Column(
+                                                            mainAxisSize: MainAxisSize.min,
+                                                            children: [
+                                                              Container(
+                                                                width: 60,
+                                                                height: 60,
+                                                                decoration: BoxDecoration(
+                                                                  borderRadius: BorderRadius.circular(12),
+                                                                  border: Border.all(color: AppColors.gray200, width: 1.5),
+                                                                  color: Colors.white,
+                                                                  image: logoUrl != null && logoUrl.isNotEmpty
+                                                                      ? DecorationImage(
+                                                                          image: logoUrl.startsWith('data:image')
+                                                                              ? MemoryImage(base64Decode(logoUrl.substring(logoUrl.indexOf(',') + 1))) as ImageProvider
+                                                                              : NetworkImage(logoUrl),
+                                                                          fit: BoxFit.cover,
+                                                                        )
+                                                                      : null,
+                                                                ),
+                                                                child: logoUrl == null || logoUrl.isEmpty
+                                                                    ? Center(
+                                                                        child: Icon(Icons.business_rounded, color: AppColors.gray400, size: 24),
+                                                                      )
+                                                                    : null,
+                                                              ),
+                                                              if (currentFirma.isNotEmpty) ...[
+                                                                const SizedBox(height: 6),
+                                                                SizedBox(
+                                                                  width: 72,
+                                                                  child: Text(
+                                                                    currentFirma,
+                                                                    textAlign: TextAlign.center,
+                                                                    maxLines: 2,
+                                                                    overflow: TextOverflow.ellipsis,
+                                                                    style: GoogleFonts.inter(
+                                                                      fontSize: 11.5,
+                                                                      fontWeight: FontWeight.bold,
+                                                                      color: AppColors.gray800,
+                                                                      height: 1.1,
+                                                                    ),
+                                                                  ),
+                                                                ),
+                                                              ],
+                                                            ],
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    );
+                                                  }
+                                                ),
+                                                const SizedBox(height: 20),
 
-                                            // Stat Cards Grid
-                                            _buildStatCards(isDesktop, isTablet, bugunTotal, ayTotal, gunlukOrtalama, bekleyenOdeme),
-                                            const SizedBox(height: 24),
+                                                // Stat Cards Grid
+                                                _buildStatCards(isDesktop, isTablet, bugunTotal, ayTotal, gunlukOrtalama, bekleyenOdeme),
+                                                const SizedBox(height: 24),
 
-                                            // Hızlı İşlemler Section Title
-                                            Text(
-                                              'Hızlı İşlemler',
-                                              style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.gray800),
-                                            ),
-                                            const SizedBox(height: 12),
-                                            _buildQuickActionsGrid(context, producerName, currentFirma, bolge, group, siparisIzni),
-                                            const SizedBox(height: 24),
+                                                // Hızlı İşlemler Section Title
+                                                Text(
+                                                  'Hızlı İşlemler',
+                                                  style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.gray800),
+                                                ),
+                                                const SizedBox(height: 12),
+                                                _buildQuickActionsGrid(context, producerName, currentFirma, bolge, group, siparisIzni),
+                                                const SizedBox(height: 24),
 
-                                            // Mali Özet Section Title
-                                            Text(
-                                              'Mali Durum Özeti',
-                                              style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.gray800),
-                                            ),
-                                            const SizedBox(height: 12),
-                                            _buildMaliCards(isDesktop, isTablet, toplamAlacak, totalTahsilat, totalAvans, totalCeza, totalKesinti, netAlacak),
-                                            const SizedBox(height: 24),
+                                                // Charts & History
 
-                                            // Charts & History
-                                            _buildContentLayout(isDesktop, docs, last7DaysVal),
-                                            const SizedBox(height: 80),
-                                          ],
+                                                _buildContentLayout(isDesktop, docs, last7DaysVal),
+                                                const SizedBox(height: 80),
+                                              ],
+                                            );
+                                          },
                                         );
                                       },
                                     );
@@ -417,8 +470,10 @@ class UreticiDashboard extends StatelessWidget {
           },
         );
       },
-    ),
-  );
+    );
+  },
+),
+);
   }
 
   Widget _buildQuickActionsGrid(BuildContext context, String producerName, String currentFirma, String bolge, String group, bool siparisIzni) {

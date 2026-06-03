@@ -55,13 +55,30 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    String formattedPhone = phone;
-    if (!phone.startsWith('+')) {
-      if (phone.startsWith('0')) {
-        formattedPhone = '+90${phone.substring(1)}';
-      } else {
-        formattedPhone = '+90$phone';
-      }
+    // Strip all non-digit characters
+    String digits = phone.replaceAll(RegExp(r'\D'), '');
+    
+    if (digits.startsWith('00')) {
+      digits = digits.substring(2);
+    }
+    
+    if (digits.startsWith('0')) {
+      digits = digits.substring(1);
+    }
+    
+    String formattedPhone;
+    if (digits.startsWith('90') && digits.length == 12) {
+      formattedPhone = '+$digits';
+    } else {
+      formattedPhone = '+90$digits';
+    }
+
+    // E.164 Turkish phone number format is exactly 13 characters (+90 followed by 10 digits)
+    if (formattedPhone.length != 13 || !formattedPhone.startsWith('+90')) {
+      setState(() {
+        _errorMessage = 'Lütfen geçerli bir telefon numarası girin (örn: 555 123 4567).';
+      });
+      return;
     }
 
     await auth.verifyPhone(
@@ -120,21 +137,12 @@ class _LoginScreenState extends State<LoginScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     // Logo
-                    RichText(
-                      text: TextSpan(
-                        style: GoogleFonts.inter(fontSize: 36, fontWeight: FontWeight.w800),
-                        children: const [
-                          TextSpan(text: 'Süt', style: TextStyle(color: AppColors.primary600)),
-                          TextSpan(text: 'App', style: TextStyle(color: AppColors.gray800)),
-                        ],
-                      ),
+                    Image.asset(
+                      'assets/images/sutapp-logo.png',
+                      height: 95,
+                      fit: BoxFit.contain,
                     ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Dijital Süt Toplama Platformu',
-                      style: GoogleFonts.inter(fontSize: 13, color: AppColors.gray500),
-                    ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 16),
 
                     // Card
                     Container(
@@ -163,9 +171,11 @@ class _LoginScreenState extends State<LoginScreen> {
                             TextField(
                               controller: _phoneController,
                               keyboardType: TextInputType.phone,
+                              maxLength: 18,
                               decoration: InputDecoration(
                                 labelText: 'Telefon Numarası',
                                 hintText: '555 123 4567',
+                                counterText: '',
                                 prefixIcon: Icon(Icons.phone_outlined, size: 18, color: AppColors.gray400),
                               ),
                             ),
@@ -262,6 +272,75 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         Expanded(child: Container(height: 1, color: AppColors.gray200)),
                       ]),
+                      const SizedBox(height: 16),
+
+                      // Fidanım Süt Özel Demo Alanı
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary50.withOpacity(0.4),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: AppColors.primary300, width: 1.5),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.star_rounded, color: AppColors.primary600, size: 16),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'FİDANIM SÜT ÖZEL DEMO ALANI',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors.primary800,
+                                    letterSpacing: 0.8,
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                Icon(Icons.star_rounded, color: AppColors.primary600, size: 16),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _DemoBtn(
+                                    icon: Icons.business_rounded,
+                                    label: 'Fidanım Süt',
+                                    desc: 'Firma Yöneticisi',
+                                    color: AppColors.primary600,
+                                    bgColor: AppColors.primary50,
+                                    onTap: () => auth.demoLogin(UserRole.firma, customName: 'Fidanım Süt'),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: _DemoBtn(
+                                    icon: Icons.local_shipping_rounded,
+                                    label: 'Hasan Fidan',
+                                    desc: 'Toplayıcı',
+                                    color: AppColors.success,
+                                    bgColor: AppColors.successLight,
+                                    onTap: () => auth.demoLogin(UserRole.surucu, customName: 'Hasan Fidan'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            _DemoBtn(
+                              icon: Icons.agriculture_rounded,
+                              label: 'Anıl Demir',
+                              desc: 'Süt Üreticisi',
+                              color: AppColors.warning,
+                              bgColor: AppColors.warningLight,
+                              onTap: () => auth.demoLogin(UserRole.uretici, customName: 'Anıl Demir'),
+                            ),
+                          ],
+                        ),
+                      ),
                       const SizedBox(height: 16),
 
                       // Group 1: Yönetim & Firmalar

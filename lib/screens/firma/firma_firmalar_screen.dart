@@ -101,7 +101,11 @@ class _FirmaFirmalarScreenState extends State<FirmaFirmalarScreen> {
                     TextField(
                       controller: telCtrl,
                       keyboardType: TextInputType.phone,
-                      decoration: const InputDecoration(labelText: 'Telefon Numarası'),
+                      maxLength: 11,
+                      decoration: const InputDecoration(
+                        labelText: 'Telefon Numarası',
+                        counterText: '',
+                      ),
                     ),
                     const SizedBox(height: 12),
                     TextField(

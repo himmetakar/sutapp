@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../services/firestore_service.dart';
 import '../models/user_model.dart';
 import '../config/theme.dart';
+import 'milk_loading_indicator.dart';
 
 class NotificationDrawerDialog extends StatelessWidget {
   final String userId;
@@ -126,7 +127,7 @@ class NotificationDrawerDialog extends StatelessWidget {
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
                       return const Center(
-                        child: CircularProgressIndicator(strokeWidth: 2.5),
+                        child: MilkLoadingIndicator(size: 60),
                       );
                     }
 
@@ -222,13 +223,22 @@ class NotificationDrawerDialog extends StatelessWidget {
                         }
 
                         return InkWell(
-                          onTap: () {
+                          onTap: () async {
                             if (!isRead) {
                               firestoreService.markNotificationRead(doc.id);
                             }
+                            // Navigate to the relevant screen based on type & role
+                            if (type == 'siparis') {
+                              Navigator.pop(context);
+                              if (role == UserRole.surucu) {
+                                parentContext.push('/surucu/teslimatlar');
+                              } else if (role == UserRole.firma) {
+                                parentContext.push('/firma/urunler/siparisler');
+                              }
+                            }
                           },
                           child: Container(
-                            color: isRead ? Colors.transparent : AppColors.primary50.withOpacity(0.3),
+                            color: isRead ? Colors.transparent : AppColors.primary50.withValues(alpha: 0.3),
                             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -397,6 +407,106 @@ class NotificationDrawerDialog extends StatelessWidget {
                                                 ),
                                                 child: Text(
                                                   'Durum: $durum',
+                                                  style: GoogleFonts.inter(
+                                                    fontSize: 10,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: badgeText,
+                                                  ),
+                                                ),
+                                              );
+                                            }
+                                          },
+                                        ),
+                                      ],
+                                      if (type == 'toplayici_talebi' && data['teklifId'] != null) ...[
+                                        const SizedBox(height: 10),
+                                        StreamBuilder<DocumentSnapshot>(
+                                          stream: FirebaseFirestore.instance
+                                              .collection('toplayici_teklifleri')
+                                              .doc(data['teklifId'])
+                                              .snapshots(),
+                                          builder: (context, teklifSnap) {
+                                            if (!teklifSnap.hasData || !teklifSnap.data!.exists) {
+                                              return const SizedBox.shrink();
+                                            }
+                                            final teklifData = teklifSnap.data!.data() as Map<String, dynamic>;
+                                            final durum = teklifData['durum'] ?? 'beklemede';
+
+                                            if (durum == 'beklemede') {
+                                              return Row(
+                                                children: [
+                                                  Expanded(
+                                                    child: OutlinedButton(
+                                                      onPressed: () async {
+                                                        try {
+                                                          await firestoreService.rejectToplayiciTeklif(doc.id, data['teklifId']);
+                                                        } catch (e) {
+                                                          if (context.mounted) {
+                                                            ScaffoldMessenger.of(context).showSnackBar(
+                                                              SnackBar(content: Text('Hata: $e')),
+                                                            );
+                                                          }
+                                                        }
+                                                      },
+                                                      style: OutlinedButton.styleFrom(
+                                                        padding: const EdgeInsets.symmetric(vertical: 4),
+                                                        side: const BorderSide(color: AppColors.gray300),
+                                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                                      ),
+                                                      child: Text(
+                                                        'Reddet',
+                                                        style: GoogleFonts.inter(
+                                                          fontSize: 11,
+                                                          fontWeight: FontWeight.bold,
+                                                          color: AppColors.danger,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 8),
+                                                  Expanded(
+                                                    child: ElevatedButton(
+                                                      onPressed: () async {
+                                                        try {
+                                                          await firestoreService.approveToplayiciTeklif(doc.id, data['teklifId']);
+                                                        } catch (e) {
+                                                          if (context.mounted) {
+                                                            ScaffoldMessenger.of(context).showSnackBar(
+                                                              SnackBar(content: Text('Hata: $e')),
+                                                            );
+                                                          }
+                                                        }
+                                                      },
+                                                      style: ElevatedButton.styleFrom(
+                                                        padding: const EdgeInsets.symmetric(vertical: 4),
+                                                        backgroundColor: const Color(0xFF10B981),
+                                                        foregroundColor: Colors.white,
+                                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                                        elevation: 0,
+                                                      ),
+                                                      child: Text(
+                                                        'Onayla',
+                                                        style: GoogleFonts.inter(
+                                                          fontSize: 11,
+                                                          fontWeight: FontWeight.bold,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              );
+                                            } else {
+                                              final Color badgeBg = durum == 'onaylandi' ? const Color(0xFFE0F2FE) : const Color(0xFFFEE2E2);
+                                              final Color badgeText = durum == 'onaylandi' ? const Color(0xFF0369A1) : const Color(0xFFB91C1C);
+                                              final label = durum == 'onaylandi' ? 'Onaylandı' : 'Reddedildi';
+                                              return Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                decoration: BoxDecoration(
+                                                  color: badgeBg,
+                                                  borderRadius: BorderRadius.circular(6),
+                                                ),
+                                                child: Text(
+                                                  'Durum: $label',
                                                   style: GoogleFonts.inter(
                                                     fontSize: 10,
                                                     fontWeight: FontWeight.bold,
@@ -605,7 +715,7 @@ class _NotificationSettingsDialogState extends State<NotificationSettingsDialog>
         child: _loading
             ? const SizedBox(
                 height: 100,
-                child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                child: Center(child: MilkLoadingIndicator(size: 50)),
               )
             : Column(
                 mainAxisSize: MainAxisSize.min,

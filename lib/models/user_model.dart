@@ -53,10 +53,10 @@ class AppUser {
 
   factory AppUser.demo(UserRole role) {
     final configs = {
-      UserRole.admin: {'name': 'Admin Kullanıcı', 'email': 'admin@sutapp.com'},
-      UserRole.firma: {'name': 'Kayseri Çiftlik', 'email': 'firma@sutapp.com'},
-      UserRole.surucu: {'name': 'Ahmet Kara', 'email': 'surucu@sutapp.com'},
-      UserRole.uretici: {'name': 'Mehmet Yılmaz', 'email': 'uretici@sutapp.com'},
+      UserRole.admin: {'name': 'Admin Kullanıcı', 'email': 'admin@sutapp.com', 'phone': '0532 000 0001'},
+      UserRole.firma: {'name': 'Kayseri Çiftlik', 'email': 'firma@sutapp.com', 'phone': '0532 000 0002'},
+      UserRole.surucu: {'name': 'Ahmet Kara', 'email': 'surucu@sutapp.com', 'phone': '0532 000 0003'},
+      UserRole.uretici: {'name': 'Mehmet Yılmaz', 'email': 'uretici@sutapp.com', 'phone': '0532 000 0004'},
     };
     final c = configs[role]!;
     return AppUser(
@@ -65,7 +65,7 @@ class AppUser {
       email: c['email']!,
       role: role,
       firmaId: role == UserRole.admin ? null : 'demo_firma_1',
-      phone: '0532 111 2233',
+      phone: c['phone']!,
       il: 'Kayseri',
       ilce: 'Kocasinan',
       mahalleKoy: 'Yayla Çiftliği',

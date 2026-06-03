@@ -23,9 +23,15 @@ void main() async {
     systemNavigationBarIconBrightness: Brightness.dark,
   ));
 
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } catch (e) {
+    if (!e.toString().contains('duplicate-app')) {
+      rethrow;
+    }
+  }
 
   // Initialize Firestore mock data (Only in dev/demo mode)
   if (!AppConstants.isProduction) {

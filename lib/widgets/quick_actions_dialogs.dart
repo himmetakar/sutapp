@@ -7,6 +7,7 @@ import '../config/theme.dart';
 import '../services/firestore_service.dart';
 import 'common_widgets.dart';
 import 'sut_analiz_dialog.dart';
+import 'milk_loading_indicator.dart';
 
 class QuickActionsDialogs {
   static void showSutGirisiDialog(BuildContext context) {
@@ -62,7 +63,7 @@ class QuickActionsDialogs {
                 return const AlertDialog(
                   content: SizedBox(
                     height: 80,
-                    child: Center(child: CircularProgressIndicator()),
+                    child: Center(child: MilkLoadingIndicator(size: 60)),
                   ),
                 );
               }
@@ -362,7 +363,7 @@ class QuickActionsDialogs {
                 return const AlertDialog(
                   content: SizedBox(
                     height: 80,
-                    child: Center(child: CircularProgressIndicator()),
+                    child: Center(child: MilkLoadingIndicator(size: 60)),
                   ),
                 );
               }

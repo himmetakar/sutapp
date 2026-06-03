@@ -66,29 +66,23 @@ class _AppShellState extends State<AppShell> {
         ];
       case UserRole.firma:
         return [
-          _DrawerItem('/firma', Icons.dashboard_rounded, 'Dashboard'),
-          _DrawerItem('/firma/ureticiler', Icons.people_rounded, 'Üreticiler'),
-          _DrawerItem('/firma/araclar', Icons.local_shipping_rounded, 'Araçlar'),
-          _DrawerItem('/firma/suruculer', Icons.badge_rounded, 'Toplayıcılar'),
-          _DrawerItem('/firma/tanklar', Icons.propane_tank_rounded, 'Tanklar'),
-          _DrawerItem('/firma/tanklar/atama', Icons.link_rounded, 'Tank Atama'),
-          _DrawerItem('/firma/toplamalar', Icons.water_drop_rounded, 'Süt Toplamalar'),
-          _DrawerItem('/firma/aylik-sut', Icons.calendar_month_rounded, 'Aylık Süt Kayıtları'),
-          _DrawerItem('/firma/teslimatlar', Icons.inventory_rounded, 'Merkez Teslimat'),
-          _DrawerItem('/firma/raporlar', Icons.bar_chart_rounded, 'Raporlar'),
-          _DrawerItem('/firma/fire-takip', Icons.warning_amber_rounded, 'Fire Takibi'),
-          _DrawerItem('/firma/duyuru-gonder', Icons.campaign_rounded, 'Duyuru Gönder'),
-          _DrawerItem('/firma/finans', Icons.monetization_on_rounded, 'Finans Yönetimi'),
-          _DrawerItem('/firma/firmalar', Icons.business_rounded, 'Tedarikçi Firmalar'),
-          _DrawerItem('/firma/satis-raporlari', Icons.analytics_rounded, 'Satış Raporları'),
-          _DrawerItem('/firma/urunler', Icons.shopping_bag_rounded, 'Ürünler'),
-          _DrawerItem('/firma/urunler/siparisler', Icons.shopping_cart_rounded, 'Siparişler'),
+          _DrawerItem('/firma/hesap-ozeti', Icons.person_pin_circle_outlined, 'Hesap Görüntüle'),
+          _DrawerItem('/firma/sut-kabul', Icons.opacity_rounded, 'Süt Kabul'),
+          _DrawerItem('/firma/satislar', Icons.point_of_sale_rounded, 'Satış Yap'),
+          _DrawerItem('/firma/finans/avanslar/ekle', Icons.handshake_outlined, 'Avans Ver'),
+          _DrawerItem('/firma/tahsilat', Icons.arrow_circle_down_outlined, 'Tahsilat Yap'),
+          _DrawerItem('/firma/urunler/siparisler', Icons.fact_check_outlined, 'Sipariş Onay'),
+          _DrawerItem('/firma/sut-transferleri', Icons.compare_arrows_rounded, 'Süt Transfer'),
         ];
       case UserRole.surucu:
         return [
           _DrawerItem('/surucu', Icons.dashboard_rounded, 'Dashboard'),
-          _DrawerItem('/surucu/toplama', Icons.water_drop_rounded, 'Süt Al'),
           _DrawerItem('/surucu/teslimatlar', Icons.local_shipping_rounded, 'Ürün Teslimatları'),
+          _DrawerItem('/surucu/sut-bosalt', Icons.outbox_rounded, 'Süt Boşalt'),
+          _DrawerItem('/surucu/ureticiler', Icons.agriculture_rounded, 'Üreticiler', isExpandable: true, children: [
+            _DrawerItem('/surucu/ureticiler', Icons.list_rounded, 'Üretici Listesi'),
+            _DrawerItem('/surucu/ureticiler/ekle', Icons.person_add_rounded, 'Üretici Ekle'),
+          ]),
           _DrawerItem('/surucu/profil', Icons.person_rounded, 'Profil'),
         ];
       case UserRole.uretici:
@@ -156,6 +150,9 @@ class _AppShellState extends State<AppShell> {
       '/surucu': 'Ana Sayfa',
       '/surucu/toplama': 'Süt Toplama',
       '/surucu/teslimatlar': 'Sipariş Teslimatları',
+      '/surucu/ureticiler': 'Üreticilerim',
+      '/surucu/ureticiler/ekle': 'Üretici Ekle',
+      '/surucu/sut-bosalt': 'Süt Boşalt',
       '/surucu/profil': 'Profil',
       '/uretici': 'Ana Sayfa',
       '/uretici/gecmis': 'Teslim Geçmişi',
@@ -217,15 +214,11 @@ class _AppShellState extends State<AppShell> {
         title: Text(_title),
         actions: [
           Padding(
-            padding: const EdgeInsets.only(right: 4),
-            child: RichText(
-              text: TextSpan(
-                style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700),
-                children: const [
-                  TextSpan(text: 'Süt', style: TextStyle(color: AppColors.primary600)),
-                  TextSpan(text: 'App', style: TextStyle(color: AppColors.gray800)),
-                ],
-              ),
+            padding: const EdgeInsets.only(right: 8),
+            child: Image.asset(
+              'assets/images/phone+bottle.png',
+              height: 26,
+              fit: BoxFit.contain,
             ),
           ),
           _buildNotificationsBellButton(auth, context),
@@ -268,10 +261,15 @@ class _AppShellState extends State<AppShell> {
                   width: 34,
                   height: 34,
                   decoration: BoxDecoration(
-                    color: AppColors.primary500,
+                    color: Colors.transparent,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(Icons.water_drop_rounded, color: Colors.white, size: 20),
+                  child: Image.asset(
+                    'assets/images/phone+bottle.png',
+                    width: 34,
+                    height: 34,
+                    fit: BoxFit.contain,
+                  ),
                 ),
                 if (_sidebarExpanded) ...[
                   const SizedBox(width: 10),
@@ -310,6 +308,83 @@ class _AppShellState extends State<AppShell> {
               padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
               children: [
                 ..._drawerItems.map((item) {
+                  if (item.isExpandable) {
+                    final isChildActive = item.children.any((c) => loc == c.path);
+                    if (!_sidebarExpanded) {
+                      return Tooltip(
+                        message: item.label,
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 4),
+                          child: Material(
+                            color: isChildActive ? const Color(0xFF1E293B) : Colors.transparent,
+                            borderRadius: BorderRadius.circular(8),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(8),
+                              onTap: () => context.go(item.path),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                                child: Icon(item.icon, color: isChildActive ? Colors.white : AppColors.gray400, size: 18),
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    }
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 4),
+                      decoration: BoxDecoration(
+                        color: isChildActive ? const Color(0xFF1E293B) : Colors.transparent,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Theme(
+                        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                        child: ExpansionTile(
+                          initiallyExpanded: isChildActive,
+                          tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+                          childrenPadding: const EdgeInsets.only(left: 16),
+                          iconColor: AppColors.gray400,
+                          collapsedIconColor: AppColors.gray400,
+                          leading: Icon(item.icon, color: isChildActive ? Colors.white : AppColors.gray400, size: 18),
+                          title: Text(item.label, style: GoogleFonts.inter(
+                            fontSize: 13,
+                            fontWeight: isChildActive ? FontWeight.w600 : FontWeight.w500,
+                            color: isChildActive ? Colors.white : AppColors.gray300,
+                          )),
+                          children: item.children.map((child) {
+                            final childActive = loc == child.path;
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 2),
+                              child: Material(
+                                color: childActive ? const Color(0xFF334155) : Colors.transparent,
+                                borderRadius: BorderRadius.circular(6),
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(6),
+                                  onTap: () => context.go(child.path),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                    child: Row(children: [
+                                      Icon(child.icon, color: childActive ? Colors.white : AppColors.gray400, size: 14),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Text(child.label, style: GoogleFonts.inter(
+                                          fontSize: 12,
+                                          fontWeight: childActive ? FontWeight.w600 : FontWeight.w400,
+                                          color: childActive ? Colors.white : AppColors.gray400,
+                                        )),
+                                      ),
+                                      if (childActive)
+                                        Container(width: 3, height: 12, decoration: BoxDecoration(color: AppColors.primary500, borderRadius: BorderRadius.circular(2))),
+                                    ]),
+                                  ),
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                    );
+                  }
+
                   final isActive = loc == item.path;
                   return Tooltip(
                     message: _sidebarExpanded ? '' : item.label,
@@ -660,6 +735,64 @@ class _AppShellState extends State<AppShell> {
                 padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
                 children: [
                   ..._drawerItems.map((item) {
+                    if (item.isExpandable) {
+                      final isChildActive = item.children.any((c) => loc == c.path);
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 2),
+                        decoration: BoxDecoration(
+                          color: isChildActive ? AppColors.primary50 : Colors.transparent,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Theme(
+                          data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                          child: ExpansionTile(
+                            initiallyExpanded: isChildActive,
+                            tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+                            childrenPadding: const EdgeInsets.only(left: 20),
+                            leading: Icon(item.icon, color: isChildActive ? AppColors.primary600 : AppColors.gray400, size: 20),
+                            title: Text(item.label, style: GoogleFonts.inter(
+                              fontSize: 13,
+                              fontWeight: isChildActive ? FontWeight.w600 : FontWeight.w500,
+                              color: isChildActive ? AppColors.primary700 : AppColors.gray700,
+                            )),
+                            children: item.children.map((child) {
+                              final childActive = loc == child.path;
+                              return Container(
+                                margin: const EdgeInsets.only(bottom: 2),
+                                child: Material(
+                                  color: childActive ? AppColors.primary50 : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: InkWell(
+                                    borderRadius: BorderRadius.circular(8),
+                                    onTap: () {
+                                      Navigator.pop(context);
+                                      context.go(child.path);
+                                    },
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                      child: Row(children: [
+                                        Icon(child.icon, color: childActive ? AppColors.primary600 : AppColors.gray400, size: 16),
+                                        const SizedBox(width: 10),
+                                        Text(child.label, style: GoogleFonts.inter(
+                                          fontSize: 12,
+                                          fontWeight: childActive ? FontWeight.w600 : FontWeight.w500,
+                                          color: childActive ? AppColors.primary700 : AppColors.gray600,
+                                        )),
+                                        if (childActive) ...[
+                                          const Spacer(),
+                                          Container(width: 3, height: 12, decoration: BoxDecoration(color: AppColors.primary600, borderRadius: BorderRadius.circular(2))),
+                                        ],
+                                      ]),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                      );
+                    }
+
                     final isActive = loc == item.path;
                     return Container(
                       margin: const EdgeInsets.only(bottom: 2),
@@ -692,55 +825,7 @@ class _AppShellState extends State<AppShell> {
                       ),
                     );
                   }).toList(),
-                  if (widget.role == UserRole.firma) ...[
-                    const Divider(height: 24, thickness: 1, color: AppColors.gray100),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                      child: Text(
-                        'Hızlı İşlemler',
-                        style: GoogleFonts.inter(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.gray500,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    _buildDrawerQuickActionBtn(
-                      context,
-                      label: 'Süt Girişi Yap',
-                      icon: Icons.add_rounded,
-                      color: AppColors.primary600,
-                      bgColor: AppColors.primary50,
-                      onTap: () {
-                        Navigator.pop(context);
-                        QuickActionsDialogs.showSutGirisiDialog(context);
-                      },
-                    ),
-                    _buildDrawerQuickActionBtn(
-                      context,
-                      label: 'Süt Kabul',
-                      icon: Icons.input_rounded,
-                      color: const Color(0xFF7C3AED),
-                      bgColor: const Color(0xFFEDE9FE),
-                      onTap: () {
-                        Navigator.pop(context);
-                        QuickActionsDialogs.showSutKabulDialog(context);
-                      },
-                    ),
-                    _buildDrawerQuickActionBtn(
-                      context,
-                      label: 'Tahsilat Yap',
-                      icon: Icons.monetization_on_rounded,
-                      color: Colors.teal,
-                      bgColor: const Color(0xFFE6F4EA),
-                      onTap: () {
-                        Navigator.pop(context);
-                        QuickActionsDialogs.showTahsilatDialog(context);
-                      },
-                    ),
-                  ],
+                  // Bottom Hızlı İşlemler removed as they are now the primary drawer items.
                 ],
               ),
             ),
@@ -897,43 +982,7 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
-  Widget _buildDrawerQuickActionBtn(
-    BuildContext context, {
-    required String label,
-    required IconData icon,
-    required Color color,
-    required Color bgColor,
-    required VoidCallback onTap,
-  }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 6),
-      child: Material(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(10),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(10),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: Row(
-              children: [
-                Icon(icon, color: color, size: 20),
-                const SizedBox(width: 12),
-                Text(
-                  label,
-                  style: GoogleFonts.inter(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: color,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+
 
   Widget _buildNotificationsBellButton(AuthProvider auth, BuildContext context) {
     final uid = auth.user?.uid ?? '';
@@ -998,7 +1047,9 @@ class _DrawerItem {
   final String path;
   final IconData icon;
   final String label;
-  _DrawerItem(this.path, this.icon, this.label);
+  final bool isExpandable;
+  final List<_DrawerItem> children;
+  _DrawerItem(this.path, this.icon, this.label, {this.isExpandable = false, this.children = const []});
 }
 
 class CompanyLogoAvatar extends StatelessWidget {

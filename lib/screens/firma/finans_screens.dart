@@ -188,12 +188,30 @@ class _FinansalGenelBakisScreenState extends State<FinansalGenelBakisScreen> {
                           int avansCount = 0;
                           double totalKesinti = 0.0;
 
+                          DateTime? parseDocDate(Map<String, dynamic> data) {
+                            final rawDate = data['tahsilEdilecegiTarih'] ?? data['tarih'] ?? data['verildigiTarih'] ?? data['vereseTarih'] ?? data['tarihStr'];
+                            if (rawDate != null) {
+                              final str = rawDate.toString();
+                              try {
+                                return DateFormat('dd.MM.yyyy').parse(str);
+                              } catch (_) {
+                                try {
+                                  return DateFormat('dd MMMM yyyy', 'tr_TR').parse(str);
+                                } catch (_) {}
+                              }
+                            }
+                            if (data['timestamp'] != null) {
+                              return (data['timestamp'] as Timestamp).toDate();
+                            }
+                            return null;
+                          }
+
                           // Parse invoices
                           if (faturaSnapshot.hasData) {
                             final docs = faturaSnapshot.data!.docs;
                             for (var doc in docs) {
                               final data = doc.data() as Map<String, dynamic>;
-                              final t = (data['timestamp'] as Timestamp?)?.toDate();
+                              final t = parseDocDate(data);
                               if (t != null && t.year == _selectedDate.year && t.month == _selectedDate.month) {
                                 faturaCount++;
                                 final double val = (data['toplam'] as num?)?.toDouble() ?? 0.0;
@@ -207,7 +225,7 @@ class _FinansalGenelBakisScreenState extends State<FinansalGenelBakisScreen> {
                             final docs = giderSnapshot.data!.docs;
                             for (var doc in docs) {
                               final data = doc.data() as Map<String, dynamic>;
-                              final t = (data['timestamp'] as Timestamp?)?.toDate();
+                              final t = parseDocDate(data);
                               if (t != null && t.year == _selectedDate.year && t.month == _selectedDate.month) {
                                 giderCount++;
                                 final double val = (data['tutar'] as num?)?.toDouble() ?? 0.0;
@@ -222,7 +240,7 @@ class _FinansalGenelBakisScreenState extends State<FinansalGenelBakisScreen> {
                             final firestoreService = FirestoreService();
                             for (var doc in docs) {
                               final data = doc.data() as Map<String, dynamic>;
-                              final t = (data['timestamp'] as Timestamp?)?.toDate();
+                              final t = parseDocDate(data);
                               if (t != null && t.year == _selectedDate.year && t.month == _selectedDate.month) {
                                 final double val = (data['tutar'] as num?)?.toDouble() ?? 0.0;
                                 final type = firestoreService.getTahsilatType(data);
@@ -244,7 +262,7 @@ class _FinansalGenelBakisScreenState extends State<FinansalGenelBakisScreen> {
                               final data = doc.data() as Map<String, dynamic>;
                               final durum = data['durum'] as String? ?? 'aktif';
                               if (durum == 'iptal') continue;
-                              final t = (data['timestamp'] as Timestamp?)?.toDate();
+                              final t = parseDocDate(data);
                               if (t != null && t.year == _selectedDate.year && t.month == _selectedDate.month) {
                                 final double val = (data['tutar'] as num?)?.toDouble() ?? 0.0;
                                 totalKesinti += val;
@@ -257,7 +275,7 @@ class _FinansalGenelBakisScreenState extends State<FinansalGenelBakisScreen> {
                             final docs = avansSnapshot.data!.docs;
                             for (var doc in docs) {
                               final data = doc.data() as Map<String, dynamic>;
-                              final t = (data['timestamp'] as Timestamp?)?.toDate();
+                              final t = parseDocDate(data);
                               if (t != null && t.year == _selectedDate.year && t.month == _selectedDate.month) {
                                 avansCount++;
                                 final double val = (data['tutar'] as num?)?.toDouble() ?? 0.0;
@@ -508,8 +526,22 @@ class _FaturalarScreenState extends State<FaturalarScreen> {
 
           for (var doc in docs) {
             final data = doc.data() as Map<String, dynamic>;
-            final timestamp = data['timestamp'] as Timestamp?;
-            final date = timestamp?.toDate() ?? DateTime.now();
+            DateTime? date;
+            final rawDate = data['tarih'] ?? data['verildigiTarih'] ?? data['vereseTarih'] ?? data['tarihStr'];
+            if (rawDate != null) {
+              final str = rawDate.toString();
+              try {
+                date = DateFormat('dd.MM.yyyy').parse(str);
+              } catch (_) {
+                try {
+                  date = DateFormat('dd MMMM yyyy', 'tr_TR').parse(str);
+                } catch (_) {}
+              }
+            }
+            if (date == null && data['timestamp'] != null) {
+              date = (data['timestamp'] as Timestamp).toDate();
+            }
+            date ??= DateTime.now();
 
             if (date.year == _selectedDate.year && date.month == _selectedDate.month) {
               monthDocs.add(doc);
@@ -820,7 +852,7 @@ class _FaturaEkleScreenState extends State<FaturaEkleScreen> {
   DateTime? _faturaTarihi;
 
   String _selectedBirim = 'adet';
-  String _selectedKategori = 'Genel';
+  String _selectedKategori = 'Firma';
 
   final List<Map<String, dynamic>> _kalemler = [];
 
@@ -940,10 +972,10 @@ class _FaturaEkleScreenState extends State<FaturaEkleScreen> {
                           final String cat = kategori;
                           if (cat.toLowerCase().contains('yem')) {
                             _selectedKategori = 'Firma';
-                          } else if (['Araç', 'Personel', 'Genel', 'Bakım', 'Müşteri', 'Firma'].contains(cat)) {
+                          } else if (['Araç', 'Personel', 'Bakım', 'Müşteri', 'Firma'].contains(cat)) {
                             _selectedKategori = cat;
                           } else {
-                            _selectedKategori = 'Genel';
+                            _selectedKategori = 'Firma';
                           }
 
                           // Clear previous inputs
@@ -1262,7 +1294,7 @@ class _FaturaEkleScreenState extends State<FaturaEkleScreen> {
                         _itemToplamFiyatCtrl.clear();
                         _productSellingPrice = 0.0;
                         _selectedBirim = 'adet';
-                        _selectedKategori = 'Genel';
+                        _selectedKategori = 'Firma';
                       });
                     },
                     icon: const Icon(Icons.add_rounded),
@@ -1408,7 +1440,9 @@ class _FaturaEkleScreenState extends State<FaturaEkleScreen> {
                             final double f = item['fiyat'] as double;
                             final String itemBirim = item['birim'] as String? ?? 'adet';
                             final String categoryName = item['kategori'] as String? ?? 'Genel';
-                            final String resolvedCategory = (urunAd.toLowerCase().contains('yem') || categoryName.toLowerCase() == 'firma')
+                            final String resolvedCategory = (urunAd.toLowerCase().contains('yem')
+                                || categoryName.toLowerCase() == 'firma'
+                                || categoryName.toLowerCase() == 'genel')
                                 ? 'firma'
                                 : categoryName.toLowerCase()
                                     .replaceAll('araç', 'arac')
@@ -1986,8 +2020,22 @@ class _GiderKategoriDetayScreenState extends State<GiderKategoriDetayScreen> {
 
           for (var doc in docs) {
             final data = doc.data() as Map<String, dynamic>;
-            final timestamp = data['timestamp'] as Timestamp?;
-            final date = timestamp?.toDate() ?? DateTime.now();
+            DateTime? date;
+            final rawDate = data['tarih'] ?? data['verildigiTarih'] ?? data['vereseTarih'] ?? data['tarihStr'];
+            if (rawDate != null) {
+              final str = rawDate.toString();
+              try {
+                date = DateFormat('dd.MM.yyyy').parse(str);
+              } catch (_) {
+                try {
+                  date = DateFormat('dd MMMM yyyy', 'tr_TR').parse(str);
+                } catch (_) {}
+              }
+            }
+            if (date == null && data['timestamp'] != null) {
+              date = (data['timestamp'] as Timestamp).toDate();
+            }
+            date ??= DateTime.now();
 
             if (date.year == _selectedDate.year && date.month == _selectedDate.month) {
               monthDocs.add(doc);
@@ -2272,6 +2320,7 @@ class _DevirYonetimiScreenState extends State<DevirYonetimiScreen> {
     DateTime selectedDate = DateTime.now();
     final tarihCtrl = TextEditingController(text: DateFormat('dd.MM.yyyy').format(selectedDate));
     String? selectedProducer = defaultProducer;
+    String selectedType = 'Alacaklı Müşteri'; // 'Alacaklı Müşteri' or 'Borçlu Müşteri'
 
     showDialog(
       context: context,
@@ -2309,17 +2358,32 @@ class _DevirYonetimiScreenState extends State<DevirYonetimiScreen> {
                             ),
                             const SizedBox(height: 12),
                           ],
+                          DropdownButtonFormField<String>(
+                            value: selectedType,
+                            decoration: const InputDecoration(labelText: 'Bakiye Tipi *'),
+                            items: const [
+                              DropdownMenuItem(value: 'Alacaklı Müşteri', child: Text('Alacaklı Müşteri')),
+                              DropdownMenuItem(value: 'Borçlu Müşteri', child: Text('Borçlu Müşteri')),
+                            ],
+                            onChanged: (val) {
+                              setDialogState(() {
+                                selectedType = val ?? 'Alacaklı Müşteri';
+                              });
+                            },
+                          ),
+                          const SizedBox(height: 12),
                           TextFormField(
                             controller: tutarCtrl,
                             keyboardType: TextInputType.text,
                             decoration: const InputDecoration(
                               labelText: 'Düzeltme Tutarı (₺) *',
-                              hintText: 'Pozitif veya Negatif değer (Örn: -1500 veya 2000)',
-                              helperText: 'Pozitif: Alacağı artırır, Negatif: Borcu artırır',
+                              hintText: 'Örn: 1500',
                             ),
                             validator: (value) {
                               if (value == null || value.isEmpty) return 'Lütfen tutar girin';
-                              if (double.tryParse(value.replaceAll(',', '.')) == null) return 'Geçerli bir sayı girin';
+                              final numVal = double.tryParse(value.replaceAll(',', '.'));
+                              if (numVal == null) return 'Geçerli bir sayı girin';
+                              if (numVal <= 0) return 'Tutar sıfırdan büyük olmalıdır';
                               return null;
                             },
                           ),
@@ -2370,7 +2434,8 @@ class _DevirYonetimiScreenState extends State<DevirYonetimiScreen> {
                       style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary600, foregroundColor: Colors.white),
                       onPressed: () async {
                         if (formKey.currentState!.validate() && selectedProducer != null) {
-                          final double tutar = double.parse(tutarCtrl.text.replaceAll(',', '.'));
+                          final double baseTutar = double.parse(tutarCtrl.text.replaceAll(',', '.'));
+                          final double tutar = selectedType == 'Borçlu Müşteri' ? -baseTutar : baseTutar;
                           
                           await FirebaseFirestore.instance.collection('devirler').add({
                             'uretici': selectedProducer,
@@ -2383,7 +2448,10 @@ class _DevirYonetimiScreenState extends State<DevirYonetimiScreen> {
 
                           Navigator.pop(ctx);
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('$selectedProducer için ${tutar.toStringAsFixed(2)} ₺ düzeltme kaydedildi!'), backgroundColor: AppColors.success),
+                            SnackBar(
+                              content: Text('$selectedProducer için ${baseTutar.toStringAsFixed(2)} ₺ ($selectedType) düzeltme kaydedildi!'),
+                              backgroundColor: AppColors.success,
+                            ),
                           );
                         }
                       },
@@ -2470,272 +2538,273 @@ class _DevirYonetimiScreenState extends State<DevirYonetimiScreen> {
                                     builder: (context, devirlerSnap) {
                                       final allDevirler = devirlerSnap.data?.docs ?? [];
 
-                                      // Compile balance sheet
-                                      double totalCompanyDebt = 0.0;
-                                      double totalCompanyReceivable = 0.0;
+                                      return StreamBuilder<QuerySnapshot>(
+                                        stream: FirebaseFirestore.instance.collection('satislar').where('firma', isEqualTo: currentFirmaName).snapshots(),
+                                        builder: (context, satislarSnap) {
+                                          final allSatislar = satislarSnap.data?.docs ?? [];
 
-                                      final List<Map<String, dynamic>> compiledData = [];
+                                          return StreamBuilder<DocumentSnapshot>(
+                                            stream: FirebaseFirestore.instance.collection('finans_ayarlari').doc(currentFirmaName).snapshots(),
+                                            builder: (context, settingsSnap) {
+                                              final sData = settingsSnap.data?.data() as Map<String, dynamic>? ?? {};
+                                              final double bagkurOran = (sData['bagkurOran'] as num?)?.toDouble() ?? 2.10;
+                                              final double stopajOran = (sData['stopajOran'] as num?)?.toDouble() ?? 1.00;
+                                              final double borsaOran = (sData['borsaOran'] as num?)?.toDouble() ?? 0.20;
+                                              final dynamicColsList = sData['kesintiTurleri'] as List?;
+                                              final List<String> dynamicColumns = [];
+                                              if (dynamicColsList != null) {
+                                                dynamicColumns.addAll(dynamicColsList.map((e) => e.toString()));
+                                              }
+                                              if (dynamicColumns.isEmpty) {
+                                                dynamicColumns.addAll(['Bağkur', 'Stopaj', 'Borsa']);
+                                              }
 
-                                      for (var p in allProducers) {
-                                        final name = p['name'] as String;
-                                        final bolge = p['bolge'] ?? '';
-                                        final group = p['group'] ?? '';
-                                        final email = p['email'] ?? '';
-                                        final kesintiAyarlari = p['kesintiAyarlari'] as Map<String, dynamic>?;
+                                              // Compile balance sheet
+                                              double totalCompanyDebt = 0.0;
+                                              double totalCompanyReceivable = 0.0;
 
-                                        final pCollections = allCollections.where((doc) => doc['u'] == name).toList();
-                                        final pTahsilatlar = allTahsilatlar.where((doc) => doc['uretici'] == name).toList();
-                                        final pAvanslar = allAvanslar.where((doc) => doc['uretici'] == name).toList();
-                                        final pKesintiler = allKesintiler.where((doc) => doc['uretici'] == name).toList();
-                                        final pCezalar = allCezalar.where((doc) => doc['uretici'] == name).toList();
-                                        final pDevirler = allDevirler.where((doc) => doc['uretici'] == name).toList();
+                                              final List<Map<String, dynamic>> compiledData = [];
 
-                                        final ledger = _firestoreService.calculateLedger(
-                                          collections: pCollections,
-                                          prices: priceDocs,
-                                          tahsilatlar: pTahsilatlar,
-                                          avanslar: pAvanslar,
-                                          kesintiler: pKesintiler,
-                                          cezalar: pCezalar,
-                                          devirler: pDevirler,
-                                          producerName: name,
-                                          bolge: bolge,
-                                          group: group,
-                                          kesintiAyarlari: kesintiAyarlari,
-                                        );
+                                              for (var p in allProducers) {
+                                                final name = p['name'] as String;
+                                                final bolge = p['bolge'] ?? '';
+                                                final group = p['group'] ?? '';
+                                                final email = p['email'] ?? '';
+                                                final kesintiAyarlari = p['kesintiAyarlari'] as Map<String, dynamic>?;
 
-                                        final double net = ledger['netBalance'];
+                                                final pCollections = allCollections.where((doc) => doc['u'] == name).toList();
+                                                final pTahsilatlar = allTahsilatlar.where((doc) => doc['uretici'] == name).toList();
+                                                final pAvanslar = allAvanslar.where((doc) => doc['uretici'] == name).toList();
+                                                final pKesintiler = allKesintiler.where((doc) => doc['uretici'] == name).toList();
+                                                final pCezalar = allCezalar.where((doc) => doc['uretici'] == name).toList();
+                                                final pDevirler = allDevirler.where((doc) => doc['uretici'] == name).toList();
+                                                final pSatislar = allSatislar.where((doc) => doc['uretici'] == name).toList();
 
-                                        if (net > 0) {
-                                          totalCompanyDebt += net;
-                                        } else if (net < 0) {
-                                          totalCompanyReceivable += net.abs();
-                                        }
-
-                                        compiledData.add({
-                                          'name': name,
-                                          'email': email,
-                                          'net': net,
-                                          'producer': p,
-                                        });
-                                      }
-
-                                      // Filter search query
-                                      var filteredData = compiledData;
-                                      if (_searchQuery.isNotEmpty) {
-                                        filteredData = filteredData.where((d) => (d['name'] as String).toLowerCase().contains(_searchQuery.toLowerCase())).toList();
-                                      }
-
-                                      // Filter by debt/receivable status
-                                      if (_filterStatus == 'Borçlular') {
-                                        filteredData = filteredData.where((d) => (d['net'] as double) < 0).toList();
-                                      } else if (_filterStatus == 'Alacaklılar') {
-                                        filteredData = filteredData.where((d) => (d['net'] as double) > 0).toList();
-                                      }
-
-                                      return Column(
-                                        children: [
-                                          // Top stats card matching Devir İşlemleri mockup
-                                          Padding(
-                                            padding: const EdgeInsets.all(16.0),
-                                            child: Row(
-                                              children: [
-                                                Expanded(
-                                                  child: AppCard(
-                                                    padding: const EdgeInsets.all(12),
-                                                    shadow: AppShadows.sm,
-                                                    child: Column(
-                                                      children: [
-                                                        const Icon(Icons.arrow_downward_rounded, color: Colors.green, size: 20),
-                                                        const SizedBox(height: 6),
-                                                        Text('Toplam Alacak', style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray400, fontWeight: FontWeight.w600)),
-                                                        const SizedBox(height: 4),
-                                                        Text('${formatNumber.format(totalCompanyReceivable)} ₺', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.green)),
-                                                      ],
-                                                    ),
-                                                  ),
-                                                ),
-                                                const SizedBox(width: 12),
-                                                Expanded(
-                                                  child: AppCard(
-                                                    padding: const EdgeInsets.all(12),
-                                                    shadow: AppShadows.sm,
-                                                    child: Column(
-                                                      children: [
-                                                        const Icon(Icons.arrow_upward_rounded, color: Colors.red, size: 20),
-                                                        const SizedBox(height: 6),
-                                                        Text('Toplam Borç', style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray400, fontWeight: FontWeight.w600)),
-                                                        const SizedBox(height: 4),
-                                                        Text('${formatNumber.format(totalCompanyDebt)} ₺', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.red)),
-                                                      ],
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-
-                                          // Search field
-                                          Padding(
-                                            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                                            child: TextField(
-                                              controller: _searchCtrl,
-                                              decoration: InputDecoration(
-                                                hintText: 'Üretici ara...',
-                                                prefixIcon: const Icon(Icons.search_rounded, color: AppColors.gray400),
-                                                suffixIcon: _searchQuery.isNotEmpty
-                                                    ? IconButton(
-                                                        icon: const Icon(Icons.clear_rounded),
-                                                        onPressed: () {
-                                                          setState(() {
-                                                            _searchQuery = '';
-                                                            _searchCtrl.clear();
-                                                          });
-                                                        },
-                                                      )
-                                                    : null,
-                                                filled: true,
-                                                fillColor: Colors.white,
-                                                border: OutlineInputBorder(
-                                                  borderRadius: BorderRadius.circular(12),
-                                                  borderSide: BorderSide(color: AppColors.gray200, width: 1),
-                                                ),
-                                                contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
-                                              ),
-                                              onChanged: (val) {
-                                                setState(() {
-                                                  _searchQuery = val.trim();
-                                                });
-                                              },
-                                            ),
-                                          ),
-
-                                          // Filter chips
-                                          SingleChildScrollView(
-                                            scrollDirection: Axis.horizontal,
-                                            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-                                            child: Row(
-                                              children: ['Tümü', 'Borçlular', 'Alacaklılar'].map((filter) {
-                                                final isSelected = _filterStatus == filter;
-                                                return Padding(
-                                                  padding: const EdgeInsets.only(right: 8.0),
-                                                  child: ChoiceChip(
-                                                    label: Text(filter),
-                                                    selected: isSelected,
-                                                    onSelected: (selected) {
-                                                      setState(() {
-                                                        _filterStatus = filter;
-                                                      });
-                                                    },
-                                                    selectedColor: AppColors.primary600,
-                                                    labelStyle: GoogleFonts.inter(
-                                                      fontSize: 12,
-                                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                                      color: isSelected ? Colors.white : AppColors.gray700,
-                                                    ),
-                                                    backgroundColor: Colors.white,
-                                                    shape: RoundedRectangleBorder(
-                                                      borderRadius: BorderRadius.circular(20),
-                                                      side: BorderSide(color: isSelected ? AppColors.primary600 : AppColors.gray200),
-                                                    ),
-                                                  ),
+                                                final ledger = _firestoreService.calculateLedger(
+                                                  collections: pCollections,
+                                                  prices: priceDocs,
+                                                  tahsilatlar: pTahsilatlar,
+                                                  avanslar: pAvanslar,
+                                                  kesintiler: pKesintiler,
+                                                  cezalar: pCezalar,
+                                                  devirler: pDevirler,
+                                                  satislar: pSatislar,
+                                                  producerName: name,
+                                                  bolge: bolge,
+                                                  group: group,
+                                                  kesintiAyarlari: kesintiAyarlari,
+                                                  dynamicColumns: dynamicColumns,
+                                                  bagkurOran: bagkurOran,
+                                                  stopajOran: stopajOran,
+                                                  borsaOran: borsaOran,
                                                 );
-                                              }).toList(),
-                                            ),
-                                          ),
 
-                                          const Divider(height: 1),
+                                                final double net = ledger['netBalance'];
 
-                                          // Customer list
-                                          Expanded(
-                                            child: filteredData.isEmpty
-                                                ? Center(child: Text('Kayıt bulunamadı.', style: GoogleFonts.inter(color: AppColors.gray400)))
-                                                : ListView.builder(
-                                                    padding: const EdgeInsets.all(16),
-                                                    itemCount: filteredData.length,
-                                                    itemBuilder: (context, idx) {
-                                                      final item = filteredData[idx];
-                                                      final name = item['name'] as String;
-                                                      final email = item['email'] as String;
-                                                      final double net = item['net'] as double;
+                                                if (net > 0) {
+                                                  totalCompanyDebt += net;
+                                                } else if (net < 0) {
+                                                  totalCompanyReceivable += net.abs();
+                                                }
 
-                                                      // net < 0: Producer owes company (Borçlu - Red)
-                                                      // net > 0: Company owes producer (Alacaklı - Green)
-                                                      final bool isDebtor = net < 0;
-                                                      final Color balanceColor = isDebtor ? Colors.red : (net > 0 ? Colors.green : AppColors.gray500);
-                                                      final String balanceLabel = isDebtor ? 'Borçlu' : (net > 0 ? 'Alacaklı' : 'Bakiye Sıfır');
+                                                compiledData.add({
+                                                  'name': name,
+                                                  'email': email,
+                                                  'net': net,
+                                                  'producer': p,
+                                                });
+                                              }
 
-                                                      return Container(
-                                                        margin: const EdgeInsets.only(bottom: 12),
-                                                        padding: const EdgeInsets.all(14),
-                                                        decoration: BoxDecoration(
-                                                          color: Colors.white,
-                                                          borderRadius: BorderRadius.circular(14),
-                                                          boxShadow: AppShadows.sm,
-                                                          border: Border.all(color: AppColors.gray200),
-                                                        ),
-                                                        child: Row(
-                                                          children: [
-                                                            Container(
-                                                              width: 44,
-                                                              height: 44,
-                                                              decoration: BoxDecoration(
-                                                                color: balanceColor.withOpacity(0.1),
-                                                                shape: BoxShape.circle,
-                                                              ),
-                                                              child: Icon(Icons.person_outline_rounded, color: balanceColor, size: 22),
-                                                            ),
-                                                            const SizedBox(width: 14),
-                                                            Expanded(
-                                                              child: Column(
-                                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                                children: [
-                                                                  Text(name, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.gray800)),
-                                                                  if (email.isNotEmpty) Text(email, style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray400)),
-                                                                  const SizedBox(height: 4),
-                                                                  Container(
-                                                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                                    decoration: BoxDecoration(
-                                                                      color: balanceColor.withOpacity(0.1),
-                                                                      borderRadius: BorderRadius.circular(4),
-                                                                    ),
-                                                                    child: Text(
-                                                                      balanceLabel,
-                                                                      style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.bold, color: balanceColor),
-                                                                    ),
-                                                                  ),
-                                                                ],
-                                                              ),
-                                                            ),
-                                                            Column(
-                                                              crossAxisAlignment: CrossAxisAlignment.end,
+                                              // Filter search query
+                                              var filteredData = compiledData;
+                                              if (_searchQuery.isNotEmpty) {
+                                                filteredData = filteredData.where((d) => (d['name'] as String).toLowerCase().contains(_searchQuery.toLowerCase())).toList();
+                                              }
+
+                                              // Filter by debt/receivable status
+                                              if (_filterStatus == 'Borçlular') {
+                                                filteredData = filteredData.where((d) => (d['net'] as double) < 0).toList();
+                                              } else if (_filterStatus == 'Alacaklılar') {
+                                                filteredData = filteredData.where((d) => (d['net'] as double) > 0).toList();
+                                              }
+
+                                              return Column(
+                                                children: [
+                                                  // Top stats card matching Devir İşlemleri mockup
+                                                  Padding(
+                                                    padding: const EdgeInsets.all(16.0),
+                                                    child: Row(
+                                                      children: [
+                                                        Expanded(
+                                                          child: AppCard(
+                                                            padding: const EdgeInsets.all(12),
+                                                            shadow: AppShadows.sm,
+                                                            child: Column(
                                                               children: [
-                                                                Text(
-                                                                  '${formatNumber.format(net.abs())} ₺',
-                                                                  style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold, color: balanceColor),
-                                                                ),
+                                                                const Icon(Icons.arrow_downward_rounded, color: Colors.green, size: 20),
                                                                 const SizedBox(height: 6),
-                                                                ElevatedButton(
-                                                                  onPressed: () => _showAddDevirDialog(context, currentFirmaName, defaultProducer: name),
-                                                                  style: ElevatedButton.styleFrom(
-                                                                    backgroundColor: AppColors.primary50,
-                                                                    foregroundColor: AppColors.primary600,
-                                                                    elevation: 0,
-                                                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                                                    minimumSize: const Size(60, 28),
-                                                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                                                  ),
-                                                                  child: Text('Düzeltme', style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.bold)),
-                                                                ),
+                                                                Text('Toplam Borçlular', style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray400, fontWeight: FontWeight.w600)),
+                                                                const SizedBox(height: 4),
+                                                                Text('${formatNumber.format(totalCompanyReceivable)} ₺', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.green)),
                                                               ],
                                                             ),
-                                                          ],
+                                                          ),
                                                         ),
-                                                      );
-                                                    },
+                                                        const SizedBox(width: 12),
+                                                        Expanded(
+                                                          child: AppCard(
+                                                            padding: const EdgeInsets.all(12),
+                                                            shadow: AppShadows.sm,
+                                                            child: Column(
+                                                              children: [
+                                                                const Icon(Icons.arrow_upward_rounded, color: Colors.red, size: 20),
+                                                                const SizedBox(height: 6),
+                                                                Text('Toplam Alacaklılar', style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray400, fontWeight: FontWeight.w600)),
+                                                                const SizedBox(height: 4),
+                                                                Text('${formatNumber.format(totalCompanyDebt)} ₺', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.red)),
+                                                              ],
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
                                                   ),
-                                          ),
-                                        ],
+
+                                                  // Search field
+                                                  Padding(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                                                    child: TextField(
+                                                      controller: _searchCtrl,
+                                                      decoration: InputDecoration(
+                                                        hintText: 'Üretici ara...',
+                                                        prefixIcon: const Icon(Icons.search_rounded, color: AppColors.gray400),
+                                                        suffixIcon: _searchQuery.isNotEmpty
+                                                            ? IconButton(
+                                                                icon: const Icon(Icons.clear_rounded),
+                                                                onPressed: () {
+                                                                  setState(() {
+                                                                    _searchQuery = '';
+                                                                    _searchCtrl.clear();
+                                                                  });
+                                                                },
+                                                              )
+                                                            : null,
+                                                        filled: true,
+                                                        fillColor: Colors.white,
+                                                        border: OutlineInputBorder(
+                                                          borderRadius: BorderRadius.circular(12),
+                                                          borderSide: BorderSide(color: AppColors.gray200, width: 1),
+                                                        ),
+                                                        contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
+                                                      ),
+                                                      onChanged: (val) {
+                                                        setState(() {
+                                                          _searchQuery = val.trim();
+                                                        });
+                                                      },
+                                                    ),
+                                                  ),
+
+                                                  // List of producers with devir status
+                                                  Expanded(
+                                                    child: filteredData.isEmpty
+                                                        ? Center(
+                                                            child: Text(
+                                                              'Üretici bulunamadı.',
+                                                              style: GoogleFonts.inter(color: AppColors.gray400),
+                                                            ),
+                                                          )
+                                                        : ListView.builder(
+                                                            padding: const EdgeInsets.all(16),
+                                                            itemCount: filteredData.length,
+                                                            itemBuilder: (context, index) {
+                                                              final item = filteredData[index];
+                                                              final name = item['name'] as String;
+                                                              final email = item['email'] as String;
+                                                              final net = item['net'] as double;
+
+                                                              final balanceColor = net > 0
+                                                                  ? Colors.red[800]!
+                                                                  : (net < 0 ? Colors.green[800]! : AppColors.gray500);
+
+                                                              final balanceLabel = net > 0
+                                                                  ? 'Alacaklı'
+                                                                  : (net < 0 ? 'Borçlu' : 'Bakiyesi Yok');
+
+                                                              return Container(
+                                                                margin: const EdgeInsets.only(bottom: 12),
+                                                                padding: const EdgeInsets.all(14),
+                                                                decoration: BoxDecoration(
+                                                                  color: Colors.white,
+                                                                  borderRadius: BorderRadius.circular(14),
+                                                                  boxShadow: AppShadows.sm,
+                                                                  border: Border.all(color: AppColors.gray200),
+                                                                ),
+                                                                child: Row(
+                                                                  children: [
+                                                                    Container(
+                                                                      padding: const EdgeInsets.all(8),
+                                                                      decoration: BoxDecoration(
+                                                                        color: balanceColor.withOpacity(0.1),
+                                                                        shape: BoxShape.circle,
+                                                                      ),
+                                                                      child: Icon(Icons.person_outline_rounded, color: balanceColor, size: 22),
+                                                                    ),
+                                                                    const SizedBox(width: 14),
+                                                                    Expanded(
+                                                                      child: Column(
+                                                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                                                        children: [
+                                                                          Text(name, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.gray800)),
+                                                                          if (email.isNotEmpty) Text(email, style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray400)),
+                                                                          const SizedBox(height: 4),
+                                                                          Container(
+                                                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                                            decoration: BoxDecoration(
+                                                                              color: balanceColor.withOpacity(0.1),
+                                                                              borderRadius: BorderRadius.circular(4),
+                                                                            ),
+                                                                            child: Text(
+                                                                              balanceLabel,
+                                                                              style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.bold, color: balanceColor),
+                                                                            ),
+                                                                          ),
+                                                                        ],
+                                                                      ),
+                                                                    ),
+                                                                    Column(
+                                                                      crossAxisAlignment: CrossAxisAlignment.end,
+                                                                      children: [
+                                                                        Text(
+                                                                          '${formatNumber.format(net.abs())} ₺',
+                                                                          style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold, color: balanceColor),
+                                                                        ),
+                                                                        const SizedBox(height: 6),
+                                                                        ElevatedButton(
+                                                                          onPressed: () => _showAddDevirDialog(context, currentFirmaName, defaultProducer: name),
+                                                                          style: ElevatedButton.styleFrom(
+                                                                            backgroundColor: AppColors.primary50,
+                                                                            foregroundColor: AppColors.primary600,
+                                                                            elevation: 0,
+                                                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                                                            minimumSize: const Size(60, 28),
+                                                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                                                          ),
+                                                                          child: Text('Düzeltme', style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.bold)),
+                                                                        ),
+                                                                      ],
+                                                                    ),
+                                                                  ],
+                                                                ),
+                                                              );
+                                                            },
+                                                          ),
+                                                  ),
+                                                ],
+                                              );
+                                            },
+                                          );
+                                        },
                                       );
                                     },
                                   );
@@ -2920,8 +2989,22 @@ class _OdemeGecmisiScreenState extends State<OdemeGecmisiScreen> {
           for (var doc in docs) {
             final data = doc.data() as Map<String, dynamic>;
             if (FirestoreService().getTahsilatType(data) != 'odeme') continue;
-            final timestamp = data['timestamp'] as Timestamp?;
-            final date = timestamp?.toDate() ?? DateTime.now();
+            DateTime? date;
+            final rawDate = data['tarih'] ?? data['verildigiTarih'] ?? data['vereseTarih'] ?? data['tarihStr'];
+            if (rawDate != null) {
+              final str = rawDate.toString();
+              try {
+                date = DateFormat('dd.MM.yyyy').parse(str);
+              } catch (_) {
+                try {
+                  date = DateFormat('dd MMMM yyyy', 'tr_TR').parse(str);
+                } catch (_) {}
+              }
+            }
+            if (date == null && data['timestamp'] != null) {
+              date = (data['timestamp'] as Timestamp).toDate();
+            }
+            date ??= DateTime.now();
 
             if (date.year == _selectedDate.year && date.month == _selectedDate.month) {
               monthDocs.add(doc);

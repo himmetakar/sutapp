@@ -227,41 +227,99 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
                         Expanded(
                           child: Text(
                             'Abonelik süreniz doluyor! Son tarih: ${DateFormat('dd.MM.yyyy').format(expiryDate)}',
-                            style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.bold, color: const Color(0xFF991B1B)),
+                            style: GoogleFonts.inter(fontSize: 12, color: Colors.red, fontWeight: FontWeight.w500),
                           ),
                         ),
                       ],
                     ),
                   ),
+                  const SizedBox(height: 8),
                 ],
                 if (_currentMenu == 'main') ...[
               // Screen Description / Welcome Title
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
+                  // LEFT: Logo + Firma Adı
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Container(
+                        width: 60,
+                        height: 60,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: AppColors.gray200, width: 1.5),
+                          color: Colors.white,
+                          image: logoUrl != null && logoUrl.isNotEmpty
+                              ? DecorationImage(
+                                  image: logoUrl.startsWith('data:image')
+                                      ? MemoryImage(base64Decode(logoUrl.substring(logoUrl.indexOf(',') + 1))) as ImageProvider
+                                      : NetworkImage(logoUrl),
+                                  fit: BoxFit.cover,
+                                )
+                              : null,
+                        ),
+                        child: logoUrl == null || logoUrl.isEmpty
+                            ? Center(
+                                child: Icon(Icons.business_rounded, color: AppColors.gray400, size: 24),
+                              )
+                            : null,
+                      ),
+                      if (currentFirma.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        SizedBox(
+                          width: 80,
+                          child: Text(
+                            currentFirma,
+                            textAlign: TextAlign.center,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.inter(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.gray700,
+                              height: 1.2,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(width: 14),
+                  // RIGHT: 3-line greeting
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         Row(
                           children: [
-                            Flexible(
-                              child: Text(
-                                'Hoş geldiniz, ${user?.displayName ?? 'Yönetici'}',
-                                style: GoogleFonts.inter(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.gray900,
-                                ),
-                                overflow: TextOverflow.ellipsis,
+                            Text(
+                              'Hoş geldiniz',
+                              style: GoogleFonts.inter(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                                color: AppColors.gray500,
                               ),
                             ),
-                            const SizedBox(width: 6),
-                            Text(
-                              '👋',
-                              style: GoogleFonts.inter(fontSize: 18),
-                            ),
+                            const SizedBox(width: 4),
+                            const Text('👋', style: TextStyle(fontSize: 13)),
                           ],
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          currentFirma.isNotEmpty ? currentFirma : (user?.displayName ?? 'Yönetici'),
+                          style: GoogleFonts.inter(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.gray900,
+                            height: 1.2,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
                         const SizedBox(height: 4),
                         Text(
@@ -272,54 +330,6 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
                             fontWeight: FontWeight.w400,
                           ),
                         ),
-                      ],
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.only(left: 12),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 60,
-                          height: 60,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: AppColors.gray200, width: 1.5),
-                            color: Colors.white,
-                            image: logoUrl != null && logoUrl.isNotEmpty
-                                ? DecorationImage(
-                                    image: logoUrl.startsWith('data:image')
-                                        ? MemoryImage(base64Decode(logoUrl.substring(logoUrl.indexOf(',') + 1))) as ImageProvider
-                                        : NetworkImage(logoUrl),
-                                    fit: BoxFit.cover,
-                                  )
-                                : null,
-                          ),
-                          child: logoUrl == null || logoUrl.isEmpty
-                              ? Center(
-                                  child: Icon(Icons.business_rounded, color: AppColors.gray400, size: 24),
-                                )
-                              : null,
-                        ),
-                        if (currentFirma.isNotEmpty) ...[
-                          const SizedBox(height: 6),
-                          SizedBox(
-                            width: 85,
-                            child: Text(
-                              currentFirma,
-                              textAlign: TextAlign.center,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.inter(
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.gray800,
-                                height: 1.1,
-                              ),
-                            ),
-                          ),
-                        ],
                       ],
                     ),
                   ),

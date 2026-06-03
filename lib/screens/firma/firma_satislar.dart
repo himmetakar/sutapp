@@ -283,27 +283,58 @@ class _FirmaSatislarScreenState extends State<FirmaSatislarScreen> {
               final currentFirmaName = data['firma'] as String? ?? '';
               final orderId = data['orderId'] as String?;
 
-              await doc.reference.delete();
-
-              // Delete corresponding order in urunler_siparisler
               if (orderId != null && orderId.isNotEmpty) {
-                final orderQuery = await _db.collection('urunler_siparisler').where('id', isEqualTo: orderId).get();
+                // Fetch all sales sharing the same orderId to delete them and restore stock
+                final salesQuery = await _db.collection('satislar')
+                    .where('orderId', isEqualTo: orderId)
+                    .where('firma', isEqualTo: currentFirmaName)
+                    .get();
+
+                for (var sDoc in salesQuery.docs) {
+                  final sData = sDoc.data();
+                  final String pName = sData['urun'] as String? ?? '';
+                  final double qty = (sData['miktar'] as num?)?.toDouble() ?? 0.0;
+
+                  // Increment stock back
+                  if (pName.isNotEmpty && qty > 0) {
+                    final urunSnap = await _db.collection('urunler')
+                        .where('firma', isEqualTo: currentFirmaName)
+                        .where('ad', isEqualTo: pName)
+                        .limit(1)
+                        .get();
+                    if (urunSnap.docs.isNotEmpty) {
+                      await urunSnap.docs.first.reference.update({
+                        'stok': FieldValue.increment(qty),
+                      });
+                    }
+                  }
+
+                  // Delete this item document
+                  await sDoc.reference.delete();
+                }
+
+                // Delete corresponding order in urunler_siparisler
+                final orderQuery = await _db.collection('urunler_siparisler')
+                    .where('id', isEqualTo: orderId)
+                    .where('firma', isEqualTo: currentFirmaName)
+                    .get();
                 for (var oDoc in orderQuery.docs) {
                   await oDoc.reference.delete();
                 }
-              }
-
-              // Increment stock back
-              if (product.isNotEmpty && amount > 0) {
-                final urunSnap = await _db.collection('urunler')
-                    .where('firma', isEqualTo: currentFirmaName)
-                    .where('ad', isEqualTo: product)
-                    .limit(1)
-                    .get();
-                if (urunSnap.docs.isNotEmpty) {
-                  await urunSnap.docs.first.reference.update({
-                    'stok': FieldValue.increment(amount),
-                  });
+              } else {
+                // Fallback for legacy single-item sales
+                await doc.reference.delete();
+                if (product.isNotEmpty && amount > 0) {
+                  final urunSnap = await _db.collection('urunler')
+                      .where('firma', isEqualTo: currentFirmaName)
+                      .where('ad', isEqualTo: product)
+                      .limit(1)
+                      .get();
+                  if (urunSnap.docs.isNotEmpty) {
+                    await urunSnap.docs.first.reference.update({
+                      'stok': FieldValue.increment(amount),
+                    });
+                  }
                 }
               }
 
@@ -338,7 +369,7 @@ class _FirmaSatislarScreenState extends State<FirmaSatislarScreen> {
       floatingActionButton: AppFab(
         icon: Icons.shopping_basket_rounded,
         label: 'Satış Yap',
-        onTap: _showAddSaleDialog,
+        onTap: () => context.go('/firma/satislar/ekle'),
       ),
       body: StreamBuilder<QuerySnapshot>(
         stream: _db

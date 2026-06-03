@@ -404,18 +404,24 @@ class _SatisRaporlariScreenState extends State<SatisRaporlariScreen> {
                   final List<QueryDocumentSnapshot> periodSales = [];
                   for (var doc in allSales) {
                     final data = doc.data() as Map<String, dynamic>;
-                    DateTime date;
-                    final ts = data['timestamp'] as Timestamp?;
-                    if (ts != null) {
-                      date = ts.toDate();
-                    } else {
-                      final dateStr = data['tarih'] as String? ?? '';
+                    DateTime? date;
+                    final dateStr = data['tarih'] as String? ?? '';
+                    if (dateStr.isNotEmpty) {
                       try {
                         date = DateFormat('dd.MM.yyyy').parse(dateStr);
                       } catch (_) {
-                        date = DateTime.now();
+                        try {
+                          date = DateFormat('dd MMMM yyyy', 'tr_TR').parse(dateStr);
+                        } catch (_) {}
                       }
                     }
+                    if (date == null) {
+                      final ts = data['timestamp'] as Timestamp?;
+                      if (ts != null) {
+                        date = ts.toDate();
+                      }
+                    }
+                    date ??= DateTime.now();
 
                     if (_selectedTab == 'gunluk') {
                       if (date.year == _selectedDate.year && date.month == _selectedDate.month && date.day == _selectedDate.day) {
@@ -436,18 +442,24 @@ class _SatisRaporlariScreenState extends State<SatisRaporlariScreen> {
                   final List<QueryDocumentSnapshot> periodDeliveries = [];
                   for (var doc in companyDeliveries) {
                     final data = doc.data() as Map<String, dynamic>;
-                    DateTime date;
-                    final ts = data['timestamp'] as Timestamp?;
-                    if (ts != null) {
-                      date = ts.toDate();
-                    } else {
-                      final dateStr = data['tarih'] as String? ?? '';
+                    DateTime? date;
+                    final dateStr = data['tarih'] as String? ?? '';
+                    if (dateStr.isNotEmpty) {
                       try {
                         date = DateFormat('dd.MM.yyyy').parse(dateStr);
                       } catch (_) {
-                        date = DateTime.now();
+                        try {
+                          date = DateFormat('dd MMMM yyyy', 'tr_TR').parse(dateStr);
+                        } catch (_) {}
                       }
                     }
+                    if (date == null) {
+                      final ts = data['timestamp'] as Timestamp?;
+                      if (ts != null) {
+                        date = ts.toDate();
+                      }
+                    }
+                    date ??= DateTime.now();
 
                     if (_selectedTab == 'gunluk') {
                       if (date.year == _selectedDate.year && date.month == _selectedDate.month && date.day == _selectedDate.day) {

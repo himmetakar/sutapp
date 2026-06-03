@@ -74,18 +74,24 @@ class _SutOdemeleriScreenState extends State<SutOdemeleriScreen> {
     final data = doc.data() as Map<String, dynamic>?;
     if (data == null) return false;
 
+    final rawDate = data['tahsilEdilecegiTarih'] ?? data['verildigiTarih'] ?? data['tarih'] ?? data['vereseTarih'];
+    if (rawDate != null) {
+      try {
+        DateTime parsed;
+        if (rawDate.toString().contains('.')) {
+          parsed = DateFormat('dd.MM.yyyy').parse(rawDate.toString());
+        } else {
+          parsed = DateFormat('dd MMMM yyyy', 'tr_TR').parse(rawDate.toString());
+        }
+        return parsed.month == selectedMonth.month && parsed.year == selectedMonth.year;
+      } catch (_) {}
+    }
+
     if (data['timestamp'] != null) {
       final date = (data['timestamp'] as Timestamp).toDate();
       return date.month == selectedMonth.month && date.year == selectedMonth.year;
     }
 
-    final rawDate = data['tarih'] ?? data['verildigiTarih'] ?? data['vereseTarih'];
-    if (rawDate != null) {
-      try {
-        final parsed = DateFormat('dd.MM.yyyy').parse(rawDate.toString());
-        return parsed.month == selectedMonth.month && parsed.year == selectedMonth.year;
-      } catch (_) {}
-    }
     return false;
   }
 
@@ -402,6 +408,7 @@ class _SutOdemeleriScreenState extends State<SutOdemeleriScreen> {
     List<QueryDocumentSnapshot> kesintiler,
     List<QueryDocumentSnapshot> cezalar,
     List<QueryDocumentSnapshot> devirler,
+    List<QueryDocumentSnapshot> satislar,
     List<Map<String, dynamic>> pricesList,
   ) {
     final format = NumberFormat('#,##0.00', 'tr_TR');
@@ -522,6 +529,24 @@ class _SutOdemeleriScreenState extends State<SutOdemeleriScreen> {
         'alacak': tutar >= 0 ? tutar : 0.0,
         'borc': tutar < 0 ? tutar.abs() : 0.0,
         'color': tutar >= 0 ? Colors.green : Colors.red,
+      });
+    }
+
+    // Ürün Satışları
+    for (var doc in satislar) {
+      final data = doc.data() as Map<String, dynamic>;
+      final dateStr = data['tarih'] ?? '-';
+      final double tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
+      final urun = data['urun'] ?? 'Ürün Satışı';
+      final miktar = data['miktar'] ?? 1;
+      final fiyat = (data['fiyat'] as num?)?.toDouble() ?? 0.0;
+      items.add({
+        'tarih': dateStr,
+        'tur': 'Ürün Satışı ($urun)',
+        'aciklama': '$miktar adet x ${format.format(fiyat)} ₺',
+        'alacak': 0.0,
+        'borc': tutar,
+        'color': Colors.red,
       });
     }
 
@@ -755,106 +780,141 @@ class _SutOdemeleriScreenState extends State<SutOdemeleriScreen> {
                                     builder: (context, devirlerSnap) {
                                       final allDevirler = devirlerSnap.data?.docs ?? [];
 
-                                      // Filter producers by: search query, group, region
-                                      final filteredProducers = allProducers.where((p) {
-                                        final name = (p['name'] as String? ?? '').toLowerCase();
-                                        final phone = (p['phone'] as String? ?? '').toLowerCase();
-                                        final group = p['group'] as String? ?? '';
-                                        final bolge = p['bolge'] as String? ?? '';
+                                      return StreamBuilder<QuerySnapshot>(
+                                        stream: FirebaseFirestore.instance.collection('satislar').where('firma', isEqualTo: currentFirmaName).snapshots(),
+                                        builder: (context, satislarSnap) {
+                                          final allSatislar = satislarSnap.data?.docs ?? [];
 
-                                        final matchesSearch = name.contains(_searchQuery.toLowerCase()) || phone.contains(_searchQuery.toLowerCase());
-                                        final matchesGroup = _selectedGroup == 'Tümü' || group == _selectedGroup;
-                                        final matchesRegion = _selectedRegion == 'Tümü' || bolge == _selectedRegion;
+                                          return StreamBuilder<DocumentSnapshot>(
+                                            stream: FirebaseFirestore.instance.collection('finans_ayarlari').doc(currentFirmaName).snapshots(),
+                                            builder: (context, settingsSnap) {
+                                              final sData = settingsSnap.data?.data() as Map<String, dynamic>? ?? {};
+                                              final double bagkurOran = (sData['bagkurOran'] as num?)?.toDouble() ?? 2.10;
+                                              final double stopajOran = (sData['stopajOran'] as num?)?.toDouble() ?? 1.00;
+                                              final double borsaOran = (sData['borsaOran'] as num?)?.toDouble() ?? 0.20;
+                                              final dynamicColsList = sData['kesintiTurleri'] as List?;
+                                              final List<String> dynamicColumns = [];
+                                              if (dynamicColsList != null) {
+                                                dynamicColumns.addAll(dynamicColsList.map((e) => e.toString()));
+                                              }
+                                              if (dynamicColumns.isEmpty) {
+                                                dynamicColumns.addAll(['Bağkur', 'Stopaj', 'Borsa']);
+                                              }
 
-                                        return matchesSearch && matchesGroup && matchesRegion;
-                                      }).toList();
+                                              // Filter producers by: search query, group, region
+                                              final filteredProducers = allProducers.where((p) {
+                                                final name = (p['name'] as String? ?? '').toLowerCase();
+                                                final phone = (p['phone'] as String? ?? '').toLowerCase();
+                                                final group = p['group'] as String? ?? '';
+                                                final bolge = p['bolge'] as String? ?? '';
 
-                                      // Calculate dashboard metrics for the selected month (real-time compile)
-                                      double totalOutstandingCompanyDebt = 0.0; // To be Paid (Ödenecek)
-                                      double totalPaidThisMonth = 0.0;          // Paid (Ödenen)
-                                      double totalKalanThisMonth = 0.0;         // Remaining (Kalan)
+                                                final matchesSearch = name.contains(_searchQuery.toLowerCase()) || phone.contains(_searchQuery.toLowerCase());
+                                                final matchesGroup = _selectedGroup == 'Tümü' || group == _selectedGroup;
+                                                final matchesRegion = _selectedRegion == 'Tümü' || bolge == _selectedRegion;
 
-                                      final List<Map<String, dynamic>> compiledData = [];
+                                                return matchesSearch && matchesGroup && matchesRegion;
+                                              }).toList();
 
-                                      for (var p in filteredProducers) {
-                                        final name = p['name'] as String;
-                                        final bolge = p['bolge'] ?? '';
-                                        final group = p['group'] ?? '';
-                                        final kesintiAyarlari = p['kesintiAyarlari'] as Map<String, dynamic>?;
+                                              // Calculate dashboard metrics for the selected month (real-time compile)
+                                              double totalOutstandingCompanyDebt = 0.0; // To be Paid (Ödenecek)
+                                              double totalPaidThisMonth = 0.0;          // Paid (Ödenen)
+                                              double totalKalanThisMonth = 0.0;         // Remaining (Kalan)
 
-                                        final pCollections = allCollections.where((doc) => doc['u'] == name).toList();
-                                        final pTahsilatlar = allTahsilatlar.where((doc) => doc['uretici'] == name).toList();
-                                        final pAvanslar = allAvanslar.where((doc) => doc['uretici'] == name).toList();
-                                        final pKesintiler = allKesintiler.where((doc) => doc['uretici'] == name).toList();
-                                        final pCezalar = allCezalar.where((doc) => doc['uretici'] == name).toList();
-                                        final pDevirler = allDevirler.where((doc) => doc['uretici'] == name).toList();
+                                              final List<Map<String, dynamic>> compiledData = [];
 
-                                        // 1. Calculate general cumulative ledger
-                                        final fullLedger = _firestoreService.calculateLedger(
-                                          collections: pCollections,
-                                          prices: priceDocs,
-                                          tahsilatlar: pTahsilatlar,
-                                          avanslar: pAvanslar,
-                                          kesintiler: pKesintiler,
-                                          cezalar: pCezalar,
-                                          devirler: pDevirler,
-                                          producerName: name,
-                                          bolge: bolge,
-                                          group: group,
-                                          kesintiAyarlari: kesintiAyarlari,
-                                        );
+                                              for (var p in filteredProducers) {
+                                                final name = p['name'] as String;
+                                                final bolge = p['bolge'] ?? '';
+                                                final group = p['group'] ?? '';
+                                                final kesintiAyarlari = p['kesintiAyarlari'] as Map<String, dynamic>?;
 
-                                    // 2. Calculate selected month's ledger
-                                    final monthCollections = pCollections.where((doc) => _isDocInSelectedMonth(doc, _selectedMonth)).toList();
-                                    final monthTahsilatlar = pTahsilatlar.where((doc) => _isDocInSelectedMonth(doc, _selectedMonth)).toList();
-                                    final monthAvanslar = pAvanslar.where((doc) => _isDocInSelectedMonth(doc, _selectedMonth)).toList();
-                                    final monthKesintiler = pKesintiler.where((doc) => _isDocInSelectedMonth(doc, _selectedMonth)).toList();
-                                    final monthCezalar = pCezalar.where((doc) => _isDocInSelectedMonth(doc, _selectedMonth)).toList();
+                                                final pCollections = allCollections.where((doc) => doc['u'] == name).toList();
+                                                final pTahsilatlar = allTahsilatlar.where((doc) => doc['uretici'] == name).toList();
+                                                final pAvanslar = allAvanslar.where((doc) => doc['uretici'] == name).toList();
+                                                final pKesintiler = allKesintiler.where((doc) => doc['uretici'] == name).toList();
+                                                final pCezalar = allCezalar.where((doc) => doc['uretici'] == name).toList();
+                                                final pDevirler = allDevirler.where((doc) => doc['uretici'] == name).toList();
+                                                final pSatislar = allSatislar.where((doc) => doc['uretici'] == name).toList();
 
-                                    final monthLedger = _firestoreService.calculateLedger(
-                                      collections: monthCollections,
-                                      prices: priceDocs,
-                                      tahsilatlar: monthTahsilatlar,
-                                      avanslar: monthAvanslar,
-                                      kesintiler: monthKesintiler,
-                                      cezalar: monthCezalar,
-                                      producerName: name,
-                                      bolge: bolge,
-                                      group: group,
-                                      kesintiAyarlari: kesintiAyarlari,
-                                    );
+                                                // 1. Calculate general cumulative ledger
+                                                final fullLedger = _firestoreService.calculateLedger(
+                                                  collections: pCollections,
+                                                  prices: priceDocs,
+                                                  tahsilatlar: pTahsilatlar,
+                                                  avanslar: pAvanslar,
+                                                  kesintiler: pKesintiler,
+                                                  cezalar: pCezalar,
+                                                  devirler: pDevirler,
+                                                  satislar: pSatislar,
+                                                  producerName: name,
+                                                  bolge: bolge,
+                                                  group: group,
+                                                  kesintiAyarlari: kesintiAyarlari,
+                                                  dynamicColumns: dynamicColumns,
+                                                  bagkurOran: bagkurOran,
+                                                  stopajOran: stopajOran,
+                                                  borsaOran: borsaOran,
+                                                );
 
-                                    final double net = fullLedger['netBalance'];
-                                    
-                                    // Ödenecek = month ledger alacak
-                                    final double monthAlacak = monthLedger['toplamAlacak'];
-                                    // Ödenen = month payments
-                                    final double monthOdenen = monthLedger['totalTahsilat'];
-                                    // Kalan = Month Alacak - Month Payments
-                                    final double monthKalan = (monthAlacak - monthOdenen).clamp(0.0, double.infinity);
+                                                // 2. Calculate selected month's ledger
+                                                final monthCollections = pCollections.where((doc) => _isDocInSelectedMonth(doc, _selectedMonth)).toList();
+                                                final monthTahsilatlar = pTahsilatlar.where((doc) => _isDocInSelectedMonth(doc, _selectedMonth)).toList();
+                                                final monthAvanslar = pAvanslar.where((doc) => _isDocInSelectedMonth(doc, _selectedMonth)).toList();
+                                                final monthKesintiler = pKesintiler.where((doc) => _isDocInSelectedMonth(doc, _selectedMonth)).toList();
+                                                final monthCezalar = pCezalar.where((doc) => _isDocInSelectedMonth(doc, _selectedMonth)).toList();
+                                                final monthSatislar = pSatislar.where((doc) => _isDocInSelectedMonth(doc, _selectedMonth)).toList();
 
-                                    totalOutstandingCompanyDebt += monthAlacak;
-                                    totalPaidThisMonth += monthOdenen;
-                                    totalKalanThisMonth += monthKalan;
-                                    _producerBalances[name] = monthKalan;
+                                                final monthLedger = _firestoreService.calculateLedger(
+                                                  collections: monthCollections,
+                                                  prices: priceDocs,
+                                                  tahsilatlar: monthTahsilatlar,
+                                                  avanslar: monthAvanslar,
+                                                  kesintiler: monthKesintiler,
+                                                  cezalar: monthCezalar,
+                                                  satislar: monthSatislar,
+                                                  producerName: name,
+                                                  bolge: bolge,
+                                                  group: group,
+                                                  kesintiAyarlari: kesintiAyarlari,
+                                                  dynamicColumns: dynamicColumns,
+                                                  bagkurOran: bagkurOran,
+                                                  stopajOran: stopajOran,
+                                                  borsaOran: borsaOran,
+                                                );
 
-                                    if (monthKalan > 0.01) {
-                                      compiledData.add({
-                                        'producer': p,
-                                        'fullLedger': fullLedger,
-                                        'monthLedger': monthLedger,
-                                        'monthAlacak': monthAlacak,
-                                        'monthOdenen': monthOdenen,
-                                        'monthKalan': monthKalan,
-                                        'collections': pCollections,
-                                        'tahsilatlar': pTahsilatlar,
-                                        'avanslar': pAvanslar,
-                                        'kesintiler': pKesintiler,
-                                        'cezalar': pCezalar,
-                                        'devirler': pDevirler,
-                                      });
-                                    }
-                                  }
+                                                final double net = fullLedger['netBalance'];
+                                                
+                                                // Ödenecek = month ledger alacak
+                                                final double monthAlacak = monthLedger['toplamAlacak'];
+                                                // Ödenen = month payments
+                                                final double monthOdenen = monthLedger['totalTahsilat'];
+                                                
+                                                // Real net payable this month = net clamped to positive
+                                                final double netPayable = net.clamp(0.0, double.infinity);
+
+                                                totalOutstandingCompanyDebt += (netPayable + monthOdenen);
+                                                totalPaidThisMonth += monthOdenen;
+                                                totalKalanThisMonth += netPayable;
+                                                _producerBalances[name] = netPayable;
+
+                                                if (netPayable > 0.01 || monthAlacak > 0.01) {
+                                                  compiledData.add({
+                                                    'producer': p,
+                                                    'fullLedger': fullLedger,
+                                                    'monthLedger': monthLedger,
+                                                    'monthAlacak': monthAlacak,
+                                                    'monthOdenen': monthOdenen,
+                                                    'netPayable': netPayable,
+                                                    'collections': pCollections,
+                                                    'tahsilatlar': pTahsilatlar,
+                                                    'avanslar': pAvanslar,
+                                                    'kesintiler': pKesintiler,
+                                                    'cezalar': pCezalar,
+                                                    'devirler': pDevirler,
+                                                    'satislar': pSatislar,
+                                                  });
+                                                }
+                                              }
 
                                   return Column(
                                     children: [
@@ -1093,10 +1153,10 @@ class _SutOdemeleriScreenState extends State<SutOdemeleriScreen> {
                                             final double net = fullLedger['netBalance'];
                                             final double monthAlacak = data['monthAlacak'] as double;
                                             final double monthOdenen = data['monthOdenen'] as double;
-                                            final double monthKalan = data['monthKalan'] as double;
+                                            final double netPayable = data['netPayable'] as double;
 
                                             final isChecked = _selectedProducers.contains(name);
-                                            final ctrl = _getController(name, monthKalan);
+                                            final ctrl = _getController(name, netPayable);
 
                                             return Container(
                                               margin: const EdgeInsets.only(bottom: 12),
@@ -1148,6 +1208,7 @@ class _SutOdemeleriScreenState extends State<SutOdemeleriScreen> {
                                                           data['kesintiler'] as List<QueryDocumentSnapshot>,
                                                           data['cezalar'] as List<QueryDocumentSnapshot>,
                                                           data['devirler'] as List<QueryDocumentSnapshot>,
+                                                          data['satislar'] as List<QueryDocumentSnapshot>,
                                                           pricesList,
                                                         ),
                                                       ),
@@ -1155,7 +1216,7 @@ class _SutOdemeleriScreenState extends State<SutOdemeleriScreen> {
                                                   ),
                                                   
                                                   const Divider(height: 12),
-
+ 
                                                   // Balance & Input Row
                                                   Row(
                                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1201,7 +1262,7 @@ class _SutOdemeleriScreenState extends State<SutOdemeleriScreen> {
                                                                     padding: EdgeInsets.zero,
                                                                     icon: const Icon(Icons.flash_on_rounded, size: 14, color: AppColors.primary600),
                                                                     onPressed: () {
-                                                                      ctrl.text = monthKalan.toStringAsFixed(2);
+                                                                      ctrl.text = netPayable.toStringAsFixed(2);
                                                                       if (!isChecked) {
                                                                         setState(() {
                                                                           _selectedProducers.add(name);
@@ -1260,6 +1321,10 @@ class _SutOdemeleriScreenState extends State<SutOdemeleriScreen> {
                                         ),
                                       ),
                                     ],
+                                              );
+                                            },
+                                          );
+                                        },
                                       );
                                     },
                                   );

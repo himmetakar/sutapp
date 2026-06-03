@@ -34,21 +34,31 @@ class _FirmaTahsilatScreenState extends State<FirmaTahsilatScreen> {
     });
   }
 
+  DateTime? _parseDocDate(Map<String, dynamic> data) {
+    final rawDate = data['tarih'] ?? data['verildigiTarih'] ?? data['vereseTarih'] ?? data['tarihStr'];
+    if (rawDate != null) {
+      final str = rawDate.toString();
+      try {
+        return DateFormat('dd.MM.yyyy').parse(str);
+      } catch (_) {
+        try {
+          return DateFormat('dd MMMM yyyy', 'tr_TR').parse(str);
+        } catch (_) {}
+      }
+    }
+    if (data['timestamp'] != null) {
+      return (data['timestamp'] as Timestamp).toDate();
+    }
+    return null;
+  }
+
   bool _isDocInSelectedMonth(DocumentSnapshot doc, DateTime selectedMonth) {
     final data = doc.data() as Map<String, dynamic>?;
     if (data == null) return false;
 
-    if (data['timestamp'] != null) {
-      final date = (data['timestamp'] as Timestamp).toDate();
+    final date = _parseDocDate(data);
+    if (date != null) {
       return date.month == selectedMonth.month && date.year == selectedMonth.year;
-    }
-
-    final rawDate = data['tarih'];
-    if (rawDate != null) {
-      try {
-        final parsed = DateFormat('dd.MM.yyyy').parse(rawDate.toString());
-        return parsed.month == selectedMonth.month && parsed.year == selectedMonth.year;
-      } catch (_) {}
     }
     return false;
   }

@@ -474,12 +474,13 @@ class _UrunSiparisleriScreenState extends State<UrunSiparisleriScreen> {
                                                   'tarih': DateFormat('dd.MM.yyyy').format(DateTime.now()),
                                                   'timestamp': FieldValue.serverTimestamp(),
                                                   'firma': currentFirmaName,
+                                                  'miktar': qty,
+                                                  'birimFiyat': item['birimFiyat'] ?? (item['fiyat'] ?? (qty > 0 ? totalItem / qty : totalItem)),
                                                 });
                                               }
                                             }
                                           }),
-                                        if (durum != 'Teslim Edildi' && durum != 'İptal')
-                                          _buildActionButton('Düzenle', Colors.blue, () {
+                                        _buildActionButton('Düzenle', Colors.blue, () {
                                             _showEditOrderDialog(context, doc, currentFirmaName);
                                           }),
                                         if (durum != 'Teslim Edildi' && durum != 'İptal')
@@ -1188,278 +1189,372 @@ class _UrunSiparisleriScreenState extends State<UrunSiparisleriScreen> {
       return;
     }
 
-    String selectedProducer = producers.first;
-    Map<String, dynamic> selectedProduct = products.first;
-    final quantityCtrl = TextEditingController(text: '1');
-    List<Map<String, dynamic>> orderItems = [];
-
     if (!context.mounted) return;
 
-    showDialog(
+    // Map<productName, qty> for cart
+    final Map<String, double> cartQty = {};
+    String selectedProducer = producers.first;
+
+    await showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       builder: (ctx) {
         return StatefulBuilder(
-          builder: (context, setStateDialog) {
-            double orderTotal = orderItems.fold(0.0, (sum, item) => sum + ((item['toplam'] as num?)?.toDouble() ?? 0.0));
+          builder: (context, setSheet) {
+            double orderTotal = 0.0;
+            int totalItems = 0;
+            for (var prod in products) {
+              final String name = prod['ad'];
+              final double qty = cartQty[name] ?? 0.0;
+              if (qty > 0) {
+                orderTotal += qty * (prod['fiyat'] as double);
+                totalItems++;
+              }
+            }
 
-            return AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              title: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('Yeni Sipariş Oluştur', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
-                  IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx)),
-                ],
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.94,
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
               ),
-              content: SizedBox(
-                width: double.maxFinite,
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // 1. Üretici Seçin
-                      Text('Üretici Seçin', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.gray700)),
-                      const SizedBox(height: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: AppColors.gray300),
-                        ),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<String>(
-                            value: selectedProducer,
-                            isExpanded: true,
-                            items: producers.map((name) {
-                              return DropdownMenuItem<String>(
-                                value: name,
-                                child: Text(name, style: GoogleFonts.inter(fontSize: 14)),
-                              );
-                            }).toList(),
-                            onChanged: (val) {
-                              if (val != null) {
-                                setStateDialog(() {
-                                  selectedProducer = val;
-                                });
-                              }
-                            },
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      const Divider(),
-                      const SizedBox(height: 8),
+              child: Column(
+                children: [
+                  // Handle bar
+                  Container(
+                    width: 40, height: 4,
+                    margin: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: BoxDecoration(
+                      color: AppColors.gray300,
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                  ),
 
-                      // 2. Ürün Ekle Bölümü
-                      Text('Kalem Ekle', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.gray700)),
-                      const SizedBox(height: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: AppColors.gray300),
+                  // Header
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 38, height: 38,
+                          decoration: BoxDecoration(
+                            color: AppColors.primary50,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(Icons.shopping_cart_rounded, color: AppColors.primary600, size: 20),
                         ),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<Map<String, dynamic>>(
-                            value: selectedProduct,
-                            isExpanded: true,
-                            items: products.map((prod) {
-                              return DropdownMenuItem<Map<String, dynamic>>(
-                                value: prod,
-                                child: Text('${prod['ad']} (${prod['fiyat'].toStringAsFixed(2)} ₺)', style: GoogleFonts.inter(fontSize: 14)),
-                              );
-                            }).toList(),
-                            onChanged: (val) {
-                              if (val != null) {
-                                setStateDialog(() {
-                                  selectedProduct = val;
-                                });
-                              }
-                            },
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Yeni Sipariş Oluştur', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.gray900)),
+                              Text('Ürünleri sepete ekleyin', style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray400)),
+                            ],
                           ),
                         ),
+                        IconButton(
+                          icon: const Icon(Icons.close_rounded, color: AppColors.gray500),
+                          onPressed: () => Navigator.pop(ctx),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 16),
+
+                  // Producer selector
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: AppColors.primary200),
+                        color: AppColors.primary50,
                       ),
-                      const SizedBox(height: 12),
-                      Row(
+                      child: Row(
                         children: [
+                          const Icon(Icons.person_rounded, color: AppColors.primary600, size: 18),
+                          const SizedBox(width: 8),
                           Expanded(
-                            child: TextField(
-                              controller: quantityCtrl,
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              decoration: const InputDecoration(
-                                labelText: 'Miktar',
-                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: selectedProducer,
+                                isExpanded: true,
+                                dropdownColor: Colors.white,
+                                style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.gray900),
+                                items: producers.map((name) => DropdownMenuItem(
+                                  value: name,
+                                  child: Text(name, style: GoogleFonts.inter(fontSize: 14, color: AppColors.gray800)),
+                                )).toList(),
+                                onChanged: (val) {
+                                  if (val != null) setSheet(() => selectedProducer = val);
+                                },
                               ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          ElevatedButton.icon(
-                            onPressed: () {
-                              final double? qty = double.tryParse(quantityCtrl.text);
-                              if (qty == null || qty <= 0) {
-                                return;
-                              }
-                              final double price = selectedProduct['fiyat'] as double;
-                              
-                              // Check if item already added
-                              int existingIdx = -1;
-                              for (int i = 0; i < orderItems.length; i++) {
-                                if (orderItems[i]['urun'] == selectedProduct['ad']) {
-                                  existingIdx = i;
-                                  break;
-                                }
-                              }
-
-                              setStateDialog(() {
-                                if (existingIdx != -1) {
-                                  final double currentVal = (orderItems[existingIdx]['miktar'] as num).toDouble();
-                                  final double newVal = currentVal + qty;
-                                  orderItems[existingIdx]['miktar'] = newVal;
-                                  orderItems[existingIdx]['toplam'] = newVal * price;
-                                } else {
-                                  orderItems.add({
-                                    'urun': selectedProduct['ad'],
-                                    'miktar': qty,
-                                    'birim': selectedProduct['birim'],
-                                    'birimFiyat': price,
-                                    'toplam': qty * price,
-                                  });
-                                }
-                                quantityCtrl.text = '1';
-                              });
-                            },
-                            icon: const Icon(Icons.add, size: 16),
-                            label: const Text('Ekle'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.primary600,
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 16),
-                      const Divider(),
-                      const SizedBox(height: 8),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
 
-                      // 3. Eklenen Ürünler Listesi
-                      Text('Sipariş Kalemleri (${orderItems.length})', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.gray700)),
-                      const SizedBox(height: 8),
-                      if (orderItems.isEmpty)
-                        Text('Henüz ürün eklenmedi.', style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray400))
-                      else
-                        Container(
-                          constraints: const BoxConstraints(maxHeight: 180),
-                          child: ListView.builder(
-                            shrinkWrap: true,
-                            itemCount: orderItems.length,
-                            itemBuilder: (context, idx) {
-                              final item = orderItems[idx];
-                              return ListTile(
-                                contentPadding: EdgeInsets.zero,
-                                dense: true,
-                                title: Text(item['urun'], style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 13)),
-                                subtitle: Text('${item['miktar'].toStringAsFixed(1)} ${item['birim']} x ${item['birimFiyat'].toStringAsFixed(2)} ₺', style: GoogleFonts.inter(fontSize: 11)),
-                                trailing: Row(
-                                  mainAxisSize: MainAxisSize.min,
+                  // Products list
+                  Expanded(
+                    child: ListView.separated(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      itemCount: products.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 10),
+                      itemBuilder: (context, idx) {
+                        final prod = products[idx];
+                        final String name = prod['ad'];
+                        final double price = prod['fiyat'] as double;
+                        final String birim = prod['birim'] as String;
+                        final double qty = cartQty[name] ?? 0.0;
+                        final bool inCart = qty > 0;
+
+                        return AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          decoration: BoxDecoration(
+                            color: inCart ? AppColors.primary50 : Colors.white,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: inCart ? AppColors.primary300 : AppColors.gray200,
+                              width: inCart ? 1.5 : 1.0,
+                            ),
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 42, height: 42,
+                                decoration: BoxDecoration(
+                                  color: inCart ? AppColors.primary100 : AppColors.gray100,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Icon(
+                                  Icons.inventory_2_rounded,
+                                  color: inCart ? AppColors.primary600 : AppColors.gray400,
+                                  size: 20,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text('${(item['toplam'] as double).toStringAsFixed(2)} ₺', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 13)),
-                                    IconButton(
-                                      icon: const Icon(Icons.remove_circle_outline, color: Colors.red, size: 18),
-                                      onPressed: () {
-                                        setStateDialog(() {
-                                          orderItems.removeAt(idx);
-                                        });
-                                      },
+                                    Text(name, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.gray900)),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      '${price.toStringAsFixed(2)} ₺ / $birim',
+                                      style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray500),
                                     ),
+                                    if (inCart) ...[
+                                      const SizedBox(height: 3),
+                                      Text(
+                                        'Toplam: ${(qty * price).toStringAsFixed(2)} ₺',
+                                        style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.primary600),
+                                      ),
+                                    ],
                                   ],
                                 ),
-                              );
-                            },
+                              ),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (inCart) ...[
+                                    GestureDetector(
+                                      onTap: () {
+                                        setSheet(() {
+                                          if (qty <= 1) {
+                                            cartQty.remove(name);
+                                          } else {
+                                            cartQty[name] = qty - 1;
+                                          }
+                                        });
+                                      },
+                                      child: Container(
+                                        width: 32, height: 32,
+                                        decoration: BoxDecoration(
+                                          color: qty <= 1 ? const Color(0xFFFFE5E5) : AppColors.primary100,
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: Icon(
+                                          qty <= 1 ? Icons.delete_outline_rounded : Icons.remove_rounded,
+                                          size: 16,
+                                          color: qty <= 1 ? AppColors.danger : AppColors.primary700,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      qty % 1 == 0 ? qty.toInt().toString() : qty.toStringAsFixed(1),
+                                      style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.gray900),
+                                    ),
+                                    const SizedBox(width: 8),
+                                  ],
+                                  GestureDetector(
+                                    onTap: () {
+                                      setSheet(() {
+                                        cartQty[name] = qty + 1;
+                                      });
+                                    },
+                                    child: Container(
+                                      width: 32, height: 32,
+                                      decoration: BoxDecoration(
+                                        color: AppColors.primary600,
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: const Icon(Icons.add_rounded, size: 18, color: Colors.white),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
-                        ),
-                      const SizedBox(height: 16),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text('Toplam Tutar:', style: GoogleFonts.inter(fontWeight: FontWeight.bold, color: AppColors.gray800)),
-                          Text('${orderTotal.toStringAsFixed(2)} ₺', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.primary600)),
-                        ],
-                      ),
-                    ],
+                        );
+                      },
+                    ),
                   ),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: Text('İptal', style: GoogleFonts.inter(color: AppColors.gray500)),
-                ),
-                ElevatedButton(
-                  onPressed: orderItems.isEmpty
-                      ? null
-                      : () async {
-                          final orderId = 'ORD-${DateFormat('yyyyMMdd-HHmmss').format(DateTime.now())}';
-                          
-                          // Save order to Firebase
-                          final newOrderData = {
-                            'id': orderId,
-                            'uretici': selectedProducer,
-                            'firma': currentFirmaName,
-                            'durum': 'Onaylandı', // Since it is created by the company directly
-                            'tarih': DateFormat('dd MMMM yyyy', 'tr_TR').format(DateTime.now()),
-                            'saat': DateFormat('HH:mm').format(DateTime.now()),
-                            'toplam': orderTotal,
-                            'timestamp': FieldValue.serverTimestamp(),
-                            'kalemler': orderItems,
-                          };
 
-                          if (orderItems.isNotEmpty) {
-                            final first = orderItems.first;
-                            newOrderData['urun'] = first['urun'];
-                            newOrderData['miktar'] = first['miktar'];
-                            newOrderData['birim'] = first['birim'];
-                            newOrderData['birimFiyat'] = first['birimFiyat'];
-                          }
-
-                          await FirebaseFirestore.instance.collection('urunler_siparisler').add(newOrderData);
-
-                          // Send notification to the producer
-                          await FirestoreService().sendNotification(
-                            recipientName: selectedProducer,
-                            role: 'uretici',
-                            baslik: 'Yeni Sipariş Oluşturuldu',
-                            icerik: '$orderId nolu siparişiniz firma tarafından adınıza oluşturulmuştur.',
-                            type: 'siparis',
-                          );
-
-                          // Send notification to the assigned drivers
-                          await _notifyDriversForProducer(
-                            currentFirmaName,
-                            selectedProducer,
-                            orderId,
-                          );
-
-                          Navigator.pop(ctx);
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Sipariş başarıyla oluşturuldu!'),
-                                backgroundColor: AppColors.success,
+                  // Cart Summary Footer
+                  if (totalItems > 0) ...[
+                    Container(
+                      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: AppColors.gray50,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: AppColors.gray200),
+                      ),
+                      child: Column(
+                        children: [
+                          ...products.where((p) => (cartQty[p['ad']] ?? 0.0) > 0).map((prod) {
+                            final String name = prod['ad'];
+                            final double qty = cartQty[name]!;
+                            final double price = prod['fiyat'] as double;
+                            final String birim = prod['birim'] as String;
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 4),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.check_circle_rounded, size: 14, color: AppColors.success),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      '$name  •  ${qty % 1 == 0 ? qty.toInt() : qty.toStringAsFixed(1)} $birim',
+                                      style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray700),
+                                    ),
+                                  ),
+                                  Text(
+                                    '${(qty * price).toStringAsFixed(2)} ₺',
+                                    style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.gray800),
+                                  ),
+                                ],
                               ),
                             );
-                          }
-                        },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary600,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          }).toList(),
+                          const Divider(height: 12),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text('$totalItems kalem • Toplam:', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.gray700)),
+                              Text('${orderTotal.toStringAsFixed(2)} ₺', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.primary600)),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+
+                  // Checkout button
+                  SafeArea(
+                    top: false,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                      child: SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: ElevatedButton.icon(
+                          onPressed: totalItems == 0
+                              ? null
+                              : () async {
+                                  final orderId = 'ORD-${DateFormat('yyyyMMdd-HHmmss').format(DateTime.now())}';
+                                  final List<Map<String, dynamic>> orderItems = [];
+
+                                  for (var prod in products) {
+                                    final String name = prod['ad'];
+                                    final double qty = cartQty[name] ?? 0.0;
+                                    if (qty > 0) {
+                                      final double price = prod['fiyat'] as double;
+                                      orderItems.add({
+                                        'urun': name,
+                                        'miktar': qty,
+                                        'birim': prod['birim'],
+                                        'birimFiyat': price,
+                                        'toplam': qty * price,
+                                      });
+                                    }
+                                  }
+
+                                  final newOrderData = <String, dynamic>{
+                                    'id': orderId,
+                                    'uretici': selectedProducer,
+                                    'firma': currentFirmaName,
+                                    'durum': 'Onaylandı',
+                                    'tarih': DateFormat('dd MMMM yyyy', 'tr_TR').format(DateTime.now()),
+                                    'saat': DateFormat('HH:mm').format(DateTime.now()),
+                                    'toplam': orderTotal,
+                                    'timestamp': FieldValue.serverTimestamp(),
+                                    'kalemler': orderItems,
+                                    'urun': orderItems.first['urun'],
+                                    'miktar': orderItems.first['miktar'],
+                                    'birim': orderItems.first['birim'],
+                                    'birimFiyat': orderItems.first['birimFiyat'],
+                                  };
+
+                                  await FirebaseFirestore.instance.collection('urunler_siparisler').add(newOrderData);
+
+                                  await FirestoreService().sendNotification(
+                                    recipientName: selectedProducer,
+                                    role: 'uretici',
+                                    baslik: 'Yeni Sipariş Oluşturuldu',
+                                    icerik: '$orderId nolu siparişiniz firma tarafından adınıza oluşturulmuştur.',
+                                    type: 'siparis',
+                                  );
+
+                                  await _notifyDriversForProducer(currentFirmaName, selectedProducer, orderId);
+
+                                  Navigator.pop(ctx);
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('$orderId siparişi başarıyla oluşturuldu! ($totalItems kalem)'),
+                                        backgroundColor: AppColors.success,
+                                      ),
+                                    );
+                                  }
+                                },
+                          icon: const Icon(Icons.shopping_cart_checkout_rounded, size: 20),
+                          label: Text(
+                            totalItems == 0
+                                ? 'Sepet Boş — Ürün Ekleyin'
+                                : 'Siparişi Tamamla  •  ${orderTotal.toStringAsFixed(2)} ₺',
+                            style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 14),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: totalItems == 0 ? AppColors.gray300 : AppColors.primary600,
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
-                  child: const Text('Siparişi Oluştur'),
-                ),
-              ],
+                ],
+              ),
             );
           },
         );

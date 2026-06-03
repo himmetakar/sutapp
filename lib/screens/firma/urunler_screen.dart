@@ -10,6 +10,8 @@ import '../../models/user_model.dart';
 import '../../config/theme.dart';
 import '../../widgets/common_widgets.dart';
 import '../../services/firestore_service.dart';
+import '../../utils/file_download_helper.dart';
+import 'package:excel/excel.dart' hide Border, TextSpan;
 
 class UrunlerScreen extends StatefulWidget {
   const UrunlerScreen({super.key});
@@ -49,6 +51,13 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
   // Sales Report Tab State
   String _salesReportTab = 'En Çok Satan';
 
+  // Missing Deliveries Filter State
+  String _missingSearchQuery = '';
+  String _selectedMissingReason = 'Tümü';
+  final _missingSearchCtrl = TextEditingController();
+  String _missingTab = 'list'; // list, fire
+  String _fireTimeframe = 'Haftalık'; // Haftalık, Aylık, Yıllık
+
   @override
   Widget build(BuildContext context) {
     final auth = Provider.of<AuthProvider>(context, listen: false);
@@ -71,6 +80,8 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
         return _buildSalesReportsView(currentFirmaName);
       case 'urunler_list':
         return _buildProductsListView(currentFirmaName);
+      case 'eksik_teslimatlar':
+        return _buildMissingDeliveriesView(currentFirmaName);
       case 'hub':
       default:
         return _buildFirmaHubView(currentFirmaName);
@@ -195,7 +206,7 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
                       onTap: () => setState(() => _currentView = 'siparisler'),
                     ),
                     _buildHubGridItem(
-                      label: 'Ürün Satışları',
+                      label: 'Satış Yap',
                       icon: Icons.list_alt_rounded,
                       iconColor: const Color(0xFF22C55E),
                       bgColor: const Color(0xFFE8F5E9),
@@ -207,6 +218,13 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
                       iconColor: const Color(0xFF9C27B0),
                       bgColor: const Color(0xFFF3E5F5),
                       onTap: () => setState(() => _currentView = 'satis_raporlari'),
+                    ),
+                    _buildHubGridItem(
+                      label: 'Eksik Teslimat',
+                      icon: Icons.assignment_late_rounded,
+                      iconColor: Colors.redAccent,
+                      bgColor: const Color(0xFFFFEBEE),
+                      onTap: () => setState(() => _currentView = 'eksik_teslimatlar'),
                     ),
                   ],
                 );
@@ -1675,7 +1693,7 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
       context: context,
       builder: (ctx) {
         return StatefulBuilder(
-          builder: (context, setStateDialog) {
+          builder: (dialogCtx, setStateDialog) {
             double newOrderTotal = 0.0;
             List<Map<String, dynamic>> updatedItems = [];
 
@@ -1710,13 +1728,19 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
                   IconButton(
                     icon: const Icon(Icons.close),
                     onPressed: () {
-                      for (var controller in qtyControllers) {
-                        controller.dispose();
-                      }
-                      for (var controller in priceControllers) {
-                        controller.dispose();
-                      }
                       Navigator.pop(ctx);
+                      Future.delayed(const Duration(milliseconds: 300), () {
+                        for (var controller in qtyControllers) {
+                          try {
+                            controller.dispose();
+                          } catch (_) {}
+                        }
+                        for (var controller in priceControllers) {
+                          try {
+                            controller.dispose();
+                          } catch (_) {}
+                        }
+                      });
                     },
                   ),
                 ],
@@ -1850,13 +1874,19 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
               actions: [
                 TextButton(
                   onPressed: () {
-                    for (var controller in qtyControllers) {
-                      controller.dispose();
-                    }
-                    for (var controller in priceControllers) {
-                      controller.dispose();
-                    }
                     Navigator.pop(ctx);
+                    Future.delayed(const Duration(milliseconds: 300), () {
+                      for (var controller in qtyControllers) {
+                        try {
+                          controller.dispose();
+                        } catch (_) {}
+                      }
+                      for (var controller in priceControllers) {
+                        try {
+                          controller.dispose();
+                        } catch (_) {}
+                      }
+                    });
                   },
                   child: Text('İptal', style: GoogleFonts.inter(color: AppColors.gray500)),
                 ),
@@ -1875,15 +1905,21 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
                       }
                     });
 
-                    for (var controller in qtyControllers) {
-                      controller.dispose();
-                    }
-                    for (var controller in priceControllers) {
-                      controller.dispose();
-                    }
                     Navigator.pop(ctx);
+                    Future.delayed(const Duration(milliseconds: 300), () {
+                      for (var controller in qtyControllers) {
+                        try {
+                          controller.dispose();
+                        } catch (_) {}
+                      }
+                      for (var controller in priceControllers) {
+                        try {
+                          controller.dispose();
+                        } catch (_) {}
+                      }
+                    });
                     
-                    if (context.mounted) {
+                    if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
                           content: Text('Sipariş başarıyla güncellendi!'),
@@ -2236,6 +2272,8 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
                                             'tarih': DateFormat('dd.MM.yyyy').format(DateTime.now()),
                                             'timestamp': FieldValue.serverTimestamp(),
                                             'firma': currentFirmaName,
+                                            'miktar': qty,
+                                            'birimFiyat': item['birimFiyat'] ?? (item['fiyat'] ?? (qty > 0 ? totalItem / qty : totalItem)),
                                           });
                                         }
                                       }
@@ -2297,10 +2335,9 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
                                         customIcerik: '$uretici üreticisine ait $orderId nolu sipariş iptal edildi.',
                                       );
                                     }),
-                                  if (durum != 'Teslim Edildi' && durum != 'İptal')
-                                    _buildOrderActionButton('Düzenle', Colors.blue, () {
-                                      _showEditOrderDialog(context, doc);
-                                    }),
+                                  _buildOrderActionButton('Düzenle', Colors.blue, () {
+                                    _showEditOrderDialog(context, doc);
+                                  }),
                                   _buildOrderActionButton('Sil', Colors.red, () async {
                                     final confirm = await showDialog<bool>(
                                       context: context,
@@ -3411,10 +3448,11 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
                                   }).toList();
 
                                   // Place multi-item order in urunler_siparisler
+                                  final firmaName = _cart.values.first['firma'] as String? ?? '';
                                   await FirebaseFirestore.instance.collection('urunler_siparisler').add({
                                     'id': orderId,
                                     'uretici': producerName,
-                                    'firma': _cart.values.first['firma'], // assume all from same company
+                                    'firma': firmaName,
                                     'durum': 'Bekliyor',
                                     'tarih': DateFormat('dd MMMM yyyy', 'tr_TR').format(DateTime.now()),
                                     'saat': DateFormat('HH:mm').format(DateTime.now()),
@@ -3423,6 +3461,18 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
                                     'kalemler': itemsList,
                                   });
 
+                                  // Notify firma about the new order
+                                  try {
+                                    await FirestoreService().sendNotification(
+                                      recipientName: firmaName,
+                                      role: 'firma',
+                                      baslik: 'Yeni Sipariş Alındı',
+                                      icerik: '$producerName yeni bir sipariş verdi. Sipariş No: $orderId',
+                                      type: 'siparis',
+                                      extraData: {'orderId': orderId},
+                                    );
+                                  } catch (_) {}
+
                                   setState(() {
                                     _cart.clear();
                                   });
@@ -3430,6 +3480,7 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(content: Text('Siparişiniz başarıyla firmaya iletildi!'), backgroundColor: AppColors.success),
                                   );
+
                                 },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF2563EB),
@@ -3457,6 +3508,732 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
     if (field is DateTime) return field;
     if (field is String) return DateTime.tryParse(field);
     return null;
+  }
+
+  // ==========================================
+  // EKSİK TESLİMAT & FİRE (ZAYİAT) PANELİ
+  // ==========================================
+  Widget _buildMissingDeliveriesView(String currentFirmaName) {
+    return Scaffold(
+      backgroundColor: AppColors.gray50,
+      appBar: AppBar(
+        title: Text('Eksik Teslimat & Fire Raporu', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
+        leading: _buildBackButton(),
+        elevation: 0,
+        backgroundColor: Colors.white,
+        foregroundColor: AppColors.gray800,
+      ),
+      body: Column(
+        children: [
+          // Tab selector header (list or fire)
+          Container(
+            color: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+            child: Row(
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => setState(() => _missingTab = 'list'),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        color: _missingTab == 'list' ? AppColors.primary600 : Colors.transparent,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        'Eksik Teslimatlar',
+                        style: GoogleFonts.inter(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                          color: _missingTab == 'list' ? Colors.white : AppColors.gray600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => setState(() => _missingTab = 'fire'),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        color: _missingTab == 'fire' ? AppColors.primary600 : Colors.transparent,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        'Fire Raporu (Zayiat)',
+                        style: GoogleFonts.inter(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                          color: _missingTab == 'fire' ? Colors.white : AppColors.gray600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('eksik_teslimatlar')
+                  .where('firma', isEqualTo: currentFirmaName)
+                  .snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final docs = snapshot.data?.docs ?? [];
+
+                if (_missingTab == 'list') {
+                  return _buildMissingDeliveriesList(docs);
+                } else {
+                  return _buildFireDashboard(docs);
+                }
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMissingDeliveriesList(List<QueryDocumentSnapshot> allDocs) {
+    var docs = allDocs.toList();
+    if (_missingSearchQuery.isNotEmpty) {
+      final query = _missingSearchQuery.toLowerCase();
+      docs = docs.where((doc) {
+        final data = doc.data() as Map<String, dynamic>;
+        final String urun = (data['urun'] ?? '').toString().toLowerCase();
+        final String uretici = (data['uretici'] ?? '').toString().toLowerCase();
+        final String toplayici = (data['toplayici'] ?? '').toString().toLowerCase();
+        final String orderId = (data['orderId'] ?? '').toString().toLowerCase();
+        return urun.contains(query) || uretici.contains(query) || toplayici.contains(query) || orderId.contains(query);
+      }).toList();
+    }
+
+    if (_selectedMissingReason != 'Tümü') {
+      docs = docs.where((doc) {
+        final data = doc.data() as Map<String, dynamic>;
+        final String neden = (data['neden'] ?? '').toString();
+        return neden == _selectedMissingReason;
+      }).toList();
+    }
+
+    docs.sort((a, b) {
+      final aTime = (a.data() as Map<String, dynamic>)['timestamp'] as Timestamp?;
+      final bTime = (b.data() as Map<String, dynamic>)['timestamp'] as Timestamp?;
+      if (aTime == null && bTime == null) return 0;
+      if (aTime == null) return 1;
+      if (bTime == null) return -1;
+      return bTime.compareTo(aTime);
+    });
+
+    final totalRecords = docs.length;
+    double totalMissingQty = docs.fold(0.0, (sum, doc) {
+      final data = doc.data() as Map<String, dynamic>;
+      return sum + ((data['eksikMiktar'] as num?)?.toDouble() ?? 0.0);
+    });
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Row(
+            children: [
+              Expanded(
+                child: _buildMetricCard(
+                  title: 'Toplam Kayıt',
+                  value: '$totalRecords',
+                  icon: Icons.list_alt_rounded,
+                  color: AppColors.primary600,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildMetricCard(
+                  title: 'Toplam Eksik Miktar',
+                  value: totalMissingQty.toStringAsFixed(0),
+                  icon: Icons.trending_down_rounded,
+                  color: AppColors.danger,
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _missingSearchCtrl,
+                      decoration: InputDecoration(
+                        hintText: 'Üretici, ürün veya sürücü ara...',
+                        hintStyle: GoogleFonts.inter(fontSize: 12, color: AppColors.gray400),
+                        prefixIcon: const Icon(Icons.search_rounded, size: 18, color: AppColors.gray400),
+                        contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                        filled: true,
+                        fillColor: Colors.white,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(color: AppColors.gray200),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(color: AppColors.gray200),
+                        ),
+                      ),
+                      onChanged: (val) {
+                        setState(() {
+                          _missingSearchQuery = val;
+                        });
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: AppColors.gray200),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: _selectedMissingReason,
+                          isExpanded: true,
+                          style: GoogleFonts.inter(fontSize: 13, color: AppColors.gray800),
+                          items: ['Tümü', 'Eksik Yükleme', 'Bozuk Ambalaj', 'Kayıp', 'Müşteri İstemedi', 'Diğer'].map((reason) {
+                            return DropdownMenuItem(
+                              value: reason,
+                              child: Text(reason),
+                            );
+                          }).toList(),
+                          onChanged: (val) {
+                            if (val != null) {
+                              setState(() {
+                                _selectedMissingReason = val;
+                              });
+                            }
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  ElevatedButton.icon(
+                    onPressed: () => _exportMissingDeliveriesToExcel(docs),
+                    icon: const Icon(Icons.download_rounded, size: 16),
+                    label: Text('Excel', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 12),
+
+        Expanded(
+          child: docs.isEmpty
+              ? Center(child: Text('Eksik teslimat kaydı bulunamadı.', style: GoogleFonts.inter(color: AppColors.gray400)))
+              : ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  itemCount: docs.length,
+                  itemBuilder: (context, index) {
+                    final data = docs[index].data() as Map<String, dynamic>;
+                    final String orderId = data['orderId'] ?? '';
+                    final String uretici = data['uretici'] ?? '';
+                    final String toplayici = data['toplayici'] ?? '';
+                    final String urun = data['urun'] ?? '';
+                    final double istenen = (data['istenenMiktar'] as num?)?.toDouble() ?? 0.0;
+                    final double teslim = (data['teslimEdilenMiktar'] as num?)?.toDouble() ?? 0.0;
+                    final double eksik = (data['eksikMiktar'] as num?)?.toDouble() ?? 0.0;
+                    final String birim = data['birim'] ?? 'Adet';
+                    final String neden = data['neden'] ?? '';
+                    final String aciklama = data['aciklama'] ?? '';
+                    final String tarih = data['tarih'] ?? '';
+
+                    Color badgeColor = Colors.orange;
+                    if (neden == 'Eksik Yükleme') badgeColor = Colors.orange;
+                    if (neden == 'Bozuk Ambalaj') badgeColor = Colors.red;
+                    if (neden == 'Kayıp') badgeColor = Colors.redAccent;
+                    if (neden == 'Müşteri İstemedi') badgeColor = Colors.blue;
+                    if (neden == 'Diğer') badgeColor = Colors.purple;
+
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.gray200),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.01),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Sipariş No: $orderId',
+                                style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.gray800),
+                              ),
+                              Text(
+                                tarih,
+                                style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500),
+                              ),
+                            ],
+                          ),
+                          const Divider(height: 16),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text('Üretici: $uretici', style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray700)),
+                                    const SizedBox(height: 2),
+                                    Text('Sürücü: $toplayici', style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500)),
+                                  ],
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: badgeColor.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  neden,
+                                  style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold, color: badgeColor),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: AppColors.gray50,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(urun, style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.gray800)),
+                                    const SizedBox(height: 2),
+                                    Text('Talep: ${istenen.toStringAsFixed(0)} $birim | Teslim: ${teslim.toStringAsFixed(0)} $birim', style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray600)),
+                                  ],
+                                ),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                      '-${eksik.toStringAsFixed(0)} $birim',
+                                      style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.red),
+                                    ),
+                                    Text('Eksik', style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray500)),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (aciklama.isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            Text(
+                              'Açıklama: $aciklama',
+                              style: GoogleFonts.inter(fontSize: 11, fontStyle: FontStyle.italic, color: AppColors.gray600),
+                            ),
+                          ],
+                        ],
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFireDashboard(List<QueryDocumentSnapshot> allDocs) {
+    final now = DateTime.now();
+    DateTime thresholdDate = now.subtract(const Duration(days: 7));
+    if (_fireTimeframe == 'Aylık') {
+      thresholdDate = now.subtract(const Duration(days: 30));
+    } else if (_fireTimeframe == 'Yıllık') {
+      thresholdDate = now.subtract(const Duration(days: 365));
+    }
+
+    var fireDocs = allDocs.where((doc) {
+      final data = doc.data() as Map<String, dynamic>;
+      final String neden = data['neden'] ?? '';
+      if (neden == 'Eksik Yükleme' || neden == 'Müşteri İstemedi') {
+        return false;
+      }
+      DateTime? docDate;
+      final ts = data['timestamp'];
+      if (ts is Timestamp) {
+        docDate = ts.toDate();
+      } else {
+        final tarihStr = data['tarih'] as String?;
+        if (tarihStr != null) {
+          try {
+            docDate = DateFormat('dd.MM.yyyy').parse(tarihStr);
+          } catch (_) {}
+        }
+      }
+      if (docDate == null) return false;
+      return docDate.isAfter(thresholdDate);
+    }).toList();
+
+    final Map<String, double> productTotals = {};
+    final Map<String, String> productUnits = {};
+    final Map<String, Map<String, double>> productReasonBreakdowns = {};
+    final Map<String, int> reasonCounts = {};
+
+    for (var doc in fireDocs) {
+      final data = doc.data() as Map<String, dynamic>;
+      final String urun = data['urun'] ?? '';
+      final double qty = (data['eksikMiktar'] as num?)?.toDouble() ?? 0.0;
+      final String birim = data['birim'] ?? 'Adet';
+      final String neden = data['neden'] ?? '';
+
+      productTotals[urun] = (productTotals[urun] ?? 0.0) + qty;
+      productUnits[urun] = birim;
+
+      if (!productReasonBreakdowns.containsKey(urun)) {
+        productReasonBreakdowns[urun] = {};
+      }
+      productReasonBreakdowns[urun]![neden] = (productReasonBreakdowns[urun]![neden] ?? 0.0) + qty;
+
+      reasonCounts[neden] = (reasonCounts[neden] ?? 0) + 1;
+    }
+
+    final varietyCount = productTotals.keys.length;
+    final totalWasted = productTotals.values.fold(0.0, (sum, val) => sum + val);
+
+    String mostCommonReason = 'Yok';
+    int maxCount = 0;
+    reasonCounts.forEach((reason, count) {
+      if (count > maxCount) {
+        maxCount = count;
+        mostCommonReason = reason;
+      }
+    });
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: AppColors.gray200,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              children: ['Haftalık', 'Aylık', 'Yıllık'].map((tf) {
+                final isSelected = _fireTimeframe == tf;
+                return Expanded(
+                  child: GestureDetector(
+                    onTap: () => setState(() => _fireTimeframe = tf),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      decoration: BoxDecoration(
+                        color: isSelected ? Colors.white : Colors.transparent,
+                        borderRadius: BorderRadius.circular(8),
+                        boxShadow: isSelected
+                            ? [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.05),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 2),
+                                )
+                              ]
+                            : null,
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        tf,
+                        style: GoogleFonts.inter(
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                          fontSize: 12,
+                          color: isSelected ? AppColors.gray800 : AppColors.gray600,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ),
+
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+          child: Row(
+            children: [
+              Expanded(
+                child: _buildMetricCard(
+                  title: 'Zayi Ürün Çeşidi',
+                  value: '$varietyCount',
+                  icon: Icons.category_rounded,
+                  color: AppColors.primary600,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildMetricCard(
+                  title: 'Toplam Zayiat',
+                  value: totalWasted.toStringAsFixed(0),
+                  icon: Icons.delete_outline_rounded,
+                  color: AppColors.danger,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildMetricCard(
+                  title: 'En Sık Neden',
+                  value: mostCommonReason,
+                  icon: Icons.report_problem_rounded,
+                  color: AppColors.warning,
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        Expanded(
+          child: productTotals.isEmpty
+              ? Center(child: Text('Seçilen dönemde fire kaydı bulunmuyor.', style: GoogleFonts.inter(color: AppColors.gray400)))
+              : ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  itemCount: productTotals.keys.length,
+                  itemBuilder: (context, index) {
+                    final String urunName = productTotals.keys.elementAt(index);
+                    final double totalQty = productTotals[urunName]!;
+                    final String birim = productUnits[urunName] ?? 'Adet';
+                    final breakdowns = productReasonBreakdowns[urunName] ?? {};
+
+                    final List<String> reasonStrs = [];
+                    breakdowns.forEach((reason, qty) {
+                      reasonStrs.add('$reason: ${qty.toStringAsFixed(0)} $birim');
+                    });
+                    final breakdownText = reasonStrs.join(', ');
+
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.gray200),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.01),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: AppColors.danger.withOpacity(0.1),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.delete_sweep_rounded,
+                              color: AppColors.danger,
+                              size: 20,
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  urunName,
+                                  style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.gray800),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  breakdownText,
+                                  style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                '${totalQty.toStringAsFixed(0)} $birim',
+                                style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.danger),
+                              ),
+                              Text(
+                                'Zayiat',
+                                style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray400),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMetricCard({
+    required String title,
+    required String value,
+    required IconData icon,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.gray200),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.01),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.gray500),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Icon(icon, size: 16, color: color),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.gray800),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _exportMissingDeliveriesToExcel(List<QueryDocumentSnapshot> docs) async {
+    try {
+      final excelObj = Excel.createExcel();
+      final sheet = excelObj['Eksik Teslimatlar'];
+      excelObj.setDefaultSheet('Eksik Teslimatlar');
+
+      sheet.appendRow([
+        TextCellValue('Sipariş No'),
+        TextCellValue('Üretici'),
+        TextCellValue('Sürücü'),
+        TextCellValue('Ürün'),
+        TextCellValue('İstenen Miktar'),
+        TextCellValue('Teslim Edilen Miktar'),
+        TextCellValue('Eksik Miktar'),
+        TextCellValue('Birim'),
+        TextCellValue('Neden'),
+        TextCellValue('Açıklama'),
+        TextCellValue('Tarih'),
+      ]);
+
+      for (var doc in docs) {
+        final data = doc.data() as Map<String, dynamic>;
+        sheet.appendRow([
+          TextCellValue(data['orderId']?.toString() ?? ''),
+          TextCellValue(data['uretici']?.toString() ?? ''),
+          TextCellValue(data['toplayici']?.toString() ?? ''),
+          TextCellValue(data['urun']?.toString() ?? ''),
+          TextCellValue((data['istenenMiktar'] ?? 0).toString()),
+          TextCellValue((data['teslimEdilenMiktar'] ?? 0).toString()),
+          TextCellValue((data['eksikMiktar'] ?? 0).toString()),
+          TextCellValue(data['birim']?.toString() ?? ''),
+          TextCellValue(data['neden']?.toString() ?? ''),
+          TextCellValue(data['aciklama']?.toString() ?? ''),
+          TextCellValue(data['tarih']?.toString() ?? ''),
+        ]);
+      }
+
+      final bytes = excelObj.save();
+      if (bytes != null) {
+        final savedPath = await FileDownloadHelper.downloadBinaryFile(
+          fileName: 'eksik_teslimatlar_raporu.xlsx',
+          bytes: bytes,
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(savedPath != null
+                  ? 'Excel dosyası indirildi: $savedPath'
+                  : 'Excel dosyası başarıyla indirildi!'),
+              backgroundColor: AppColors.success,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Hata: $e'), backgroundColor: AppColors.danger),
+        );
+      }
+    }
   }
 }
 

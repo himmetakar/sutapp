@@ -11,6 +11,7 @@ import '../../config/theme.dart';
 import '../../widgets/common_widgets.dart';
 import '../../services/firestore_service.dart';
 import '../../providers/auth_provider.dart';
+import '../../widgets/location_picker_field.dart';
 
 class SurucuDashboard extends StatefulWidget {
   final bool showSutAlDirectly;
@@ -148,6 +149,8 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
         final nameCtrl = TextEditingController();
         final phoneCtrl = TextEditingController();
         final manualMahalleCtrl = TextEditingController();
+        final latCtrl = TextEditingController();
+        final lngCtrl = TextEditingController();
 
         return StatefulBuilder(
           builder: (context, setState) {
@@ -263,7 +266,12 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                       TextField(
                         controller: phoneCtrl,
                         keyboardType: TextInputType.phone,
-                        decoration: const InputDecoration(labelText: 'Telefon', hintText: '0532 999 8877'),
+                        maxLength: 11,
+                        decoration: const InputDecoration(
+                          labelText: 'Telefon',
+                          hintText: '0532 999 8877',
+                          counterText: '',
+                        ),
                       ),
                       const SizedBox(height: 16),
 
@@ -342,8 +350,16 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                                 controller: manualMahalleCtrl,
                                 decoration: const InputDecoration(labelText: 'Mahalle / Köy', hintText: 'Akarsu Köyü'),
                               ),
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 16),
                       ],
+
+                      // Location picker
+                      LocationPickerField(
+                        latController: latCtrl,
+                        lngController: lngCtrl,
+                        setDialogState: setState,
+                      ),
+                      const SizedBox(height: 24),
 
                       // Custom selector
                       _buildMilkTypeSelector(
@@ -381,12 +397,21 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                       firma: currentFirmaName,
                       lastMilkType: isYem ? 'Yok' : selectedMilkType,
                       customerType: isYem ? 'yem' : 'sut',
+                      latitude: (double.tryParse(latCtrl.text.trim()) != null && double.tryParse(lngCtrl.text.trim()) != null)
+                          ? double.tryParse(latCtrl.text.trim())
+                          : null,
+                      longitude: (double.tryParse(latCtrl.text.trim()) != null && double.tryParse(lngCtrl.text.trim()) != null)
+                          ? double.tryParse(lngCtrl.text.trim())
+                          : null,
+                      mapsLink: (double.tryParse(latCtrl.text.trim()) == null || double.tryParse(lngCtrl.text.trim()) == null) && latCtrl.text.trim().isNotEmpty
+                          ? latCtrl.text.trim()
+                          : null,
                     );
 
                     // Send notification to the company (firma)
                     try {
                       final authProvider = Provider.of<AuthProvider>(context, listen: false);
-                      final driverName = authProvider.user?.displayName ?? 'Ahmet Kara';
+                      final driverName = authProvider.user?.displayName ?? '';
 
                       await _firestoreService.sendNotification(
                         recipientName: currentFirmaName,
@@ -1068,8 +1093,9 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final driverName = authProvider.user?.displayName ?? 'Ahmet Kara';
+    final driverName = authProvider.user?.displayName ?? '';
     final userEmail = authProvider.user?.email ?? '';
+    print('[Dashboard] auth displayName="${authProvider.user?.displayName}", driverName="$driverName", email="$userEmail"');
 
     if (_cachedEmail != userEmail || _profileStream == null) {
       _cachedEmail = userEmail;
@@ -1090,17 +1116,29 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
           final docs = profileSnapshot.data!.docs;
           DocumentSnapshot? matchedDoc;
           
-          for (var doc in docs) {
-            final data = doc.data() as Map<String, dynamic>;
-            final ad = data['ad'] ?? '';
-            final soyad = data['soyad'] ?? '';
-            final fullName = '$ad $soyad'.trim();
-            final email = data['email'] ?? '';
-            
-            if (fullName.toLowerCase() == driverName.toLowerCase() ||
-                (email.isNotEmpty && email == userEmail)) {
-              matchedDoc = doc;
-              break;
+          // Pass 1: Try to match by name first (highest priority)
+          if (driverName.isNotEmpty) {
+            for (var doc in docs) {
+              final data = doc.data() as Map<String, dynamic>;
+              final ad = data['ad'] ?? '';
+              final soyad = data['soyad'] ?? '';
+              final fullName = '$ad $soyad'.trim();
+              if (fullName.toLowerCase() == driverName.toLowerCase()) {
+                matchedDoc = doc;
+                break;
+              }
+            }
+          }
+
+          // Pass 2: If no name match, try email match
+          if (matchedDoc == null && userEmail.isNotEmpty) {
+            for (var doc in docs) {
+              final data = doc.data() as Map<String, dynamic>;
+              final email = data['email'] ?? '';
+              if (email.isNotEmpty && email == userEmail) {
+                matchedDoc = doc;
+                break;
+              }
             }
           }
 
@@ -1109,11 +1147,14 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
             canAddCustomer = pData['canAddCustomer'] ?? true;
             canEditCustomer = pData['canEditCustomer'] ?? true;
             canCreateOrder = pData['canCreateOrder'] ?? true;
-            final dbAd = pData['ad'] ?? '';
-            final dbSoyad = pData['soyad'] ?? '';
-            final dbFullName = '$dbAd $dbSoyad'.trim();
-            if (dbFullName.isNotEmpty) {
-              resolvedDriverName = dbFullName;
+            // Only override resolvedDriverName if displayName was empty
+            if (driverName.isEmpty) {
+              final dbAd = pData['ad'] ?? '';
+              final dbSoyad = pData['soyad'] ?? '';
+              final dbFullName = '$dbAd $dbSoyad'.trim();
+              if (dbFullName.isNotEmpty) {
+                resolvedDriverName = dbFullName;
+              }
             }
           }
         }
@@ -1243,6 +1284,124 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                         logoUrl = companyData['logoUrl'] as String?;
                       }
 
+                      final isMobile = constraints.maxWidth < 640;
+                      if (isMobile) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        widget.showSutAlDirectly ? 'Süt Alım Formu' : 'Toplayıcı Paneli',
+                                        style: GoogleFonts.inter(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.w700,
+                                            color: AppColors.gray900),
+                                      ),
+                                      if (resolvedDriverName.isNotEmpty) ...[
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          resolvedDriverName,
+                                          style: GoogleFonts.inter(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                            color: AppColors.primary600,
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      width: 44,
+                                      height: 44,
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(10),
+                                        border: Border.all(color: AppColors.gray200, width: 1.5),
+                                        color: Colors.white,
+                                        image: logoUrl != null && logoUrl.isNotEmpty
+                                            ? DecorationImage(
+                                                image: logoUrl.startsWith('data:image')
+                                                    ? MemoryImage(base64Decode(logoUrl.substring(logoUrl.indexOf(',') + 1))) as ImageProvider
+                                                    : NetworkImage(logoUrl),
+                                                fit: BoxFit.cover,
+                                              )
+                                            : null,
+                                      ),
+                                      child: logoUrl == null || logoUrl.isEmpty
+                                          ? Center(
+                                              child: Icon(Icons.business_rounded, color: AppColors.gray400, size: 18),
+                                            )
+                                          : null,
+                                    ),
+                                    if (currentFirmaName.isNotEmpty) ...[
+                                      const SizedBox(height: 4),
+                                      SizedBox(
+                                        width: 70,
+                                        child: Text(
+                                          currentFirmaName,
+                                          textAlign: TextAlign.center,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: GoogleFonts.inter(
+                                            fontSize: 9.5,
+                                            fontWeight: FontWeight.bold,
+                                            color: AppColors.gray800,
+                                            height: 1.1,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              widget.showSutAlDirectly
+                                  ? 'Üreticiden aldığınız süt miktarını girerek tank stoğuna ekleyin.'
+                                  : 'Süt toplama rotanızı ve araç tank doluluğunu buradan takip edebilirsiniz.',
+                              style: GoogleFonts.inter(
+                                fontSize: 11,
+                                color: AppColors.gray500,
+                                fontWeight: FontWeight.w400,
+                              ),
+                            ),
+                            if (canAddCustomer) ...[
+                              const SizedBox(height: 12),
+                              SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton.icon(
+                                  onPressed: () => _showAddProducerDialog(currentFirmaName),
+                                  icon: const Icon(Icons.person_add_alt_1_rounded, size: 16),
+                                  label: Text(
+                                    'Üretici Ekle',
+                                    style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold),
+                                  ),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppColors.primary600,
+                                    foregroundColor: Colors.white,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                    padding: const EdgeInsets.symmetric(vertical: 10),
+                                    elevation: 0,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        );
+                      }
+
                       return Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -1257,6 +1416,17 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                                       fontWeight: FontWeight.w700,
                                       color: AppColors.gray900),
                                 ),
+                                if (resolvedDriverName.isNotEmpty) ...[
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    resolvedDriverName,
+                                    style: GoogleFonts.inter(
+                                      fontSize: isDesktop ? 14 : 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.primary600,
+                                    ),
+                                  ),
+                                ],
                                 const SizedBox(height: 4),
                                 Text(
                                   widget.showSutAlDirectly
@@ -1271,6 +1441,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                               ],
                             ),
                           ),
+                          const SizedBox(width: 16),
                           // Right side action (Üretici Ekle) and logo + name
                           Row(
                             mainAxisSize: MainAxisSize.min,
@@ -1292,6 +1463,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                                 ),
                                 const SizedBox(width: 12),
                               ],
+
                               Column(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
@@ -1393,6 +1565,141 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
     }
   }
 
+  Widget _buildNoAssignmentState() {
+    return Column(
+      children: [
+        const SizedBox(height: 32),
+        Container(
+          padding: const EdgeInsets.all(24),
+          margin: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.gray200),
+            boxShadow: AppShadows.sm,
+          ),
+          child: Column(
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF7ED),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(Icons.person_off_rounded, color: Color(0xFFF59E0B), size: 28),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Atanmış Üretici Yok',
+                style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.gray800),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Henüz size üretici ataması yapılmamış.\nFirma yöneticinizden atama yapmasını isteyiniz.',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.inter(fontSize: 13, color: AppColors.gray500, height: 1.5),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Cached streams for _buildMusteriZiyaretListesi
+  String? _cachedAtamalarDriver;
+  String? _cachedAtamalarFirma;
+  Stream<QuerySnapshot>? _atamalarStream;
+
+  String normalizeTurkish(String text) {
+    return text
+        .toLowerCase()
+        .replaceAll('ı', 'i')
+        .replaceAll('ğ', 'g')
+        .replaceAll('ü', 'u')
+        .replaceAll('ş', 's')
+        .replaceAll('ö', 'o')
+        .replaceAll('ç', 'c')
+        .replaceAll('â', 'a')
+        .replaceAll('î', 'i')
+        .replaceAll('û', 'u')
+        .trim();
+  }
+
+  List<String> getNameVariations(String name) {
+    final cleanName = name.trim();
+    final Set<String> variations = {cleanName, cleanName.toLowerCase(), cleanName.toUpperCase()};
+    
+    final parts = cleanName.split(' ');
+    final titleCase = parts.map((p) {
+      if (p.isEmpty) return p;
+      return p[0].toUpperCase() + p.substring(1).toLowerCase();
+    }).join(' ');
+    variations.add(titleCase);
+
+    String trToLower(String text) {
+      return text.toLowerCase()
+          .replaceAll('I', 'ı')
+          .replaceAll('İ', 'i')
+          .replaceAll('Ğ', 'ğ')
+          .replaceAll('Ü', 'ü')
+          .replaceAll('Ş', 'ş')
+          .replaceAll('Ö', 'ö')
+          .replaceAll('Ç', 'ç');
+    }
+    
+    String trToUpper(String text) {
+      return text.toUpperCase()
+          .replaceAll('i', 'İ')
+          .replaceAll('ı', 'I')
+          .replaceAll('ğ', 'Ğ')
+          .replaceAll('ü', 'Ü')
+          .replaceAll('ş', 'Ş')
+          .replaceAll('ö', 'Ö')
+          .replaceAll('ç', 'Ç');
+    }
+
+    String replaceTurkishChars(String text) {
+      return text
+          .replaceAll('ı', 'i')
+          .replaceAll('ğ', 'g')
+          .replaceAll('ü', 'u')
+          .replaceAll('ş', 's')
+          .replaceAll('ö', 'o')
+          .replaceAll('ç', 'c')
+          .replaceAll('Ğ', 'G')
+          .replaceAll('Ü', 'U')
+          .replaceAll('Ş', 'S')
+          .replaceAll('Ö', 'O')
+          .replaceAll('Ç', 'C');
+    }
+
+    final lowerTr = trToLower(cleanName);
+    final upperTr = trToUpper(cleanName);
+    variations.addAll([lowerTr, upperTr]);
+
+    final titleTr = parts.map((p) {
+      if (p.isEmpty) return p;
+      final lower = trToLower(p);
+      return lower[0].toUpperCase() + lower.substring(1);
+    }).join(' ');
+    variations.add(titleTr);
+
+    final engName = replaceTurkishChars(cleanName);
+    variations.addAll([
+      engName,
+      engName.toLowerCase(),
+      engName.toUpperCase(),
+      parts.map((p) => replaceTurkishChars(p)).map((p) {
+        if (p.isEmpty) return p;
+        return p[0].toUpperCase() + p.substring(1).toLowerCase();
+      }).join(' ')
+    ]);
+
+    return variations.toList();
+  }
+
   Widget _buildMusteriZiyaretListesi(String driverName, String firma, bool canAddCustomer) {
     if (_cachedDriverName != driverName || _collectionsStream == null) {
       _cachedDriverName = driverName;
@@ -1402,15 +1709,18 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
       _cachedFirma = firma;
       _producersStream = _firestoreService.getProducersStream(firma: firma);
     }
-
-    final atamalarStream = FirebaseFirestore.instance
-        .collection('toplayici_atamalari')
-        .where('toplayici', isEqualTo: driverName)
-        .where('firma', isEqualTo: firma)
-        .snapshots();
+    if (_cachedAtamalarDriver != driverName || _cachedAtamalarFirma != firma || _atamalarStream == null) {
+      _cachedAtamalarDriver = driverName;
+      _cachedAtamalarFirma = firma;
+      _atamalarStream = FirebaseFirestore.instance
+          .collection('toplayici_atamalari')
+          .where('toplayici', isEqualTo: driverName)
+          .where('firma', isEqualTo: firma)
+          .snapshots();
+    }
 
     return StreamBuilder<QuerySnapshot>(
-      stream: atamalarStream,
+      stream: _atamalarStream!,
       builder: (context, atamalarSnapshot) {
         return StreamBuilder<QuerySnapshot>(
           stream: _collectionsStream!,
@@ -1431,7 +1741,8 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                 final collectionsDocs = collectionsSnapshot.data!.docs;
                 final atamalarDocs = atamalarSnapshot.data!.docs;
 
-                // Load assignments for this driver
+
+                // Separate direct-name assignments from group/birlik ones.
                 final List<String> assignedProducers = [];
                 final List<String> assignedGroups = [];
                 final List<String> assignedBirlikler = [];
@@ -1439,7 +1750,8 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                 for (var doc in atamalarDocs) {
                   final data = doc.data() as Map<String, dynamic>;
                   final hTip = data['hedefTip'];
-                  final hAd = data['hedefAd'];
+                  final hAd = (data['hedefAd'] as String? ?? '').trim();
+                  if (hAd.isEmpty) continue;
                   if (hTip == 'uretici') {
                     assignedProducers.add(hAd);
                   } else if (hTip == 'grup') {
@@ -1449,19 +1761,70 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                   }
                 }
 
-                // Filter producers based on assignments
+                print('[ZiyaretListesi] driverName=$driverName, firma=$firma');
+                print('[ZiyaretListesi] atamalarDocs.length=${atamalarDocs.length}');
+                print('[ZiyaretListesi] assignedProducers=$assignedProducers');
+                print('[ZiyaretListesi] assignedGroups=$assignedGroups');
+                print('[ZiyaretListesi] assignedBirlikler=$assignedBirlikler');
+                print('[ZiyaretListesi] producersDocs.length=${producersDocs.length}');
+
+                // If there are NO assignments at all, show empty state
+                if (assignedProducers.isEmpty && assignedGroups.isEmpty && assignedBirlikler.isEmpty) {
+                  return _buildNoAssignmentState();
+                }
+
+                final assignedProducersNorm = assignedProducers.map((s) => normalizeTurkish(s)).toSet();
+                final assignedGroupsNorm = assignedGroups.map((s) => normalizeTurkish(s)).toSet();
+                final assignedBirliklerNorm = assignedBirlikler.map((s) => normalizeTurkish(s)).toSet();
+
+                // Step 1: Filter the firma-stream producers by assignment
                 final myProducers = producersDocs.where((doc) {
                   final data = doc.data() as Map<String, dynamic>;
-                  final name = data['name'] ?? '';
-                  final group = data['group'] ?? '';
-                  final bolge = data['bolge'] ?? '';
-                  final birlik = data['birlik'] ?? 'Yok';
+                  final name = normalizeTurkish(data['name'] ?? '');
+                  final group = normalizeTurkish(data['group'] ?? '');
+                  final bolge = normalizeTurkish(data['bolge'] ?? '');
+                  final birlik = normalizeTurkish(data['birlik'] ?? 'Yok');
 
-                  return assignedProducers.contains(name) ||
-                      (group.isNotEmpty && assignedGroups.contains(group)) ||
-                      (bolge.isNotEmpty && assignedBirlikler.contains(bolge)) ||
-                      (birlik.isNotEmpty && birlik != 'Yok' && assignedBirlikler.contains(birlik));
+                  return assignedProducersNorm.contains(name) ||
+                      (assignedGroupsNorm.isNotEmpty && group.isNotEmpty && assignedGroupsNorm.contains(group)) ||
+                      (assignedBirliklerNorm.isNotEmpty && bolge.isNotEmpty && assignedBirliklerNorm.contains(bolge)) ||
+                      (assignedBirliklerNorm.isNotEmpty && birlik.isNotEmpty && birlik != 'yok' && assignedBirliklerNorm.contains(birlik));
                 }).toList();
+
+                print('[ZiyaretListesi] myProducers.length=${myProducers.length}');
+
+                // Step 2: For directly-named producers NOT in the firma stream
+                // (firmalar field mismatch), fetch them separately by name.
+                final myProducerNamesNorm = myProducers
+                    .map((d) => normalizeTurkish(((d.data() as Map<String, dynamic>)['name'] ?? '').toString()))
+                    .toSet();
+                final missingNames = assignedProducers
+                    .where((n) => !myProducerNamesNorm.contains(normalizeTurkish(n)))
+                    .toList();
+                final queryNames = missingNames.expand((name) => getNameVariations(name)).toSet().toList();
+
+                // Step 2 – fetch directly-named producers missing from the stream
+                // (happens when their `firmalar` array doesn't include this firma)
+                return FutureBuilder<QuerySnapshot?>(
+                  future: queryNames.isEmpty
+                      ? Future.value(null)
+                      : FirebaseFirestore.instance
+                            .collection('ureticiler')
+                            .where('name', whereIn: queryNames.take(30).toList())
+                            .get(),
+                  builder: (context, missingSnap) {
+                    final allProducers = List<QueryDocumentSnapshot>.from(myProducers);
+                    if (missingSnap.hasData && missingSnap.data != null) {
+                      final already = allProducers
+                          .map((d) => normalizeTurkish(((d.data() as Map)['name'] ?? '').toString()))
+                          .toSet();
+                      for (var doc in missingSnap.data!.docs) {
+                        final n = normalizeTurkish(((doc.data() as Map)['name'] ?? '').toString());
+                        if (!already.contains(n)) allProducers.add(doc);
+                      }
+                    }
+
+                    print('[ZiyaretListesi] allProducers.length=${allProducers.length}');
 
                 // Find who has been visited today and how much milk they gave
                 final today = DateTime.now();
@@ -1481,7 +1844,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                 }).map((doc) => (doc.data() as Map<String, dynamic>)['u'] as String).toSet();
 
                 // Filter/Search producers
-                final filteredProducers = myProducers.where((doc) {
+                final filteredProducers = allProducers.where((doc) {
                   final data = doc.data() as Map<String, dynamic>;
                   final name = (data['name'] ?? '').toString().toLowerCase();
                   final group = (data['group'] ?? '').toString().toLowerCase();
@@ -1489,10 +1852,11 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                   return name.contains(query) || group.contains(query);
                 }).toList();
 
-                final totalProducers = myProducers.length;
-                final visitedCount = myProducers.where((doc) {
-                  final name = (doc.data() as Map<String, dynamic>)['name'] ?? '';
-                  return visitedProducersToday.contains(name);
+                final totalProducers = allProducers.length;
+                final visitedProducersTodayNorm = visitedProducersToday.map((s) => normalizeTurkish(s)).toSet();
+                final visitedCount = allProducers.where((doc) {
+                  final name = normalizeTurkish((doc.data() as Map<String, dynamic>)['name'] ?? '');
+                  return visitedProducersTodayNorm.contains(name);
                 }).length;
 
                 return StreamBuilder<DocumentSnapshot>(
@@ -1678,6 +2042,8 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                 );
               },
             );
+          }, // closes FutureBuilder builder
+        ); // closes FutureBuilder
           },
         );
       },
@@ -2510,34 +2876,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                         ),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    // Action Button: Boşalt
-                    GestureDetector(
-                      onTap: () => _showTankUnloadDialog(context, ad, stok, plate, currentFirmaName),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFEFF6FF),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: const Color(0xFFBFDBFE)),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.outbox_rounded, size: 12, color: Color(0xFF2563EB)),
-                            const SizedBox(width: 4),
-                            Text(
-                              'Tank Boşalt',
-                              style: GoogleFonts.inter(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: const Color(0xFF2563EB),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
+
                   ],
                 ),
               ],
@@ -2548,219 +2887,6 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
     );
   }
 
-  void _showTankUnloadDialog(
-    BuildContext context,
-    String sourceTankName,
-    double currentStock,
-    String vehiclePlate,
-    String currentFirmaName,
-  ) async {
-    final db = FirebaseFirestore.instance;
-    final query = await db.collection('tanklar')
-        .where('firma', isEqualTo: currentFirmaName)
-        .get();
-
-    final List<Map<String, dynamic>> otherTanks = query.docs
-        .where((doc) => doc['ad'] != sourceTankName)
-        .map((doc) => {
-              'ad': doc['ad'] as String,
-              'tip': doc['tip'] as String,
-              'stok': (doc['stok'] as num?)?.toDouble() ?? 0.0,
-              'kap': (doc['kap'] as num?)?.toDouble() ?? 5000.0,
-            })
-        .toList();
-
-    if (otherTanks.isEmpty) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Boşaltılabilecek başka tank bulunamadı!')),
-        );
-      }
-      return;
-    }
-
-    // Query pending unload requests for this source tank to compute remaining stock
-    double pendingUnload = 0.0;
-    try {
-      final pendingQuery = await db.collection('sut_kabul')
-          .where('kaynak', isEqualTo: sourceTankName)
-          .where('durum', isEqualTo: 'Bekliyor')
-          .get();
-      for (var doc in pendingQuery.docs) {
-        final val = doc.data()['miktar'];
-        pendingUnload += val is num ? val.toDouble() : (double.tryParse(val.toString()) ?? 0.0);
-      }
-    } catch (_) {}
-
-    final double remainingStock = (currentStock - pendingUnload).clamp(0.0, double.infinity);
-
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final driverName = authProvider.user?.displayName ?? 'Ahmet Kara';
-    final driverEmail = authProvider.user?.email ?? '';
-
-    final amountCtrl = TextEditingController(text: remainingStock.toStringAsFixed(0));
-    String? selectedTargetTank = otherTanks.first['ad'];
-
-    if (!context.mounted) return;
-
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            final targetInfo = otherTanks.firstWhere((t) => t['ad'] == selectedTargetTank);
-            final double tStok = targetInfo['stok'];
-            final double tKap = targetInfo['kap'];
-
-            return AlertDialog(
-              title: Text('Tank Boşaltma Talebi', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Kaynak: $sourceTankName (${currentStock.toStringAsFixed(0)} LT)',
-                    style: GoogleFonts.inter(fontSize: 13, color: AppColors.gray600, fontWeight: FontWeight.w600),
-                  ),
-                  if (pendingUnload > 0) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      'Onay Bekleyen Talep: ${pendingUnload.toStringAsFixed(0)} LT',
-                      style: GoogleFonts.inter(fontSize: 11.5, color: Colors.orange[850], fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Kalan Boşaltılabilir: ${remainingStock.toStringAsFixed(0)} LT',
-                      style: GoogleFonts.inter(fontSize: 11.5, color: Colors.green[800], fontWeight: FontWeight.bold),
-                    ),
-                  ],
-                  const SizedBox(height: 16),
-                  DropdownButtonFormField<String>(
-                    value: selectedTargetTank,
-                    decoration: const InputDecoration(labelText: 'Boşaltılacak Hedef Tank'),
-                    items: otherTanks.map((t) {
-                      final label = t['tip'] == 'merkez' ? '${t['ad']} (Merkez)' : '${t['ad']} (Araç)';
-                      return DropdownMenuItem(
-                        value: t['ad'] as String,
-                        child: Text(label, style: const TextStyle(fontSize: 13)),
-                      );
-                    }).toList(),
-                    onChanged: (val) {
-                      if (val != null) {
-                        setDialogState(() {
-                          selectedTargetTank = val;
-                        });
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: amountCtrl,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(
-                      labelText: 'Boşaltılacak Miktar (LT)',
-                      suffixText: 'LT',
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    'Hedef Doluluk: ${tStok.toStringAsFixed(0)} / ${tKap.toStringAsFixed(0)} LT',
-                    style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500),
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: Text('İptal', style: GoogleFonts.inter(color: AppColors.gray500)),
-                ),
-                ElevatedButton(
-                  onPressed: () async {
-                    final double? amount = double.tryParse(amountCtrl.text);
-                    if (amount == null || amount <= 0 || amount > remainingStock) {
-                      ScaffoldMessenger.of(ctx).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            pendingUnload > 0
-                                ? 'Geçerli bir miktar girin! Kalan limit: ${remainingStock.toStringAsFixed(0)} LT'
-                                : 'Geçerli bir miktar girin! (Kaynak stokunu veya limitini aşamaz)'
-                          ),
-                        ),
-                      );
-                      return;
-                    }
-
-                    final timeStr = DateFormat('dd MMM yyyy, HH:mm', 'tr_TR').format(DateTime.now());
-                    final docRef = await db.collection('sut_kabul').add({
-                      'email': driverEmail,
-                      'tarih': timeStr,
-                      'kaynak': sourceTankName,
-                      'hedef': selectedTargetTank,
-                      'miktar': amount,
-                      'durum': 'Bekliyor',
-                      'aciklama': '$vehiclePlate plakalı araçtan boşaltma talebi',
-                      'plaka': vehiclePlate,
-                      'surucuName': driverName,
-                      'firma': currentFirmaName,
-                      'timestamp': FieldValue.serverTimestamp(),
-                    });
-
-                    try {
-                      final firmaUsers = await db.collection('users')
-                          .where('role', isEqualTo: 'firma')
-                          .where('firmaName', isEqualTo: currentFirmaName)
-                          .get();
-
-                      final userIds = firmaUsers.docs.map((doc) => doc.id).toList();
-                      if (userIds.isEmpty) {
-                        userIds.add('demo_firma_${currentFirmaName.hashCode}');
-                      }
-
-                      for (var uid in userIds) {
-                        await db.collection('bildirimler').add({
-                          'userId': uid,
-                          'baslik': 'Tank Boşaltma Talebi',
-                          'icerik': '$driverName isimli personel, $vehiclePlate plakalı araçtaki $sourceTankName tankından $selectedTargetTank tankına $amount LT süt boşaltmak istiyor.',
-                          'timestamp': FieldValue.serverTimestamp(),
-                          'read': false,
-                          'type': 'tank_bosaltma_talebi',
-                          'sutKabulId': docRef.id,
-                          'sourceTankName': sourceTankName,
-                          'targetTankName': selectedTargetTank,
-                          'miktar': amount,
-                          'vehiclePlate': vehiclePlate,
-                          'driverName': driverName,
-                        });
-                      }
-                    } catch (e) {
-                      print('Unload notification sending failed: $e');
-                    }
-
-                    if (ctx.mounted) Navigator.pop(ctx);
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Boşaltma talebi merkeze iletildi! Merkez onayından sonra tank stoku güncellenecektir.'),
-                          backgroundColor: AppColors.success,
-                        ),
-                      );
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary600,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  ),
-                  child: const Text('Boşalt'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
 
   void _showDriverTankIcerik(BuildContext context, String tankAdi) {
     showModalBottomSheet(

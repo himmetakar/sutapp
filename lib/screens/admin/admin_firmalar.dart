@@ -108,8 +108,16 @@ class _AdminFirmalarState extends State<AdminFirmalar> {
                       TextFormField(
                         controller: telCtrl,
                         keyboardType: TextInputType.phone,
-                        decoration: const InputDecoration(labelText: 'Telefon *'),
-                        validator: (value) => value == null || value.trim().isEmpty ? 'Lütfen telefon girin' : null,
+                        maxLength: 11,
+                        decoration: const InputDecoration(
+                          labelText: 'Telefon *',
+                          counterText: '',
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) return 'Lütfen telefon girin';
+                          if (value.trim().length != 11) return 'Telefon numarası 11 haneli olmalıdır';
+                          return null;
+                        },
                       ),
                       const SizedBox(height: 12),
                       TextFormField(

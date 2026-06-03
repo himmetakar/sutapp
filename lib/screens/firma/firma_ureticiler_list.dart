@@ -17,6 +17,7 @@ import '../../config/theme.dart';
 import '../../widgets/common_widgets.dart';
 import '../../services/firestore_service.dart';
 import '../../utils/file_download_helper.dart';
+import '../../widgets/location_picker_field.dart';
 
 class FirmaUreticiListesiScreen extends StatefulWidget {
   final String? groupFilter;
@@ -595,6 +596,8 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
         final phoneCtrl = TextEditingController();
         final bolgeCtrl = TextEditingController();
         final tcNoCtrl = TextEditingController();
+        final latCtrl = TextEditingController();
+        final lngCtrl = TextEditingController();
 
         String? selectedGroup;
         String? selectedBirlik;
@@ -694,7 +697,12 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
                       TextField(
                         controller: phoneCtrl,
                         keyboardType: TextInputType.phone,
-                        decoration: const InputDecoration(labelText: 'Telefon', hintText: 'Örn: 0532 999 8877'),
+                        maxLength: 11,
+                        decoration: const InputDecoration(
+                          labelText: 'Telefon',
+                          hintText: 'Örn: 0532 999 8877',
+                          counterText: '',
+                        ),
                       ),
                       const SizedBox(height: 16),
                       StreamBuilder<QuerySnapshot>(
@@ -767,6 +775,13 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
                             onChanged: (val) => setState(() => selectedBirlik = val),
                           );
                         },
+                      ),
+                      const SizedBox(height: 16),
+                      // Location picker
+                      LocationPickerField(
+                        latController: latCtrl,
+                        lngController: lngCtrl,
+                        setDialogState: setState,
                       ),
                       const SizedBox(height: 24),
 
@@ -842,7 +857,7 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
                       }
                     }
 
-                    await _db.collection('ureticiler').add({
+                    final Map<String, dynamic> newData = {
                       'name': name,
                       'phone': phone,
                       'bolge': bolge,
@@ -854,7 +869,16 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
                       'firmalar': [currentFirmaName],
                       'lastMilkType': saveMilkType,
                       'customerType': isYem ? 'yem' : 'sut',
-                    });
+                    };
+                    final latVal = double.tryParse(latCtrl.text.trim());
+                    final lngVal = double.tryParse(lngCtrl.text.trim());
+                    if (latVal != null && lngVal != null) {
+                      newData['latitude'] = latVal;
+                      newData['longitude'] = lngVal;
+                    } else if (latCtrl.text.trim().isNotEmpty) {
+                      newData['mapsLink'] = latCtrl.text.trim();
+                    }
+                    await _db.collection('ureticiler').add(newData);
 
                     if (context.mounted) {
                       Navigator.pop(ctx);
@@ -1051,18 +1075,28 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
                         try {
                           final templateBytes = _generateExcelTemplate();
                           if (templateBytes != null) {
-                            await FileDownloadHelper.downloadBinaryFile(
+                            final savedPath = await FileDownloadHelper.downloadBinaryFile(
                               fileName: 'toplu_uretici_sablon.xlsx',
                               bytes: templateBytes,
                             );
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Şablon Excel indirildi!'), backgroundColor: AppColors.success),
-                            );
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(savedPath != null
+                                      ? 'Şablon indirildi: $savedPath'
+                                      : 'Şablon Excel indirildi!'),
+                                  backgroundColor: AppColors.success,
+                                  duration: const Duration(seconds: 5),
+                                ),
+                              );
+                            }
                           }
                         } catch (e) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Hata: $e'), backgroundColor: AppColors.danger),
-                          );
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Hata: $e'), backgroundColor: AppColors.danger),
+                            );
+                          }
                         }
                       },
                       icon: const Icon(Icons.download_rounded, size: 18),
@@ -1183,6 +1217,13 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
         final phoneCtrl = TextEditingController(text: data['phone'] ?? '');
         final bolgeCtrl = TextEditingController(text: data['bolge'] ?? '');
         final tcNoCtrl = TextEditingController(text: data['tcNo'] ?? '');
+        final mapsLinkVal = data['mapsLink'] as String? ?? '';
+        final latCtrl = TextEditingController(
+          text: (data['latitude'] as num?)?.toString() ?? mapsLinkVal,
+        );
+        final lngCtrl = TextEditingController(
+          text: (data['longitude'] as num?)?.toString() ?? '',
+        );
 
         String? selectedGroup = data['group'];
         String? selectedBirlik = data['birlik'];
@@ -1227,7 +1268,11 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
                       TextField(
                         controller: phoneCtrl,
                         keyboardType: TextInputType.phone,
-                        decoration: const InputDecoration(labelText: 'Telefon'),
+                        maxLength: 11,
+                        decoration: const InputDecoration(
+                          labelText: 'Telefon',
+                          counterText: '',
+                        ),
                       ),
                       const SizedBox(height: 16),
                       StreamBuilder<QuerySnapshot>(
@@ -1307,6 +1352,13 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
                           );
                         },
                       ),
+                      const SizedBox(height: 16),
+                      // Location picker
+                      LocationPickerField(
+                        latController: latCtrl,
+                        lngController: lngCtrl,
+                        setDialogState: setState,
+                      ),
                       const SizedBox(height: 24),
 
                       // Custom selector
@@ -1347,7 +1399,7 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
                       return;
                     }
 
-                    await doc.reference.update({
+                    final Map<String, dynamic> updateData = {
                       'name': name,
                       'phone': phone,
                       'bolge': bolge,
@@ -1356,7 +1408,19 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
                       'birlik': selectedBirlik ?? 'Yok',
                       'lastMilkType': saveMilkType,
                       'customerType': isYem ? 'yem' : 'sut',
-                    });
+                    };
+                    final latVal = double.tryParse(latCtrl.text.trim());
+                    final lngVal = double.tryParse(lngCtrl.text.trim());
+                    if (latVal != null && lngVal != null) {
+                      updateData['latitude'] = latVal;
+                      updateData['longitude'] = lngVal;
+                      updateData['mapsLink'] = FieldValue.delete();
+                    } else {
+                      updateData['mapsLink'] = latCtrl.text.trim();
+                      updateData['latitude'] = FieldValue.delete();
+                      updateData['longitude'] = FieldValue.delete();
+                    }
+                    await doc.reference.update(updateData);
 
                     Navigator.pop(ctx);
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -1426,7 +1490,19 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
                 const SizedBox(height: 12),
                 _buildDetailRow(Icons.phone_rounded, 'Telefon', phone),
                 const SizedBox(height: 12),
-                _buildDetailRow(Icons.location_on_rounded, 'Bölge / Mahalle', '$bolge - $group'),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: _buildDetailRow(Icons.location_on_rounded, 'Bölge / Mahalle', '$bolge - $group'),
+                    ),
+                    MapLinkIcon(
+                      latitude: (data['latitude'] as num?)?.toDouble(),
+                      longitude: (data['longitude'] as num?)?.toDouble(),
+                      mapsLink: data['mapsLink'] as String?,
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 12),
                 _buildDetailRow(Icons.account_balance_rounded, 'Birlik Kaydı', birlik),
                 const SizedBox(height: 12),
@@ -2027,9 +2103,12 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
                           final phone = u['phone'] ?? '';
                           final group = u['group'] ?? 'Genel';
                           final birlik = u['birlik'] ?? 'Yok';
+                          final bolge = u['bolge'] ?? '';
 
                           final isYem = u['customerType'] == 'yem';
                           final isSelected = _selectedProducerIds.contains(doc.id);
+                          final hasLocation = u['latitude'] != null && u['longitude'] != null ||
+                              (u['mapsLink'] as String? ?? '').trim().isNotEmpty;
 
                           return GestureDetector(
                             onTap: () {
@@ -2110,6 +2189,29 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
                                       StatusBadge.active(birlik),
                                     ],
                                   ]),
+                                  const SizedBox(height: 5),
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.location_on_rounded, size: 11, color: AppColors.gray400),
+                                      const SizedBox(width: 4),
+                                      Expanded(
+                                        child: Text(
+                                          (bolge.isNotEmpty || group.isNotEmpty)
+                                              ? '$bolge${group.isNotEmpty ? " / $group" : ""}'
+                                              : (hasLocation ? 'Konum Kayıtlı' : 'Konum Girilmemiş'),
+                                          style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      MapLinkIcon(
+                                        latitude: (u['latitude'] as num?)?.toDouble(),
+                                        longitude: (u['longitude'] as num?)?.toDouble(),
+                                        mapsLink: u['mapsLink'] as String?,
+                                        fallbackAddress: (bolge.isNotEmpty || group.isNotEmpty) ? '$bolge $group' : name,
+                                      ),
+                                    ],
+                                  ),
                                 ])),
                                 const SizedBox(width: 8),
                                 if (!isSelecting)
@@ -2140,18 +2242,26 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
                                       ),
                                       const SizedBox(width: 4),
                                       IconButton(
+                                        padding: EdgeInsets.zero,
+                                        constraints: const BoxConstraints(),
                                         icon: const Icon(Icons.badge_rounded, color: Colors.orange, size: 20),
                                         onPressed: () {
                                           context.push('/firma/dijital-kart?name=$name');
                                         },
                                       ),
+                                      const SizedBox(width: 4),
                                       IconButton(
+                                        padding: EdgeInsets.zero,
+                                        constraints: const BoxConstraints(),
                                         icon: const Icon(Icons.description_rounded, color: AppColors.primary600, size: 20),
                                         onPressed: () {
                                           context.push('/firma/hesap-ozeti?name=$name');
                                         },
                                       ),
+                                      const SizedBox(width: 4),
                                       IconButton(
+                                        padding: EdgeInsets.zero,
+                                        constraints: const BoxConstraints(),
                                         icon: const Icon(Icons.edit_rounded, color: AppColors.gray500, size: 20),
                                         onPressed: () {
                                           _showEditProducerDialog(doc);

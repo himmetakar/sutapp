@@ -1,37 +1,43 @@
 import 'dart:io';
-import 'package:file_picker/file_picker.dart';
+import 'package:path_provider/path_provider.dart';
 
 class FileDownloadHelper {
   static Future<void> downloadTextFile({
     required String fileName,
     required String content,
   }) async {
-    // Mobile simulation / logging.
-    print("Mobile download requested for: $fileName");
+    try {
+      final dir = await _getDownloadDir();
+      final file = File('${dir.path}/$fileName');
+      await file.writeAsString(content);
+      print('Dosya kaydedildi: ${file.path}');
+    } catch (e) {
+      print('downloadTextFile hatası: $e');
+    }
   }
 
-  static Future<void> downloadBinaryFile({
+  static Future<String?> downloadBinaryFile({
     required String fileName,
     required List<int> bytes,
   }) async {
     try {
-      final String? path = await FilePicker.saveFile(
-        dialogTitle: 'Şablonu Kaydet',
-        fileName: fileName,
-        type: FileType.any,
-      );
-      if (path != null) {
-        final file = File(path);
-        await file.writeAsBytes(bytes);
-      }
+      final dir = await _getDownloadDir();
+      final file = File('${dir.path}/$fileName');
+      await file.writeAsBytes(bytes);
+      return file.path;
     } catch (e) {
-      print("Error saving file: $e");
-      try {
-        final dir = Directory.systemTemp;
-        final file = File('${dir.path}/$fileName');
-        await file.writeAsBytes(bytes);
-        print("Fallback: saved to temporary path: ${file.path}");
-      } catch (_) {}
+      print('downloadBinaryFile hatası: $e');
+      return null;
     }
+  }
+
+  static Future<Directory> _getDownloadDir() async {
+    if (Platform.isAndroid) {
+      // /storage/emulated/0/Downloads — no extra permission needed on Android 10+
+      final dir = Directory('/storage/emulated/0/Download');
+      if (await dir.exists()) return dir;
+    }
+    // Fallback: app documents directory
+    return getApplicationDocumentsDirectory();
   }
 }

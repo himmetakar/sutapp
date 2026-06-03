@@ -250,6 +250,25 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
     );
   }
 
+  DateTime _getAvansDate(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>? ?? {};
+    DateTime? date;
+    final rawDate = data['tahsilEdilecegiTarih'] ?? data['verildigiTarih'] ?? data['tarih'];
+    if (rawDate != null) {
+      try {
+        date = DateFormat('dd.MM.yyyy').parse(rawDate.toString());
+      } catch (_) {
+        try {
+          date = DateFormat('dd MMMM yyyy', 'tr_TR').parse(rawDate.toString());
+        } catch (_) {}
+      }
+    }
+    if (date == null && data['timestamp'] != null) {
+      date = (data['timestamp'] as Timestamp).toDate();
+    }
+    return date ?? DateTime.now();
+  }
+
   Widget _buildLedgerDetails(String firmaName, String ureticiName) {
     final formatCurrency = NumberFormat.currency(locale: 'tr_TR', symbol: '₺');
     final formatNumber = NumberFormat('#,##0.00', 'tr_TR');
@@ -375,10 +394,10 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
 
         // Past advances (durum == 'aktif')
         for (var doc in avanslar) {
-          final ts = doc['timestamp'] as Timestamp?;
           final state = doc['durum'] ?? 'aktif';
-          if (ts == null || state != 'aktif') continue;
-          if (ts.toDate().isBefore(startOfMonth)) {
+          if (state != 'aktif') continue;
+          final avansDate = _getAvansDate(doc);
+          if (avansDate.isBefore(startOfMonth)) {
             devirSum -= (doc['tutar'] as num?)?.toDouble() ?? 0.0;
           }
         }
@@ -528,7 +547,13 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
 
         final currentCols = allCollections.where((c) => isInSelectedMonth(c)).toList();
         final currentTah = tahsilatlar.where((t) => isInSelectedMonth(t)).toList();
-        final currentAv = avanslar.where((a) => isInSelectedMonth(a)).toList();
+        
+        bool isAvansInSelectedMonth(DocumentSnapshot doc) {
+          final avansDate = _getAvansDate(doc);
+          return avansDate.isAfter(startOfMonth.subtract(const Duration(microseconds: 1))) && avansDate.isBefore(endOfMonth.add(const Duration(microseconds: 1)));
+        }
+        final currentAv = avanslar.where((a) => isAvansInSelectedMonth(a)).toList();
+        
         final currentKes = kesintiler.where((k) => isInSelectedMonth(k)).toList();
         final currentCez = cezalar.where((cz) => isInSelectedMonth(cz)).toList();
         final currentSat = satislar.where((s) => isInSelectedMonth(s)).toList();
@@ -609,16 +634,7 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
           }
         }
 
-        bool isProductExpense(String text) {
-          final lower = text.toLowerCase();
-          return lower.contains('alım') || 
-                 lower.contains('alim') || 
-                 lower.contains('yem') || 
-                 lower.contains('sipariş') || 
-                 lower.contains('siparis') || 
-                 lower.contains('ürün') || 
-                 lower.contains('urun');
-        }
+        bool isProductExpense(String text) => _isProductExpense(text);
 
         double totalManualYasalKesinti = 0.0;
         double totalManualUrunGideri = 0.0;
@@ -936,31 +952,45 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
           ));
         }
 
-        // Section 6: Kesintiler
-        if (milkVal > 0 || (totalManualYasalKesinti + totalManualUrunGideri) > 0) {
-          final List<Widget> rows = [];
-          if (milkVal > 0) {
-            for (var type in dynamicColumns) {
-              final val = computedDynamicDeductions[type] ?? 0.0;
-              final rate = computedRates[type] ?? 0.0;
-              if (val > 0) {
-                rows.add(_buildSectionRow(
-                  leftText: type,
-                  leftSubtitle: '%${rate.toStringAsFixed(2)} oranında',
-                  rightText: '- ${formatCurrency.format(val)}',
-                  rightColor: Colors.red[850],
-                ));
-              }
+        // Section 6: Kesintiler & Ürün Satışı
+        final List<Widget> yasalRows = [];
+        final List<Widget> urunRows = [];
+
+        if (milkVal > 0) {
+          for (var type in dynamicColumns) {
+            final val = computedDynamicDeductions[type] ?? 0.0;
+            final rate = computedRates[type] ?? 0.0;
+            if (val > 0) {
+              yasalRows.add(_buildSectionRow(
+                leftText: type,
+                leftSubtitle: '%${rate.toStringAsFixed(2)} oranında',
+                rightText: '- ${formatCurrency.format(val)}',
+                rightColor: Colors.red[850],
+              ));
             }
           }
-          for (var doc in currentKes) {
-            final data = doc.data() as Map<String, dynamic>;
-            if ((data['durum'] ?? 'aktif') == 'aktif') {
-              final tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
-              final tarihStr = data['tarih'] ?? '';
-              final typeStr = data['kesintiTuru'] ?? (data['aciklama'] != null && data['aciklama'].toString().trim().isNotEmpty ? data['aciklama'].toString().trim() : 'Kesinti');
-              final String? detailStr = (data['kesintiTuru'] != null && data['aciklama'] != null && data['aciklama'].toString().trim().isNotEmpty) ? data['aciklama'].toString().trim() : null;
-              rows.add(_buildSectionRow(
+        }
+
+        for (var doc in currentKes) {
+          final data = doc.data() as Map<String, dynamic>;
+          if ((data['durum'] ?? 'aktif') == 'aktif') {
+            final tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
+            final tarihStr = data['tarih'] ?? '';
+            final typeStr = data['kesintiTuru'] ?? (data['aciklama'] != null && data['aciklama'].toString().trim().isNotEmpty ? data['aciklama'].toString().trim() : 'Kesinti');
+            final String? detailStr = (data['kesintiTuru'] != null && data['aciklama'] != null && data['aciklama'].toString().trim().isNotEmpty) ? data['aciklama'].toString().trim() : null;
+            
+            if (_isProductExpense(typeStr)) {
+              final double miktar = (data['miktar'] as num?)?.toDouble() ?? 1.0;
+              final double birimFiyat = (data['birimFiyat'] as num?)?.toDouble() ?? (data['fiyat'] as num?)?.toDouble() ?? (miktar > 0 ? tutar / miktar : tutar);
+              urunRows.add(_buildSectionRow(
+                leftText: typeStr,
+                leftSubtitle: '${formatNumber.format(miktar)} adet x ${formatNumber.format(birimFiyat)} ₺',
+                rightText: '- ${formatCurrency.format(tutar)}',
+                rightColor: Colors.red[850],
+                rightSubtitle: tarihStr,
+              ));
+            } else {
+              yasalRows.add(_buildSectionRow(
                 leftText: typeStr,
                 leftSubtitle: detailStr,
                 rightText: '- ${formatCurrency.format(tutar)}',
@@ -969,12 +999,31 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
               ));
             }
           }
-          rows.add(_buildSectionSummaryRow('Toplam Kesinti', '- ${formatCurrency.format(totalKesinti)}', Colors.red[800]!));
+        }
+
+        if (yasalRows.isNotEmpty) {
+          final List<Widget> yasalCardContent = [];
+          yasalCardContent.add(_buildSubHeader('Yasal Kesintiler'));
+          yasalCardContent.addAll(yasalRows);
+          yasalCardContent.add(_buildSectionSummaryRow('Toplam Kesinti', '- ${formatCurrency.format(totalYasalKesinti)}', Colors.red[800]!));
 
           sections.add(_buildSectionCard(
             title: 'Kesintiler',
             icon: Icons.bar_chart_rounded,
-            children: rows,
+            children: yasalCardContent,
+          ));
+        }
+
+        if (urunRows.isNotEmpty) {
+          final List<Widget> urunCardContent = [];
+          urunCardContent.add(_buildSubHeader('Ürün Satışı'));
+          urunCardContent.addAll(urunRows);
+          urunCardContent.add(_buildSectionSummaryRow('Toplam Ürün Satışı', '- ${formatCurrency.format(totalUrunGideri)}', Colors.red[800]!));
+
+          sections.add(_buildSectionCard(
+            title: 'Ürün Satışı',
+            icon: Icons.shopping_bag_rounded,
+            children: urunCardContent,
           ));
         }
 
@@ -1208,6 +1257,47 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
     );
   }
 
+  bool _isProductExpense(String text) {
+    final lower = text.toLowerCase();
+    return lower.contains('alım') || 
+           lower.contains('alim') || 
+           lower.contains('yem') || 
+           lower.contains('sipariş') || 
+           lower.contains('siparis') || 
+           lower.contains('ürün') || 
+           lower.contains('urun');
+  }
+
+  Widget _buildSubHeader(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8, bottom: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            text,
+            style: GoogleFonts.inter(
+              fontSize: 11.5,
+              fontWeight: FontWeight.bold,
+              color: AppColors.gray500,
+              letterSpacing: 0.3,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Container(
+            height: 1.5,
+            width: 40,
+            decoration: BoxDecoration(
+              color: AppColors.primary300,
+              borderRadius: BorderRadius.circular(1),
+            ),
+          ),
+          const SizedBox(height: 4),
+        ],
+      ),
+    );
+  }
+
   Widget _buildNetPayableCard({
     required double sutGeliri,
     required double tahsilatlar,
@@ -1219,13 +1309,13 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
     required double urunGiderleri,
     required double devir,
   }) {
-    final double donemSonuBakiye = sutGeliri + tahsilatlar - odemeler - alinanUrunler - alinanAvanslar - cezalar - kesintiler - urunGiderleri;
+    final double donemSonuBakiye = sutGeliri + tahsilatlar - alinanUrunler - alinanAvanslar - cezalar - kesintiler - urunGiderleri;
     final double mevcutBakiye = donemSonuBakiye + devir;
     
     // Eğer mevcut bakiye eksi ise net ödenecek 0 olmalıdır.
     final double netOdenecek = mevcutBakiye >= 0 ? mevcutBakiye : 0.0;
-    final double odenen = netOdenecek;
-    final double digerAyaDevir = mevcutBakiye < 0 ? mevcutBakiye : 0.0;
+    final double odenen = odemeler;
+    final double digerAyaDevir = mevcutBakiye - odenen;
 
     final formatCurrency = NumberFormat.currency(locale: 'tr_TR', symbol: '₺');
 
@@ -1254,20 +1344,11 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          if (sutGeliri > 0)
-            _buildNetRow('Süt Geliri', '+ ${formatCurrency.format(sutGeliri)}', Colors.green[800]!),
-          if (tahsilatlar > 0)
-            _buildNetRow('Tahsilatlar', '+ ${formatCurrency.format(tahsilatlar)}', Colors.green[800]!),
-          if (odemeler > 0)
-            _buildNetRow('Yapılan Ödemeler', '- ${formatCurrency.format(odemeler)}', Colors.red[800]!),
-          if (alinanUrunler > 0)
-            _buildNetRow('Alınan Ürünler', '- ${formatCurrency.format(alinanUrunler)}', Colors.red[800]!),
-          if (alinanAvanslar > 0)
-            _buildNetRow('Alınan Avanslar', '- ${formatCurrency.format(alinanAvanslar)}', Colors.red[800]!),
-          if (cezalar > 0)
-            _buildNetRow('Cezalar', '- ${formatCurrency.format(cezalar)}', Colors.red[800]!),
-          if (kesintiler > 0)
-            _buildNetRow('Kesintiler', '- ${formatCurrency.format(kesintiler)}', Colors.red[800]!),
+          _buildNetRow('Süt Geliri Toplamı', '+ ${formatCurrency.format(sutGeliri)}', Colors.green[800]!),
+          _buildNetRow('Alınan Ürünler', '- ${formatCurrency.format(alinanUrunler + urunGiderleri)}', Colors.red[800]!),
+          _buildNetRow('Alınan Avanslar', '- ${formatCurrency.format(alinanAvanslar)}', Colors.red[800]!),
+          _buildNetRow('Tahsilat', '+ ${formatCurrency.format(tahsilatlar)}', Colors.green[800]!),
+          _buildNetRow('Kesintiler Toplamı', '- ${formatCurrency.format(kesintiler + cezalar)}', Colors.red[800]!),
 
           const Divider(color: Colors.green, height: 24),
 
@@ -1425,9 +1506,9 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
       final data = doc.data() as Map<String, dynamic>;
       if ((data['durum'] ?? 'aktif') == 'aktif') {
         final tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
-        final ts = data['timestamp'] as Timestamp?;
+        final avansDate = _getAvansDate(doc);
         allTx.add({
-          'ts': ts?.toDate() ?? DateTime.now(),
+          'ts': avansDate,
           'title': 'Avans Ödemesi',
           'subtitle': data['aciklama'] ?? '',
           'amount': tutar,
@@ -1603,14 +1684,26 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
         return res;
       }
 
-      double totalManualKesinti = kesintiler.where((k) => (k.data() as Map<String, dynamic>)['durum'] == 'aktif').fold(0.0, (sum, doc) {
+      double totalManualKesinti = 0.0;
+      double totalUrunGideri = 0.0;
+      for (var doc in kesintiler) {
         final data = doc.data() as Map<String, dynamic>;
-        return sum + ((data['tutar'] as num?)?.toDouble() ?? 0.0);
-      });
+        if ((data['durum'] ?? 'aktif') == 'aktif') {
+          final tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
+          final typeStr = data['kesintiTuru'] ?? (data['aciklama'] != null ? data['aciklama'].toString() : 'Kesinti');
+          if (_isProductExpense(typeStr)) {
+            totalUrunGideri += tutar;
+          } else {
+            totalManualKesinti += tutar;
+          }
+        }
+      }
 
-      final double donemSonuBakiye = milkVal + totalCollections - totalOdemeler - totalSales - totalAvans - totalCeza - totalKesinti;
+      final double donemSonuBakiye = milkVal + totalCollections - totalSales - totalAvans - totalCeza - totalKesinti;
       final double mevcutBakiye = donemSonuBakiye + devir;
-      final double netOdenecek = mevcutBakiye;
+      final double netOdenecek = mevcutBakiye >= 0 ? mevcutBakiye : 0.0;
+      final double odenen = totalOdemeler;
+      final double digerAyaDevir = mevcutBakiye - odenen;
 
       final formatCurrency = NumberFormat.currency(locale: 'tr_TR', symbol: ' TL');
       final formatNumber = NumberFormat('#,##0.00', 'tr_TR');
@@ -1731,7 +1824,7 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
                 pw.Text(sanitize('KESINTILER'), style: pw.TextStyle(font: fontBold, fontSize: 12, color: PdfColors.red800)),
                 pw.SizedBox(height: 5),
                 pw.TableHelper.fromTextArray(
-                  headers: [sanitize('Kesinti Turu'), sanitize('Aciklama / Oran'), sanitize('Tutar')],
+                  headers: [sanitize('Kesinti Turu'), sanitize('Aciklama / Oran / Detay'), sanitize('Tutar')],
                   data: [
                     if (milkVal > 0) ...[
                       ...dynamicColumns.map((type) {
@@ -1749,13 +1842,28 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
                     ],
                     ...kesintiler.map((doc) {
                       final data = doc.data() as Map<String, dynamic>;
+                      if ((data['durum'] ?? 'aktif') != 'aktif') return null;
                       final tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
-                      return [
-                        sanitize(data['aciklama'] ?? 'Diger'),
-                        sanitize(data['tarih'] ?? ''),
-                        '- ${formatCurrency.format(tutar)}'
-                      ];
-                    })
+                      final tarihStr = data['tarih'] ?? '';
+                      final typeStr = data['kesintiTuru'] ?? (data['aciklama'] != null ? data['aciklama'].toString() : 'Kesinti');
+                      
+                      if (_isProductExpense(typeStr)) {
+                        final double miktar = (data['miktar'] as num?)?.toDouble() ?? 1.0;
+                        final double birimFiyat = (data['birimFiyat'] as num?)?.toDouble() ?? (data['fiyat'] as num?)?.toDouble() ?? (miktar > 0 ? tutar / miktar : tutar);
+                        return [
+                          sanitize(typeStr),
+                          sanitize('${formatNumber.format(miktar)} adet x ${formatNumber.format(birimFiyat)} TL (${tarihStr})'),
+                          '- ${formatCurrency.format(tutar)}'
+                        ];
+                      } else {
+                        final String desc = (data['aciklama'] != null && data['aciklama'].toString().trim().isNotEmpty) ? '${data['aciklama']} (${tarihStr})' : tarihStr;
+                        return [
+                          sanitize(typeStr),
+                          sanitize(desc),
+                          '- ${formatCurrency.format(tutar)}'
+                        ];
+                      }
+                    }).where((row) => row != null).cast<List<String>>(),
                   ],
                   border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
                   headerStyle: pw.TextStyle(font: fontBold, fontSize: 10, color: PdfColors.white),
@@ -1778,29 +1886,20 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
                   children: [
                     pw.Text(sanitize('NET ODEME HESAP TABLOSU'), style: pw.TextStyle(font: fontBold, fontSize: 11, color: PdfColors.teal800)),
                     pw.SizedBox(height: 6),
-                    _buildPdfNetRow('Sut Geliri:', '+ ${formatCurrency.format(milkVal)}', fontRegular),
-                    if (totalCollections > 0)
-                      _buildPdfNetRow('Tahsilatlar:', '+ ${formatCurrency.format(totalCollections)}', fontRegular),
-                    if (totalOdemeler > 0)
-                      _buildPdfNetRow('Yapilan Odemeler:', '- ${formatCurrency.format(totalOdemeler)}', fontRegular),
-                    if (totalSales > 0)
-                      _buildPdfNetRow('Alinan Urunler:', '- ${formatCurrency.format(totalSales)}', fontRegular),
-                    if (totalAvans > 0)
-                      _buildPdfNetRow('Alinan Avanslar:', '- ${formatCurrency.format(totalAvans)}', fontRegular),
-                    if (totalCeza > 0)
-                      _buildPdfNetRow('Cezalar:', '- ${formatCurrency.format(totalCeza)}', fontRegular),
-                    if (totalKesinti > 0)
-                      _buildPdfNetRow('Kesintiler:', '- ${formatCurrency.format(totalKesinti)}', fontRegular),
+                    _buildPdfNetRow('Sut Geliri Toplami:', '+ ${formatCurrency.format(milkVal)}', fontRegular),
+                    _buildPdfNetRow('Alinan Urunler:', '- ${formatCurrency.format(totalSales + totalUrunGideri)}', fontRegular),
+                    _buildPdfNetRow('Alinan Avanslar:', '- ${formatCurrency.format(totalAvans)}', fontRegular),
+                    _buildPdfNetRow('Tahsilat:', '+ ${formatCurrency.format(totalCollections)}', fontRegular),
+                    _buildPdfNetRow('Kesintiler Toplami:', '- ${formatCurrency.format((totalKesinti - totalUrunGideri) + totalCeza)}', fontRegular),
 
                     pw.Divider(thickness: 1, color: PdfColors.grey400),
 
                     _buildPdfNetRow('Donem Sonu Bakiye:', '${donemSonuBakiye >= 0 ? '+' : ''} ${formatCurrency.format(donemSonuBakiye)}', fontBold),
                     _buildPdfNetRow('Onceki Aydan Devir:', '${devir >= 0 ? '+' : ''} ${formatCurrency.format(devir)}', fontRegular),
-
-                    pw.Divider(thickness: 1.5, color: PdfColors.teal),
-
-                    _buildPdfNetRow('Mevcut Bakiye:', '${mevcutBakiye >= 0 ? '+' : ''} ${formatCurrency.format(mevcutBakiye)}', fontBold, size: 12),
-                    _buildPdfNetRow('Net Odenecek:', '${netOdenecek >= 0 ? '+' : ''} ${formatCurrency.format(netOdenecek)}', fontBold, size: 12),
+                    _buildPdfNetRow('Mevcut Bakiye:', '${mevcutBakiye >= 0 ? '+' : ''} ${formatCurrency.format(mevcutBakiye)}', fontBold),
+                    _buildPdfNetRow('Net Odenecek:', '${netOdenecek >= 0 ? '+' : ''} ${formatCurrency.format(netOdenecek)}', fontBold),
+                    _buildPdfNetRow('Odenen:', '${odenen >= 0 ? '+' : ''} ${formatCurrency.format(odenen)}', fontBold),
+                    _buildPdfNetRow('Diger Aya Devir:', '${digerAyaDevir >= 0 ? '+' : ''} ${formatCurrency.format(digerAyaDevir)}', fontBold),
                   ],
                 ),
               ),
