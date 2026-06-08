@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'firebase_options.dart';
@@ -33,9 +34,20 @@ void main() async {
     }
   }
 
+  // Enable Firestore offline persistence with unlimited cache size
+  FirebaseFirestore.instance.settings = const Settings(
+    persistenceEnabled: true,
+    cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+  );
+
   // Initialize Firestore mock data (Only in dev/demo mode)
+  // Wrapped with timeout so it never blocks startup when offline
   if (!AppConstants.isProduction) {
-    await FirestoreService().initializeMockDataIfNeeded();
+    try {
+      await FirestoreService()
+          .initializeMockDataIfNeeded()
+          .timeout(const Duration(seconds: 3));
+    } catch (_) {}
   }
 
   final authProvider = AuthProvider();

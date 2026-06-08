@@ -372,7 +372,7 @@ class _UreticiFaturalarScreenState extends State<UreticiFaturalarScreen> {
                                       if (context.mounted) {
                                         ScaffoldMessenger.of(context).showSnackBar(
                                           SnackBar(
-                                            content: Text('$faturaNo nolu fatura indirildi!'),
+                                            content: Text('$faturaNo nolu fatura dosyası paylaşıldı/kaydedildi!'),
                                             backgroundColor: AppColors.success,
                                           ),
                                         );

@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 class FileDownloadHelper {
   static Future<void> downloadTextFile({
@@ -7,10 +8,13 @@ class FileDownloadHelper {
     required String content,
   }) async {
     try {
-      final dir = await _getDownloadDir();
-      final file = File('${dir.path}/$fileName');
+      final tempDir = await getTemporaryDirectory();
+      final file = File('${tempDir.path}/$fileName');
       await file.writeAsString(content);
-      print('Dosya kaydedildi: ${file.path}');
+      
+      // Share file so user can save/share on physical device
+      await Share.shareXFiles([XFile(file.path)], text: fileName);
+      print('Dosya paylaşıldı: ${file.path}');
     } catch (e) {
       print('downloadTextFile hatası: $e');
     }
@@ -21,23 +25,16 @@ class FileDownloadHelper {
     required List<int> bytes,
   }) async {
     try {
-      final dir = await _getDownloadDir();
-      final file = File('${dir.path}/$fileName');
+      final tempDir = await getTemporaryDirectory();
+      final file = File('${tempDir.path}/$fileName');
       await file.writeAsBytes(bytes);
+      
+      // Share file so user can save/share on physical device
+      await Share.shareXFiles([XFile(file.path)], text: fileName);
       return file.path;
     } catch (e) {
       print('downloadBinaryFile hatası: $e');
       return null;
     }
-  }
-
-  static Future<Directory> _getDownloadDir() async {
-    if (Platform.isAndroid) {
-      // /storage/emulated/0/Downloads — no extra permission needed on Android 10+
-      final dir = Directory('/storage/emulated/0/Download');
-      if (await dir.exists()) return dir;
-    }
-    // Fallback: app documents directory
-    return getApplicationDocumentsDirectory();
   }
 }

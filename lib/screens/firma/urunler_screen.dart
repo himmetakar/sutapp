@@ -752,52 +752,64 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
               },
             ),
           ),
-          // Category Chips Row
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-            child: Row(
-              children: [
-                'Tümü',
-                'Yem',
-                'Vitamin',
-                'İlaç',
-                'Araç Gereç',
-                'Diğer',
-              ].map((category) {
-                final isSelected = _selectedCategory == category;
-                IconData catIcon;
-                switch (category) {
-                  case 'Yem':
-                    catIcon = Icons.eco_rounded;
-                    break;
-                  case 'Vitamin':
-                    catIcon = Icons.science_rounded;
-                    break;
-                  case 'İlaç':
-                    catIcon = Icons.medical_services_rounded;
-                    break;
-                  case 'Araç Gereç':
-                    catIcon = Icons.build_rounded;
-                    break;
-                  case 'Tümü':
-                  default:
-                    catIcon = Icons.category_rounded;
-                    break;
+          // Category Chips Row - dynamically loaded from Firestore
+          StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('urunler_kategoriler')
+                .where('firma', isEqualTo: currentFirmaName)
+                .snapshots(),
+            builder: (context, catSnap) {
+              final List<String> dynamicCats = ['Tümü'];
+              if (catSnap.hasData) {
+                for (var doc in catSnap.data!.docs) {
+                  final name = (doc.data() as Map<String, dynamic>)['ad'] as String? ?? '';
+                  if (name.isNotEmpty) dynamicCats.add(name);
                 }
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8.0),
-                  child: FilterChip(
-                    avatar: Icon(catIcon, size: 16, color: isSelected ? Colors.white : AppColors.gray500),
-                    label: Text(category),
-                    selected: isSelected,
-                    onSelected: (selected) {
-                      setState(() {
-                        _selectedCategory = category;
-                      });
-                    },
-                    selectedColor: AppColors.primary600,
-                    checkmarkColor: Colors.white,
+              }
+              // Ensure selected category is still valid
+              if (!dynamicCats.contains(_selectedCategory)) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted) setState(() => _selectedCategory = 'Tümü');
+                });
+              }
+              return SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                child: Row(
+                  children: dynamicCats.map((category) {
+                    final isSelected = _selectedCategory == category;
+                    IconData catIcon;
+                    switch (category) {
+                      case 'Yem':
+                        catIcon = Icons.eco_rounded;
+                        break;
+                      case 'Vitamin':
+                        catIcon = Icons.science_rounded;
+                        break;
+                      case 'İlaç':
+                        catIcon = Icons.medical_services_rounded;
+                        break;
+                      case 'Araç Gereç':
+                        catIcon = Icons.build_rounded;
+                        break;
+                      case 'Tümü':
+                      default:
+                        catIcon = Icons.category_rounded;
+                        break;
+                    }
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8.0),
+                      child: FilterChip(
+                        avatar: Icon(catIcon, size: 16, color: isSelected ? Colors.white : AppColors.gray500),
+                        label: Text(category),
+                        selected: isSelected,
+                        onSelected: (selected) {
+                          setState(() {
+                            _selectedCategory = category;
+                          });
+                        },
+                        selectedColor: AppColors.primary600,
+                        checkmarkColor: Colors.white,
                     labelStyle: GoogleFonts.inter(
                       fontSize: 12,
                       fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
@@ -811,7 +823,9 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
                   ),
                 );
               }).toList(),
-            ),
+                ),
+              );
+            },
           ),
           const Divider(height: 1),
           // Products Stream
@@ -1662,6 +1676,18 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
     final data = doc.data() as Map<String, dynamic>;
     final uretici = data['uretici'] ?? '';
     final orderId = data['id'] ?? '';
+    DateTime selectedOrderDate = DateTime.now();
+    if (data['tarih'] != null) {
+      try {
+        selectedOrderDate = DateFormat('dd MMMM yyyy', 'tr_TR').parse(data['tarih'].toString());
+      } catch (_) {
+        try {
+          selectedOrderDate = DateFormat('dd.MM.yyyy').parse(data['tarih'].toString());
+        } catch (_) {}
+      }
+    } else if (data['timestamp'] != null) {
+      selectedOrderDate = (data['timestamp'] as Timestamp).toDate();
+    }
     
     // Parse items list
     final List<Map<String, dynamic>> items = data.containsKey('kalemler') && data['kalemler'] is List
@@ -1845,6 +1871,80 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
                         },
                       ),
                       const Divider(),
+                      const SizedBox(height: 12),
+                      // Tarih Seçici (Zorunlu)
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary50,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: AppColors.primary200,
+                            width: 1,
+                          ),
+                        ),
+                        child: InkWell(
+                          onTap: () async {
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: selectedOrderDate,
+                              firstDate: DateTime(2020),
+                              lastDate: DateTime(2030),
+                              locale: const Locale('tr', 'TR'),
+                            );
+                            if (picked != null) {
+                              setStateDialog(() {
+                                selectedOrderDate = picked;
+                              });
+                            }
+                          },
+                          borderRadius: BorderRadius.circular(12),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.calendar_month_rounded,
+                                  color: AppColors.primary600,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        'İşlem Tarihi (Zorunlu)',
+                                        style: GoogleFonts.inter(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                          color: AppColors.gray500,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        DateFormat('dd MMMM yyyy', 'tr_TR').format(selectedOrderDate),
+                                        style: GoogleFonts.inter(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.bold,
+                                          color: AppColors.gray800,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const Icon(
+                                  Icons.chevron_right_rounded,
+                                  color: AppColors.gray400,
+                                  size: 18,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const Divider(),
                       const SizedBox(height: 8),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1896,6 +1996,8 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
                     await doc.reference.update({
                       'kalemler': updatedItems,
                       'toplam': newOrderTotal,
+                      'tarih': DateFormat('dd MMMM yyyy', 'tr_TR').format(selectedOrderDate),
+                      'timestamp': Timestamp.fromDate(selectedOrderDate),
                       // Root fields to keep legacy compatibility
                       if (updatedItems.isNotEmpty) ...{
                         'urun': updatedItems.first['urun'],
@@ -1904,6 +2006,20 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
                         'toplam': newOrderTotal,
                       }
                     });
+
+                    final orderId = data['id'] ?? '';
+                    if (orderId.isNotEmpty) {
+                      final satisQuery = await FirebaseFirestore.instance
+                          .collection('satislar')
+                          .where('orderId', isEqualTo: orderId)
+                          .get();
+                      for (var sDoc in satisQuery.docs) {
+                        await sDoc.reference.update({
+                          'tarih': DateFormat('dd MMMM yyyy', 'tr_TR').format(selectedOrderDate),
+                          'timestamp': Timestamp.fromDate(selectedOrderDate),
+                        });
+                      }
+                    }
 
                     Navigator.pop(ctx);
                     Future.delayed(const Duration(milliseconds: 300), () {
@@ -3028,31 +3144,53 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
                 ),
               ),
 
-              // Category icons horizontal list
-              Container(
-                color: Colors.white,
-                height: 74,
-                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  children: [
-                    _buildCategoryBox('Tümü', Icons.grid_view_rounded, AppColors.primary600, _selectedStoreCategory == 'Tümü', () {
-                      setState(() => _selectedStoreCategory = 'Tümü');
-                    }),
-                    _buildCategoryBox('Araç Gereç', Icons.build_rounded, const Color(0xFF009688), _selectedStoreCategory == 'Araç Gereç', () {
-                      setState(() => _selectedStoreCategory = 'Araç Gereç');
-                    }),
-                    _buildCategoryBox('Vitamin', Icons.science_rounded, const Color(0xFF9C27B0), _selectedStoreCategory == 'Vitamin', () {
-                      setState(() => _selectedStoreCategory = 'Vitamin');
-                    }),
-                    _buildCategoryBox('Yem', Icons.eco_rounded, const Color(0xFF4CAF50), _selectedStoreCategory == 'Yem', () {
-                      setState(() => _selectedStoreCategory = 'Yem');
-                    }),
-                    _buildCategoryBox('İlaç', Icons.medical_services_rounded, const Color(0xFFEF4444), _selectedStoreCategory == 'İlaç', () {
-                      setState(() => _selectedStoreCategory = 'İlaç');
-                    }),
-                  ],
-                ),
+              // Category icons horizontal list - loaded dynamically from Firestore
+              StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('urunler_kategoriler')
+                    .where('firma', whereIn: connectedFirmalar)
+                    .snapshots(),
+                builder: (context, catSnap) {
+                  // Build icon/color maps
+                  IconData _catIcon(String cat) {
+                    if (cat.contains('Araç') || cat.contains('Gereç')) return Icons.build_rounded;
+                    if (cat.contains('Vitamin')) return Icons.science_rounded;
+                    if (cat.contains('Yem')) return Icons.eco_rounded;
+                    if (cat.contains('İlaç') || cat.contains('ilac')) return Icons.medical_services_rounded;
+                    return Icons.folder_rounded;
+                  }
+                  Color _catColor(String cat) {
+                    if (cat.contains('Araç') || cat.contains('Gereç')) return const Color(0xFF009688);
+                    if (cat.contains('Vitamin')) return const Color(0xFF9C27B0);
+                    if (cat.contains('Yem')) return const Color(0xFF4CAF50);
+                    if (cat.contains('İlaç') || cat.contains('ilac')) return const Color(0xFFEF4444);
+                    return const Color(0xFF2196F3);
+                  }
+                  final List<String> storeCats = [];
+                  if (catSnap.hasData) {
+                    for (var doc in catSnap.data!.docs) {
+                      final name = (doc.data() as Map<String, dynamic>)['ad'] as String? ?? '';
+                      if (name.isNotEmpty && !storeCats.contains(name)) storeCats.add(name);
+                    }
+                  }
+                  return Container(
+                    color: Colors.white,
+                    height: 74,
+                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      children: [
+                        _buildCategoryBox('Tümü', Icons.grid_view_rounded, AppColors.primary600, _selectedStoreCategory == 'Tümü', () {
+                          setState(() => _selectedStoreCategory = 'Tümü');
+                        }),
+                        ...storeCats.map((cat) => _buildCategoryBox(
+                          cat, _catIcon(cat), _catColor(cat), _selectedStoreCategory == cat,
+                          () => setState(() => _selectedStoreCategory = cat),
+                        )),
+                      ],
+                    ),
+                  );
+                },
               ),
 
               const Divider(height: 1),
@@ -3183,50 +3321,108 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
                                 ),
                               ),
                               if (inCart)
-                                Container(
-                                  decoration: BoxDecoration(
-                                    color: AppColors.primary50,
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      IconButton(
-                                        icon: const Icon(Icons.remove, size: 14, color: AppColors.primary700),
-                                        padding: EdgeInsets.zero,
-                                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                                        onPressed: () {
-                                          setState(() {
-                                            if (qty > 1) {
-                                              _cart[docId]!['quantity'] = qty - 1;
-                                            } else {
-                                              _cart.remove(docId);
-                                            }
-                                          });
-                                        },
-                                      ),
-                                      Text(
-                                        qty.toString(),
-                                        style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.primary800),
-                                      ),
-                                      IconButton(
-                                        icon: const Icon(Icons.add, size: 14, color: AppColors.primary700),
-                                        padding: EdgeInsets.zero,
-                                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                                        onPressed: () {
-                                          if (qty < stok) {
-                                            setState(() {
-                                              _cart[docId]!['quantity'] = qty + 1;
-                                            });
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      icon: const Icon(Icons.remove_circle_outline, color: Colors.red, size: 22),
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(),
+                                      onPressed: () {
+                                        setState(() {
+                                          if (qty > 1) {
+                                            _cart[docId]!['quantity'] = qty - 1;
                                           } else {
-                                            ScaffoldMessenger.of(context).showSnackBar(
-                                              const SnackBar(content: Text('Yetersiz stok!'), backgroundColor: AppColors.danger),
-                                            );
+                                            _cart.remove(docId);
                                           }
-                                        },
+                                        });
+                                      },
+                                    ),
+                                    const SizedBox(width: 8),
+                                    GestureDetector(
+                                      onTap: () {
+                                        final ctrl = TextEditingController(text: qty.toString());
+                                        showDialog(
+                                          context: context,
+                                          builder: (ctx) => AlertDialog(
+                                            title: Text('Miktar Girin', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 15)),
+                                            content: TextField(
+                                              controller: ctrl,
+                                              keyboardType: TextInputType.number,
+                                              autofocus: true,
+                                              decoration: InputDecoration(
+                                                labelText: 'Miktar ($birim)',
+                                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                                              ),
+                                            ),
+                                            actions: [
+                                              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('İptal')),
+                                              ElevatedButton(
+                                                onPressed: () {
+                                                  final val = int.tryParse(ctrl.text.trim());
+                                                  if (val != null && val > 0) {
+                                                    setState(() {
+                                                      if (val <= stok) {
+                                                        _cart[docId]!['quantity'] = val;
+                                                      } else {
+                                                        _cart[docId]!['quantity'] = stok.toInt();
+                                                        ScaffoldMessenger.of(context).showSnackBar(
+                                                          SnackBar(content: Text('Stok yetersiz! Max: ${stok.toInt()}'), backgroundColor: AppColors.danger),
+                                                        );
+                                                      }
+                                                    });
+                                                  } else if (val == 0) {
+                                                    setState(() => _cart.remove(docId));
+                                                  }
+                                                  Navigator.pop(ctx);
+                                                },
+                                                style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary600, foregroundColor: Colors.white),
+                                                child: const Text('Tamam'),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      },
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            'Adet Gir',
+                                            style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey.shade500),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Container(
+                                            constraints: const BoxConstraints(minWidth: 72, minHeight: 32),
+                                            alignment: Alignment.center,
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                            decoration: BoxDecoration(
+                                              color: Colors.grey.shade100,
+                                              border: Border.all(color: Colors.grey.shade300),
+                                              borderRadius: BorderRadius.circular(6),
+                                            ),
+                                            child: Text(qty.toString(), style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 13, color: const Color(0xFF1E293B))),
+                                          ),
+                                        ],
                                       ),
-                                    ],
-                                  ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    IconButton(
+                                      icon: const Icon(Icons.add_circle_outline, color: Colors.green, size: 22),
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(),
+                                      onPressed: () {
+                                        if (qty < stok) {
+                                          setState(() {
+                                            _cart[docId]!['quantity'] = qty + 1;
+                                          });
+                                        } else {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(content: Text('Yetersiz stok!'), backgroundColor: AppColors.danger),
+                                          );
+                                        }
+                                      },
+                                    ),
+                                  ],
                                 )
                               else
                                 ElevatedButton(
@@ -3274,44 +3470,50 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
           bottomNavigationBar: _cart.isNotEmpty
               ? SafeArea(
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       boxShadow: [
                         BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -4)),
                       ],
                     ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        // Preview list removed as per user request to clean up the bar
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(
-                              '${_cart.length} Ürün Seçildi',
-                              style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray500, fontWeight: FontWeight.bold),
+                            Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '${_cart.length} Ürün Seçildi',
+                                  style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray500, fontWeight: FontWeight.bold),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  '${formatNumber.format(_cart.values.fold(0.0, (sum, item) => sum + (item['fiyat'] as double) * (item['quantity'] as int)))} ₺',
+                                  style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.primary600),
+                                ),
+                              ],
                             ),
-                            const SizedBox(height: 2),
-                            Text(
-                              '${formatNumber.format(_cart.values.fold(0.0, (sum, item) => sum + (item['fiyat'] as double) * (item['quantity'] as int)))} ₺',
-                              style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.primary600),
+                            ElevatedButton(
+                              onPressed: () => _showCartBottomSheet(producerName),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF2563EB),
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                elevation: 0,
+                              ),
+                              child: Text(
+                                'Sepeti Gör',
+                                style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 13),
+                              ),
                             ),
                           ],
-                        ),
-                        ElevatedButton(
-                          onPressed: () => _showCartBottomSheet(producerName),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF2563EB),
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                            elevation: 0,
-                          ),
-                          child: Text(
-                            'Sepeti Gör',
-                            style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 13),
-                          ),
                         ),
                       ],
                     ),
@@ -3402,7 +3604,72 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
                                       setSheetState(() {});
                                     },
                                   ),
-                                  Text('$qty', style: GoogleFonts.inter(fontWeight: FontWeight.bold)),
+                                  // Manuel giriş – sepet
+                                  GestureDetector(
+                                    onTap: () {
+                                      final ctrl = TextEditingController(text: qty.toString());
+                                      showDialog(
+                                        context: context,
+                                        builder: (ctx) => AlertDialog(
+                                          title: Text('Miktar Girin', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 15)),
+                                          content: TextField(
+                                            controller: ctrl,
+                                            keyboardType: TextInputType.number,
+                                            autofocus: true,
+                                            decoration: InputDecoration(
+                                              labelText: 'Miktar ($unit)',
+                                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                                            ),
+                                          ),
+                                          actions: [
+                                            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('İptal')),
+                                            ElevatedButton(
+                                              onPressed: () {
+                                                final val = int.tryParse(ctrl.text.trim());
+                                                if (val != null && val > 0) {
+                                                  setState(() {
+                                                    if (val <= stock) {
+                                                      _cart[key]!['quantity'] = val;
+                                                    } else {
+                                                      _cart[key]!['quantity'] = stock.toInt();
+                                                    }
+                                                  });
+                                                  setSheetState(() {});
+                                                } else if (val == 0) {
+                                                  setState(() => _cart.remove(key));
+                                                  setSheetState(() {});
+                                                }
+                                                Navigator.pop(ctx);
+                                              },
+                                              style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary600, foregroundColor: Colors.white),
+                                              child: const Text('Tamam'),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    },
+                                     child: Column(
+                                       mainAxisSize: MainAxisSize.min,
+                                       children: [
+                                         Text(
+                                           'Adet Gir',
+                                           style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey.shade500),
+                                         ),
+                                         const SizedBox(height: 2),
+                                         Container(
+                                           constraints: const BoxConstraints(minWidth: 80, minHeight: 36),
+                                           alignment: Alignment.center,
+                                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                           decoration: BoxDecoration(
+                                             color: Colors.grey.shade100,
+                                             border: Border.all(color: Colors.grey.shade300),
+                                             borderRadius: BorderRadius.circular(6),
+                                           ),
+                                           child: Text('$qty', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 13, color: const Color(0xFF1E293B))),
+                                         ),
+                                       ],
+                                     ),
+                                  ),
                                   IconButton(
                                     icon: const Icon(Icons.add_circle_outline, color: Colors.green),
                                     onPressed: () {
@@ -4220,7 +4487,7 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(savedPath != null
-                  ? 'Excel dosyası indirildi: $savedPath'
+                  ? 'Rapor Excel dosyası paylaşıldı/kaydedildi!'
                   : 'Excel dosyası başarıyla indirildi!'),
               backgroundColor: AppColors.success,
             ),

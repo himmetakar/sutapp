@@ -244,13 +244,112 @@ class _AdminFirmalarState extends State<AdminFirmalar> {
       },
     );
   }
+  void _confirmDeleteFirma(BuildContext context, String docId, String firmaAd) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            const Icon(Icons.warning_amber_rounded, color: Colors.red),
+            const SizedBox(width: 8),
+            Text('Firmayı Sil', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
+          ],
+        ),
+        content: Text(
+          '"$firmaAd" firmasını silmek istediğinize emin misiniz?\n\nBu işlem geri alınamaz.',
+          style: GoogleFonts.inter(fontSize: 13, color: AppColors.gray700),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Vazgeç', style: GoogleFonts.inter(color: AppColors.gray500)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await FirebaseFirestore.instance.collection('firmalar').doc(docId).delete();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('$firmaAd silindi.'),
+                    backgroundColor: Colors.red[700],
+                  ),
+                );
+              }
+            },
+            child: const Text('Evet, Sil'),
+          ),
+        ],
+      ),
+    );
+  }
 
-  void _showTransactionDialog(BuildContext context, String txnType) {
+  void _confirmDeleteTransaction(BuildContext context, String docId, String tip, double tutar) {
+    final fmt = NumberFormat('#,##0.00', 'tr_TR');
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            const Icon(Icons.warning_amber_rounded, color: Colors.red),
+            const SizedBox(width: 8),
+            Text('İşlemi Sil', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
+          ],
+        ),
+        content: Text(
+          '"$tip — ${fmt.format(tutar)} ₺" kaydını silmek istediğinize emin misiniz?\n\nBu işlem geri alınamaz.',
+          style: GoogleFonts.inter(fontSize: 13, color: AppColors.gray700),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Vazgeç', style: GoogleFonts.inter(color: AppColors.gray500)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await FirebaseFirestore.instance.collection('firma_islemleri').doc(docId).delete();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('İşlem silindi.'), backgroundColor: Colors.red),
+                );
+              }
+            },
+            child: const Text('Evet, Sil'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showTransactionDialog(
+    BuildContext context,
+    String txnType, {
+    String? docId,
+    Map<String, dynamic>? existingTxnData,
+  }) {
+    final isEditing = docId != null;
     final formKey = GlobalKey<FormState>();
-    final tutarCtrl = TextEditingController();
-    final aciklamaCtrl = TextEditingController();
-    String? selectedFirma;
-    String selectedYontem = 'Nakit';
+    final tutarCtrl = TextEditingController(
+      text: existingTxnData != null
+          ? (existingTxnData['tutar'] as num?)?.toString() ?? ''
+          : '',
+    );
+    final aciklamaCtrl = TextEditingController(
+      text: existingTxnData?['aciklama'] ?? '',
+    );
+    String? selectedFirma = existingTxnData?['firmaAd'];
+    String selectedYontem = existingTxnData?['yontem'] ?? 'Nakit';
 
     showDialog(
       context: context,
@@ -260,8 +359,12 @@ class _AdminFirmalarState extends State<AdminFirmalar> {
             return AlertDialog(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               title: Text(
-                '$txnType Ekle',
-                style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16, color: txnType == 'Tahsilat' ? AppColors.successDark : AppColors.dangerDark),
+                isEditing ? 'İşlemi Düzenle' : '$txnType Ekle',
+                style: GoogleFonts.inter(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  color: txnType == 'Tahsilat' ? AppColors.successDark : AppColors.dangerDark,
+                ),
               ),
               content: Form(
                 key: formKey,
@@ -338,19 +441,30 @@ class _AdminFirmalarState extends State<AdminFirmalar> {
                   onPressed: () async {
                     if (formKey.currentState!.validate() && selectedFirma != null) {
                       final double tutar = double.parse(tutarCtrl.text.replaceAll(',', '.'));
-                      await FirebaseFirestore.instance.collection('firma_islemleri').add({
+                      final data = {
                         'firmaAd': selectedFirma,
                         'tip': txnType,
                         'tutar': tutar,
                         'yontem': selectedYontem,
                         'aciklama': aciklamaCtrl.text.trim(),
                         'tarih': DateFormat('dd.MM.yyyy').format(DateTime.now()),
-                        'timestamp': FieldValue.serverTimestamp(),
-                      });
+                        if (!isEditing) 'timestamp': FieldValue.serverTimestamp(),
+                      };
+                      if (isEditing) {
+                        await FirebaseFirestore.instance
+                            .collection('firma_islemleri')
+                            .doc(docId)
+                            .update(data);
+                      } else {
+                        data['timestamp'] = FieldValue.serverTimestamp();
+                        await FirebaseFirestore.instance
+                            .collection('firma_islemleri')
+                            .add(data);
+                      }
                       Navigator.pop(ctx);
                     }
                   },
-                  child: const Text('Kaydet'),
+                  child: Text(isEditing ? 'Güncelle' : 'Kaydet'),
                 ),
               ],
             );
@@ -466,6 +580,23 @@ class _AdminFirmalarState extends State<AdminFirmalar> {
                                           child: const Icon(
                                             Icons.edit_outlined,
                                             color: Color(0xFF3B82F6),
+                                            size: 18,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      GestureDetector(
+                                        onTap: () => _confirmDeleteFirma(context, doc.id, ad),
+                                        child: Container(
+                                          width: 36,
+                                          height: 36,
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFFEF2F2),
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                          child: const Icon(
+                                            Icons.delete_outline_rounded,
+                                            color: Color(0xFFEF4444),
                                             size: 18,
                                           ),
                                         ),
@@ -911,9 +1042,9 @@ class _AdminFirmalarState extends State<AdminFirmalar> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: ElevatedButton.icon(
-                          onPressed: () => _showTransactionDialog(context, 'Ödeme'),
+                          onPressed: () => _showTransactionDialog(context, 'Satış'),
                           icon: const Icon(Icons.remove_rounded, color: Colors.white, size: 18),
-                          label: Text('Ödeme', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 14)),
+                          label: Text('Satış', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 14)),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFFEF4444),
                             foregroundColor: Colors.white,
@@ -1033,6 +1164,57 @@ class _AdminFirmalarState extends State<AdminFirmalar> {
                                     ),
                                   ),
                                 ],
+                                const SizedBox(height: 12),
+                                const Divider(height: 1),
+                                const SizedBox(height: 10),
+                                // Action buttons row
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.end,
+                                  children: [
+                                    // Edit button
+                                    GestureDetector(
+                                      onTap: () => _showTransactionDialog(
+                                        context,
+                                        tip,
+                                        docId: doc.id,
+                                        existingTxnData: data,
+                                      ),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFEFF6FF),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            const Icon(Icons.edit_outlined, color: Color(0xFF3B82F6), size: 14),
+                                            const SizedBox(width: 4),
+                                            Text('Düzenle', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF3B82F6))),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    // Delete button
+                                    GestureDetector(
+                                      onTap: () => _confirmDeleteTransaction(context, doc.id, tip, tutar),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFFEF2F2),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            const Icon(Icons.delete_outline_rounded, color: Color(0xFFEF4444), size: 14),
+                                            const SizedBox(width: 4),
+                                            Text('Sil', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFFEF4444))),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ],
                             ),
                           );
@@ -1170,6 +1352,17 @@ class _AdminFirmalarState extends State<AdminFirmalar> {
           .get();
       double digerGiderler = 0.0;
       for (var doc in expensesSnap.docs) {
+        final val = doc.data()['tutar'];
+        if (val is num) digerGiderler += val.toDouble();
+      }
+
+      // 9b. Add cari_islemler (odeme to suppliers) to digerGiderler
+      final cariIslemSnap = await FirebaseFirestore.instance
+          .collection('cari_islemler')
+          .where('firma', isEqualTo: firmaName)
+          .where('tip', isEqualTo: 'odeme')
+          .get();
+      for (var doc in cariIslemSnap.docs) {
         final val = doc.data()['tutar'];
         if (val is num) digerGiderler += val.toDouble();
       }

@@ -85,6 +85,36 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
     );
   }
 
+  void _deleteSingleProducer(DocumentSnapshot doc) {
+    final name = (doc.data() as Map<String, dynamic>?)?['name'] ?? '';
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Üreticiyi Sil', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
+        content: Text('$name isimli üreticiyi tamamen silmek istediğinize emin misiniz? Bu işlem geri alınamaz.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('İptal', style: GoogleFonts.inter(color: AppColors.gray500)),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await doc.reference.delete();
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Üretici başarıyla silindi!'), backgroundColor: AppColors.success),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger, foregroundColor: Colors.white),
+            child: const Text('Sil'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _assignSelectedProducers(List<DocumentSnapshot> filteredDocs) async {
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final currentFirmaName = auth.user?.displayName ?? '';
@@ -938,68 +968,73 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
   Future<int> _processExcelUpload(List<int> bytes, String currentFirmaName) async {
     final decoded = Excel.decodeBytes(bytes);
     int addedCount = 0;
-    
+
     for (var table in decoded.tables.keys) {
       final t = decoded.tables[table]!;
       if (t.rows.isEmpty) continue;
-      
-      // The first row is headers
-      final headers = t.rows.first.map((cell) => cell?.value?.toString().trim().toLowerCase() ?? '').toList();
-      
-      // Let's find column indexes
-      int adIdx = headers.indexOf('ad');
-      int soyadIdx = headers.indexOf('soyad');
-      int telIdx = headers.indexOf('telefon');
-      int bolgeIdx = headers.indexOf('bölge');
-      int tcIdx = headers.indexOf('tc no');
-      int grupIdx = headers.indexOf('grup');
-      int birlikIdx = headers.indexOf('birlik');
-      int tipIdx = headers.indexOf('müşteri türü (sut/yem)');
-      int sutTurIdx = headers.indexOf('süt türü');
-      
-      // Fallback index search by name if headers not matched exactly
-      if (adIdx == -1) adIdx = 0;
-      if (soyadIdx == -1) soyadIdx = 1;
-      if (telIdx == -1) telIdx = 2;
-      if (bolgeIdx == -1) bolgeIdx = 3;
-      if (tcIdx == -1) tcIdx = 4;
-      if (grupIdx == -1) grupIdx = 5;
+
+      // The first row is headers — normalize them to handle Turkish char errors
+      final headers = t.rows.first
+          .map((cell) => _normalizeTurkish(cell?.value?.toString().trim() ?? '').toLowerCase())
+          .toList();
+
+      // Let's find column indexes — try both correct and ASCII-only versions
+      int adIdx      = _findHeader(headers, ['ad']);
+      int soyadIdx   = _findHeader(headers, ['soyad']);
+      int telIdx     = _findHeader(headers, ['telefon', 'tel']);
+      int bolgeIdx   = _findHeader(headers, ['bölge', 'bolge', 'ilçe', 'ilce', 'bölge / ilçe', 'bolge / ilce']);
+      int tcIdx      = _findHeader(headers, ['tc no', 'tc', 'vergi no', 'tcno']);
+      int grupIdx    = _findHeader(headers, ['grup', 'group']);
+      int birlikIdx  = _findHeader(headers, ['birlik']);
+      int tipIdx     = _findHeader(headers, ['müşteri türü (sut/yem)', 'musteri turu (sut/yem)', 'müşteri türü', 'musteri turu', 'tip']);
+      int sutTurIdx  = _findHeader(headers, ['süt türü', 'sut turu', 'süt turu', 'sut türü', 'milktype']);
+
+      // Fallback index search by position if no header matched
+      if (adIdx == -1)     adIdx = 0;
+      if (soyadIdx == -1)  soyadIdx = 1;
+      if (telIdx == -1)    telIdx = 2;
+      if (bolgeIdx == -1)  bolgeIdx = 3;
+      if (tcIdx == -1)     tcIdx = 4;
+      if (grupIdx == -1)   grupIdx = 5;
       if (birlikIdx == -1) birlikIdx = 6;
-      if (tipIdx == -1) tipIdx = 7;
+      if (tipIdx == -1)    tipIdx = 7;
       if (sutTurIdx == -1) sutTurIdx = 8;
-      
+
       // Iterate through data rows
       for (int i = 1; i < t.rows.length; i++) {
         final row = t.rows[i];
         if (row.isEmpty) continue;
-        
+
         String getValue(int idx) {
           if (idx >= 0 && idx < row.length) {
             return row[idx]?.value?.toString().trim() ?? '';
           }
           return '';
         }
-        
-        final String adVal = getValue(adIdx);
-        final String soyadVal = getValue(soyadIdx);
-        final String telVal = getValue(telIdx);
-        final String bolgeVal = getValue(bolgeIdx);
-        final String tcVal = getValue(tcIdx);
-        final String grupVal = getValue(grupIdx);
-        final String birlikVal = getValue(birlikIdx);
-        final String customerTypeVal = getValue(tipIdx).toLowerCase();
-        final String lastMilkTypeVal = getValue(sutTurIdx);
-        
-        if (adVal.isEmpty || telVal.isEmpty) continue; // Ad and Telefon are mandatory
-        
-        final String name = '$adVal $soyadVal'.trim();
-        final String phone = telVal;
-        final String bolge = bolgeVal.isEmpty ? 'Merkez' : bolgeVal;
-        final String group = grupVal.isEmpty ? 'Genel' : grupVal;
-        final String birlik = birlikVal.isEmpty ? 'Yok' : birlikVal;
-        final String customerType = (customerTypeVal == 'yem') ? 'yem' : 'sut';
-        final String lastMilkType = lastMilkTypeVal.isEmpty ? 'Soğuk Süt' : lastMilkTypeVal;
-        
+
+        final String adVal           = getValue(adIdx);
+        final String soyadVal        = getValue(soyadIdx);
+        final String telVal          = getValue(telIdx);
+        final String bolgeRaw        = getValue(bolgeIdx);
+        final String tcVal           = getValue(tcIdx);
+        final String grupRaw         = getValue(grupIdx);
+        final String birlikRaw       = getValue(birlikIdx);
+        final String customerTypeRaw = getValue(tipIdx);
+        final String lastMilkTypeRaw = getValue(sutTurIdx);
+
+        if (adVal.isEmpty || telVal.isEmpty) continue; // Ad ve Telefon zorunlu
+
+        final String name         = '$adVal $soyadVal'.trim();
+        final String phone        = telVal;
+        // Normalize text fields for Turkish character mistakes
+        final String bolge        = bolgeRaw.isEmpty  ? 'Merkez' : _capitalizeTurkish(bolgeRaw);
+        final String group        = grupRaw.isEmpty   ? 'Genel'  : _capitalizeTurkish(grupRaw);
+        final String birlik       = birlikRaw.isEmpty ? 'Yok'    : _capitalizeTurkish(birlikRaw);
+        final String customerType = _normalizeCustomerType(customerTypeRaw);
+        final String lastMilkType = customerType == 'yem'
+            ? 'Yok'
+            : _normalizeMilkType(lastMilkTypeRaw);
+
         // Check if producer with this phone number already exists
         final query = await _db.collection('ureticiler').where('phone', isEqualTo: phone).limit(1).get();
         if (query.docs.isNotEmpty) {
@@ -1034,13 +1069,93 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
             'customerType': customerType,
           });
         }
-        
+
         addedCount++;
       }
     }
-    
+
     return addedCount;
   }
+
+  /// Finds the first matching header index from a list of possible names.
+  int _findHeader(List<String> headers, List<String> candidates) {
+    for (final candidate in candidates) {
+      final idx = headers.indexOf(candidate);
+      if (idx != -1) return idx;
+    }
+    return -1;
+  }
+
+  /// Converts ASCII-only Turkish text to proper Turkish characters.
+  /// e.g. "soguk sut" → "soğuk süt", "Bolge" → "Bölge"
+  String _normalizeTurkish(String input) {
+    // Common ASCII → Turkish replacements (case-insensitive mapping applied after lowercasing)
+    final lower = input.toLowerCase();
+    return lower
+        .replaceAll(RegExp(r'\bbolge\b'), 'bölge')
+        .replaceAll(RegExp(r'\bilce\b'),  'ilçe')
+        .replaceAll(RegExp(r'\bsoguk\b'), 'soğuk')
+        .replaceAll(RegExp(r'\bsicak\b'), 'sıcak')
+        .replaceAll(RegExp(r'\bsut\b'),   'süt')
+        .replaceAll(RegExp(r'\bmusteri\b'), 'müşteri')
+        .replaceAll(RegExp(r'\bturu\b'),  'türü')
+        .replaceAll(RegExp(r'\btur\b'),   'tür')
+        .replaceAll(RegExp(r'\bkoyun\b'), 'koyun') // already correct
+        .replaceAll(RegExp(r'\bkeci\b'),  'keçi')
+        .replaceAll(RegExp(r'\bboyle\b'), 'böyle')
+        .replaceAll(RegExp(r'\bbilgi\b'), 'bilgi');
+  }
+
+  /// Capitalizes a Turkish string properly (first letter uppercase, rest lowercase).
+  String _capitalizeTurkish(String input) {
+    if (input.isEmpty) return input;
+    // Apply Turkish normalization first, then capitalize
+    final normalized = input.trim();
+    // Simple title-case: capitalize each word
+    return normalized.split(' ').map((word) {
+      if (word.isEmpty) return word;
+      return word[0].toUpperCase() + word.substring(1).toLowerCase();
+    }).join(' ');
+  }
+
+  /// Normalizes customer type field: handles typos like "süt", "sut", "yem", "evet" → 'sut' or 'yem'.
+  String _normalizeCustomerType(String raw) {
+    final lower = raw.trim().toLowerCase();
+    if (lower.contains('yem') || lower == 'y') return 'yem';
+    return 'sut';
+  }
+
+  /// Normalizes milk type with Turkish character correction.
+  /// Handles: "soguk sut", "Soğuk Süt", "A kalite", "sicak", "B kalite", etc.
+  String _normalizeMilkType(String raw) {
+    if (raw.trim().isEmpty) return 'Soğuk Süt';
+    final lower = raw.trim().toLowerCase();
+
+    // Soğuk Süt variants
+    if (lower.contains('so') && lower.contains('s') ||
+        lower.contains('soğuk') ||
+        lower.contains('soguk') ||
+        lower == 'a kalite' ||
+        lower == 'a') {
+      return 'Soğuk Süt';
+    }
+    // Sıcak Süt variants
+    if (lower.contains('sıcak') ||
+        lower.contains('sicak') ||
+        lower == 'b kalite' ||
+        lower == 'b') {
+      return 'Sıcak Süt';
+    }
+    // C Kalite
+    if (lower.contains('c kalite') || lower == 'c') return 'C kalite';
+    // D Kalite
+    if (lower.contains('d kalite') || lower == 'd') return 'D kalite';
+
+    // Return original with Turkish capitalization as fallback
+    return _capitalizeTurkish(raw);
+  }
+
+
 
   void _showBulkAddProducerDialog() {
     final auth = Provider.of<AuthProvider>(context, listen: false);
@@ -1083,7 +1198,7 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
                                   content: Text(savedPath != null
-                                      ? 'Şablon indirildi: $savedPath'
+                                      ? 'Şablon Excel dosyası paylaşıldı/kaydedildi!'
                                       : 'Şablon Excel indirildi!'),
                                   backgroundColor: AppColors.success,
                                   duration: const Duration(seconds: 5),
@@ -2148,137 +2263,191 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
                                         ? Border.all(color: Colors.amber[200]!, width: 1)
                                         : null),
                               ),
-                              child: Row(children: [
-                                if (isSelecting)
-                                  Padding(
-                                    padding: const EdgeInsets.only(right: 8),
-                                    child: Checkbox(
-                                      value: isSelected,
-                                      activeColor: AppColors.primary600,
-                                      onChanged: (val) {
-                                        setState(() {
-                                          if (val == true) {
-                                            _selectedProducerIds.add(doc.id);
-                                          } else {
-                                            _selectedProducerIds.remove(doc.id);
-                                          }
-                                        });
-                                      },
-                                    ),
-                                  )
-                                else
-                                  Container(
-                                    width: 38, height: 38,
-                                    decoration: BoxDecoration(gradient: AppColors.primaryGradient, borderRadius: BorderRadius.circular(10)),
-                                    child: Center(child: Text(name.isNotEmpty ? name[0] : 'Ü', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white))),
-                                  ),
-                                const SizedBox(width: 12),
-                                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                  Text(name, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600)),
-                                  const SizedBox(height: 3),
-                                  Row(children: [
-                                    const Icon(Icons.phone_rounded, size: 11, color: AppColors.gray400),
-                                    const SizedBox(width: 4),
-                                    Expanded(
-                                      child: Text(
-                                        phone,
-                                        style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                  ]),
-                                  const SizedBox(height: 5),
-                                  Wrap(
-                                    spacing: 6,
-                                    runSpacing: 4,
-                                    children: [
-                                      StatusBadge.info(group),
-                                      if (birlik != 'Yok') ...[
-                                        StatusBadge.active(birlik),
-                                      ],
-                                    ],
-                                  ),
-                                  const SizedBox(height: 5),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
                                   Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      const Icon(Icons.location_on_rounded, size: 11, color: AppColors.gray400),
-                                      const SizedBox(width: 4),
-                                      Expanded(
-                                        child: Text(
-                                          (bolge.isNotEmpty || group.isNotEmpty)
-                                              ? '$bolge${group.isNotEmpty ? " / $group" : ""}'
-                                              : (hasLocation ? 'Konum Kayıtlı' : 'Konum Girilmemiş'),
-                                          style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500),
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      MapLinkIcon(
-                                        latitude: (u['latitude'] as num?)?.toDouble(),
-                                        longitude: (u['longitude'] as num?)?.toDouble(),
-                                        mapsLink: u['mapsLink'] as String?,
-                                        fallbackAddress: (bolge.isNotEmpty || group.isNotEmpty) ? '$bolge $group' : name,
-                                      ),
-                                    ],
-                                  ),
-                                ])),
-                                const SizedBox(width: 8),
-                                if (!isSelecting)
-                                  Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Text(
-                                            'Sipariş İzni',
-                                            style: GoogleFonts.inter(fontSize: 8, fontWeight: FontWeight.bold, color: AppColors.gray500),
+                                      if (isSelecting)
+                                        Padding(
+                                          padding: const EdgeInsets.only(right: 8),
+                                          child: Checkbox(
+                                            value: isSelected,
+                                            activeColor: AppColors.primary600,
+                                            onChanged: (val) {
+                                              setState(() {
+                                                if (val == true) {
+                                                  _selectedProducerIds.add(doc.id);
+                                                } else {
+                                                  _selectedProducerIds.remove(doc.id);
+                                                }
+                                              });
+                                            },
                                           ),
-                                          SizedBox(
-                                            height: 28,
-                                            child: Transform.scale(
-                                              scale: 0.7,
-                                              child: Switch(
-                                                value: u['siparisIzni'] ?? true,
-                                                activeColor: AppColors.primary600,
-                                                onChanged: (val) async {
-                                                  await doc.reference.update({'siparisIzni': val});
-                                                },
+                                        )
+                                      else
+                                        Container(
+                                          width: 38,
+                                          height: 38,
+                                          decoration: BoxDecoration(
+                                            gradient: AppColors.primaryGradient,
+                                            borderRadius: BorderRadius.circular(10),
+                                          ),
+                                          child: Center(
+                                            child: Text(
+                                              name.isNotEmpty ? name[0] : 'Ü',
+                                              style: GoogleFonts.inter(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w700,
+                                                color: Colors.white,
                                               ),
                                             ),
                                           ),
-                                        ],
-                                      ),
-                                      const SizedBox(width: 4),
-                                      IconButton(
-                                        padding: EdgeInsets.zero,
-                                        constraints: const BoxConstraints(),
-                                        icon: const Icon(Icons.badge_rounded, color: Colors.orange, size: 20),
-                                        onPressed: () {
-                                          context.push('/firma/dijital-kart?name=$name');
-                                        },
-                                      ),
-                                      const SizedBox(width: 4),
-                                      IconButton(
-                                        padding: EdgeInsets.zero,
-                                        constraints: const BoxConstraints(),
-                                        icon: const Icon(Icons.description_rounded, color: AppColors.primary600, size: 20),
-                                        onPressed: () {
-                                          context.push('/firma/hesap-ozeti?name=$name');
-                                        },
-                                      ),
-                                      const SizedBox(width: 4),
-                                      IconButton(
-                                        padding: EdgeInsets.zero,
-                                        constraints: const BoxConstraints(),
-                                        icon: const Icon(Icons.edit_rounded, color: AppColors.gray500, size: 20),
-                                        onPressed: () {
-                                          _showEditProducerDialog(doc);
-                                        },
+                                        ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              name,
+                                              style: GoogleFonts.inter(
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 3),
+                                            Row(
+                                              children: [
+                                                const Icon(Icons.phone_rounded, size: 11, color: AppColors.gray400),
+                                                const SizedBox(width: 4),
+                                                Expanded(
+                                                  child: Text(
+                                                    phone,
+                                                    style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500),
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 5),
+                                            Wrap(
+                                              spacing: 6,
+                                              runSpacing: 4,
+                                              children: [
+                                                StatusBadge.info(group),
+                                                if (birlik != 'Yok') ...[
+                                                  StatusBadge.active(birlik),
+                                                ],
+                                              ],
+                                            ),
+                                            const SizedBox(height: 5),
+                                            Row(
+                                              children: [
+                                                const Icon(Icons.location_on_rounded, size: 11, color: AppColors.gray400),
+                                                const SizedBox(width: 4),
+                                                Expanded(
+                                                  child: Text(
+                                                    (bolge.isNotEmpty || group.isNotEmpty)
+                                                        ? '$bolge${group.isNotEmpty ? " / $group" : ""}'
+                                                        : (hasLocation ? 'Konum Kayıtlı' : 'Konum Girilmemiş'),
+                                                    style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500),
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 6),
+                                                MapLinkIcon(
+                                                  latitude: (u['latitude'] as num?)?.toDouble(),
+                                                  longitude: (u['longitude'] as num?)?.toDouble(),
+                                                  mapsLink: u['mapsLink'] as String?,
+                                                  fallbackAddress: (bolge.isNotEmpty || group.isNotEmpty) ? '$bolge $group' : name,
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
                                       ),
                                     ],
                                   ),
-                              ]),
+                                  if (!isSelecting) ...[
+                                    const Padding(
+                                      padding: EdgeInsets.symmetric(vertical: 8),
+                                      child: Divider(height: 1, color: AppColors.gray200),
+                                    ),
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Text(
+                                              'Sipariş İzni: ',
+                                              style: GoogleFonts.inter(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w500,
+                                                color: AppColors.gray600,
+                                              ),
+                                            ),
+                                            SizedBox(
+                                              height: 24,
+                                              child: Transform.scale(
+                                                scale: 0.8,
+                                                child: Switch(
+                                                  value: u['siparisIzni'] ?? true,
+                                                  activeColor: AppColors.primary600,
+                                                  onChanged: (val) async {
+                                                    await doc.reference.update({'siparisIzni': val});
+                                                  },
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            IconButton(
+                                              padding: const EdgeInsets.all(4),
+                                              constraints: const BoxConstraints(),
+                                              icon: const Icon(Icons.badge_rounded, color: Colors.orange, size: 20),
+                                              onPressed: () {
+                                                context.push('/firma/dijital-kart?name=$name');
+                                              },
+                                            ),
+                                            const SizedBox(width: 12),
+                                            IconButton(
+                                              padding: const EdgeInsets.all(4),
+                                              constraints: const BoxConstraints(),
+                                              icon: const Icon(Icons.description_rounded, color: AppColors.primary600, size: 20),
+                                              onPressed: () {
+                                                context.push('/firma/hesap-ozeti?name=$name');
+                                              },
+                                            ),
+                                            const SizedBox(width: 12),
+                                            IconButton(
+                                              padding: const EdgeInsets.all(4),
+                                              constraints: const BoxConstraints(),
+                                              icon: const Icon(Icons.edit_rounded, color: AppColors.gray500, size: 20),
+                                              onPressed: () {
+                                                _showEditProducerDialog(doc);
+                                              },
+                                            ),
+                                            const SizedBox(width: 12),
+                                            IconButton(
+                                              padding: const EdgeInsets.all(4),
+                                              constraints: const BoxConstraints(),
+                                              icon: const Icon(Icons.delete_rounded, color: Colors.red, size: 20),
+                                              onPressed: () {
+                                                _deleteSingleProducer(doc);
+                                              },
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ],
+                              ),
                             ),
                           );
                         },

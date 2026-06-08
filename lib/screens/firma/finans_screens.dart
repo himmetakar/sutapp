@@ -178,7 +178,14 @@ class _FinansalGenelBakisScreenState extends State<FinansalGenelBakisScreen> {
                             .where('firma', isEqualTo: currentFirmaName)
                             .snapshots(),
                         builder: (context, avansSnapshot) {
-                          double totalFatura = 0.0;
+                          return StreamBuilder<QuerySnapshot>(
+                            stream: FirebaseFirestore.instance
+                                .collection('cari_islemler')
+                                .where('firma', isEqualTo: currentFirmaName)
+                                .where('tip', isEqualTo: 'odeme')
+                                .snapshots(),
+                            builder: (context, cariIslemSnapshot) {
+                              double totalFatura = 0.0;
                           int faturaCount = 0;
                           double totalGider = 0.0;
                           int giderCount = 0;
@@ -280,6 +287,20 @@ class _FinansalGenelBakisScreenState extends State<FinansalGenelBakisScreen> {
                                 avansCount++;
                                 final double val = (data['tutar'] as num?)?.toDouble() ?? 0.0;
                                 totalAvans += val;
+                              }
+                            }
+                          }
+
+                          // Parse cari_islemler (odeme to suppliers)
+                          if (cariIslemSnapshot.hasData) {
+                            final docs = cariIslemSnapshot.data!.docs;
+                            for (var doc in docs) {
+                              final data = doc.data() as Map<String, dynamic>;
+                              final t = parseDocDate(data);
+                              if (t != null && t.year == _selectedDate.year && t.month == _selectedDate.month) {
+                                giderCount++;
+                                final double val = (data['tutar'] as num?)?.toDouble() ?? 0.0;
+                                totalGider += val;
                               }
                             }
                           }
@@ -405,6 +426,8 @@ class _FinansalGenelBakisScreenState extends State<FinansalGenelBakisScreen> {
                                 ),
                               ),
                             ],
+                          );
+                            },
                           );
                         },
                       );
@@ -1582,7 +1605,24 @@ class GiderYonetimiScreen extends StatefulWidget {
 class _GiderYonetimiScreenState extends State<GiderYonetimiScreen> {
   DateTime _selectedDate = DateTime.now();
 
-  void _showAddExpenseDialog(String currentFirmaName) {
+  void _showAddExpenseDialog(String currentFirmaName) async {
+    // Üreticileri önceden yükle
+    List<String> ureticiler = [];
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('ureticiler')
+          .where('firmalar', arrayContains: currentFirmaName)
+          .get();
+      ureticiler = snap.docs
+          .map((d) => d.data()['name'] as String? ?? '')
+          .where((n) => n.isNotEmpty)
+          .toSet()
+          .toList()
+        ..sort();
+    } catch (_) {}
+
+    if (!mounted) return;
+
     final tutarCtrl = TextEditingController();
     final aciklamaCtrl = TextEditingController(text: 'Yakıt');
     final ekAciklamaCtrl = TextEditingController();
@@ -1591,6 +1631,7 @@ class _GiderYonetimiScreenState extends State<GiderYonetimiScreen> {
     String selectedPersonelGideri = 'Maaş';
     String selectedGenelGideri = 'Elektrik';
     String selectedBakimGideri = 'Araç';
+    String? selectedMusteri = ureticiler.isNotEmpty ? ureticiler.first : null;
 
     showDialog(
       context: context,
@@ -1721,10 +1762,49 @@ class _GiderYonetimiScreenState extends State<GiderYonetimiScreen> {
                                       }
                                     },
                                   )
-                                : TextField(
-                                    controller: aciklamaCtrl,
-                                    decoration: const InputDecoration(labelText: 'Açıklama (Örn: Gider Detayı)'),
-                                  ),
+                                : selectedKategori == 'musteri'
+                                    ? Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          if (ureticiler.isNotEmpty) ...[
+                                            Text('Üretici Seçin',
+                                                style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.gray500)),
+                                            const SizedBox(height: 6),
+                                            DropdownButtonFormField<String>(
+                                              value: selectedMusteri,
+                                              decoration: const InputDecoration(
+                                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                                border: OutlineInputBorder(),
+                                              ),
+                                              items: ureticiler
+                                                  .map((u) => DropdownMenuItem(value: u, child: Text(u)))
+                                                  .toList(),
+                                              onChanged: (val) => setDialogState(() => selectedMusteri = val),
+                                            ),
+                                            const SizedBox(height: 12),
+                                          ] else ...[
+                                            Container(
+                                              padding: const EdgeInsets.all(10),
+                                              decoration: BoxDecoration(
+                                                color: AppColors.warningLight,
+                                                borderRadius: BorderRadius.circular(8),
+                                              ),
+                                              child: Text('Bu firmaya bağlı üretici bulunamadı.',
+                                                  style: GoogleFonts.inter(fontSize: 12, color: AppColors.warning)),
+                                            ),
+                                            const SizedBox(height: 12),
+                                          ],
+                                          TextField(
+                                            controller: aciklamaCtrl,
+                                            decoration: const InputDecoration(labelText: 'Açıklama (Opsiyonel)'),
+                                          ),
+                                        ],
+                                      )
+                                    : TextField(
+                                        controller: aciklamaCtrl,
+                                        decoration: const InputDecoration(labelText: 'Açıklama (Örn: Gider Detayı)'),
+                                      ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: ekAciklamaCtrl,
@@ -1751,20 +1831,29 @@ class _GiderYonetimiScreenState extends State<GiderYonetimiScreen> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
               onPressed: () async {
-                final double? tutar = double.tryParse(tutarCtrl.text);
+                final double? tutar = double.tryParse(tutarCtrl.text.replaceAll(',', '.'));
                 final aciklama = aciklamaCtrl.text;
-                if (tutar == null || tutar <= 0 || aciklama.isEmpty) return;
+                if (tutar == null || tutar <= 0) return;
+                // Müşteri giderlerinde açıklama opsiyonel ama diğerlerinde zorunlu
+                if (selectedKategori != 'musteri' && aciklama.isEmpty) return;
 
-                await FirebaseFirestore.instance.collection('giderler').add({
+                final giderData = <String, dynamic>{
                   'kategori': selectedKategori,
-                  'aciklama': aciklama,
+                  'aciklama': aciklama.isEmpty ? 'Müşteri Gideri' : aciklama,
                   'ekAciklama': ekAciklamaCtrl.text,
                   'tutar': tutar,
                   'tarih': DateFormat('dd.MM.yyyy').format(DateTime.now()),
                   'firma': currentFirmaName,
                   'timestamp': FieldValue.serverTimestamp(),
                   'durum': 'aktif',
-                });
+                };
+
+                // Müşteri gideri ise üretici adını da kaydet
+                if (selectedKategori == 'musteri' && selectedMusteri != null) {
+                  giderData['uretici'] = selectedMusteri;
+                }
+
+                await FirebaseFirestore.instance.collection('giderler').add(giderData);
 
                 Navigator.pop(ctx);
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -1808,101 +1897,200 @@ class _GiderYonetimiScreenState extends State<GiderYonetimiScreen> {
             .where('firma', isEqualTo: currentFirmaName)
             .snapshots(),
         builder: (context, snapshot) {
-          double aracTotal = 0.0;
-          double personelTotal = 0.0;
-          double genelTotal = 0.0;
-          double bakimTotal = 0.0;
-          double musteriTotal = 0.0;
-          double firmaTotal = 0.0;
+          return StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('cari_islemler')
+                .where('firma', isEqualTo: currentFirmaName)
+                .where('tip', isEqualTo: 'odeme')
+                .snapshots(),
+            builder: (context, cariSnapshot) {
+              return StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('tahsilatlar')
+                    .where('firma', isEqualTo: currentFirmaName)
+                    .snapshots(),
+                builder: (context, tahsilatSnapshot) {
+                  double aracTotal = 0.0;
+                  double personelTotal = 0.0;
+                  double genelTotal = 0.0;
+                  double bakimTotal = 0.0;
+                  double musteriTotal = 0.0;
+                  double firmaTotal = 0.0;
 
-          final docs = snapshot.data?.docs ?? [];
-          for (var doc in docs) {
-            final data = doc.data() as Map<String, dynamic>;
-            final t = (data['timestamp'] as Timestamp?)?.toDate();
-            if (t != null && t.year == _selectedDate.year && t.month == _selectedDate.month) {
-              final durum = data['durum'] as String? ?? 'aktif';
-              if (durum == 'iptal') continue;
+                  final docs = snapshot.data?.docs ?? [];
+                  for (var doc in docs) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    
+                    DateTime? t;
+                    final rawDate = data['tarih'] ?? data['verildigiTarih'] ?? data['vereseTarih'] ?? data['tarihStr'];
+                    if (rawDate != null) {
+                      final str = rawDate.toString();
+                      try {
+                        t = DateFormat('dd.MM.yyyy').parse(str);
+                      } catch (_) {
+                        try {
+                          t = DateFormat('dd MMMM yyyy', 'tr_TR').parse(str);
+                        } catch (_) {}
+                      }
+                    }
+                    if (t == null && data['timestamp'] != null) {
+                      final tsVal = data['timestamp'];
+                      if (tsVal is Timestamp) {
+                        t = tsVal.toDate();
+                      }
+                    }
+                    t ??= DateTime.now();
 
-              final double tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
-              final cat = data['kategori'] as String? ?? 'genel';
-              
-              if (cat == 'arac') aracTotal += tutar;
-              else if (cat == 'personel') personelTotal += tutar;
-              else if (cat == 'genel') genelTotal += tutar;
-              else if (cat == 'bakim') bakimTotal += tutar;
-              else if (cat == 'musteri') musteriTotal += tutar;
-              else if (cat == 'firma') firmaTotal += tutar;
-            }
-          }
+                    if (t.year == _selectedDate.year && t.month == _selectedDate.month) {
+                      final durum = data['durum'] as String? ?? 'aktif';
+                      if (durum == 'iptal') continue;
 
-          final double toplamGider = aracTotal + personelTotal + genelTotal + bakimTotal + musteriTotal + firmaTotal;
+                      final double tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
+                      final cat = data['kategori'] as String? ?? 'genel';
+                      
+                      if (cat == 'arac') aracTotal += tutar;
+                      else if (cat == 'personel') personelTotal += tutar;
+                      else if (cat == 'genel') genelTotal += tutar;
+                      else if (cat == 'bakim') bakimTotal += tutar;
+                      else if (cat == 'musteri') musteriTotal += tutar;
+                      else if (cat == 'firma') firmaTotal += tutar;
+                    }
+                  }
 
-          return ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              // Date Selector
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+                  final cariDocs = cariSnapshot.data?.docs ?? [];
+                  for (var doc in cariDocs) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    
+                    DateTime? t;
+                    final rawDate = data['tarih'] ?? data['verildigiTarih'] ?? data['vereseTarih'] ?? data['tarihStr'];
+                    if (rawDate != null) {
+                      final str = rawDate.toString();
+                      try {
+                        t = DateFormat('dd.MM.yyyy').parse(str);
+                      } catch (_) {
+                        try {
+                          t = DateFormat('dd MMMM yyyy', 'tr_TR').parse(str);
+                        } catch (_) {}
+                      }
+                    }
+                    if (t == null && data['timestamp'] != null) {
+                      final tsVal = data['timestamp'];
+                      if (tsVal is Timestamp) {
+                        t = tsVal.toDate();
+                      }
+                    }
+                    t ??= DateTime.now();
+
+                    if (t.year == _selectedDate.year && t.month == _selectedDate.month) {
+                      final double tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
+                      firmaTotal += tutar;
+                    }
+                  }
+
+                  final fs = FirestoreService();
+                  final tahDocs = tahsilatSnapshot.data?.docs ?? [];
+                  for (var doc in tahDocs) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    if (fs.getTahsilatType(data) == 'odeme') {
+                      DateTime? t;
+                      final rawDate = data['tarih'] ?? data['verildigiTarih'] ?? data['vereseTarih'] ?? data['tarihStr'];
+                      if (rawDate != null) {
+                        final str = rawDate.toString();
+                        try {
+                          t = DateFormat('dd.MM.yyyy').parse(str);
+                        } catch (_) {
+                          try {
+                            t = DateFormat('dd MMMM yyyy', 'tr_TR').parse(str);
+                          } catch (_) {}
+                        }
+                      }
+                      if (t == null && data['timestamp'] != null) {
+                        final tsVal = data['timestamp'];
+                        if (tsVal is Timestamp) {
+                          t = tsVal.toDate();
+                        }
+                      }
+                      t ??= DateTime.now();
+
+                      if (t.year == _selectedDate.year && t.month == _selectedDate.month) {
+                        final double tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
+                        musteriTotal += tutar;
+                      }
+                    }
+                  }
+
+              final double toplamGider = aracTotal + personelTotal + genelTotal + bakimTotal + musteriTotal + firmaTotal;
+
+              return ListView(
+                padding: const EdgeInsets.all(16),
                 children: [
-                  IconButton(
-                    icon: const Icon(Icons.chevron_left_rounded),
-                    onPressed: () => setState(() => _selectedDate = DateTime(_selectedDate.year, _selectedDate.month - 1)),
+                  // Date Selector
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.chevron_left_rounded),
+                        onPressed: () => setState(() => _selectedDate = DateTime(_selectedDate.year, _selectedDate.month - 1)),
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        monthStr,
+                        style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.gray800),
+                      ),
+                      const SizedBox(width: 12),
+                      IconButton(
+                        icon: const Icon(Icons.chevron_right_rounded),
+                        onPressed: () => setState(() => _selectedDate = DateTime(_selectedDate.year, _selectedDate.month + 1)),
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        icon: const Icon(Icons.refresh_rounded, color: AppColors.primary600),
+                        onPressed: () => setState(() {}),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(height: 16),
+
+                  // Summary
+                  AppCard(
+                    shadow: AppShadows.sm,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Toplam Gider', style: GoogleFonts.inter(fontWeight: FontWeight.bold, color: AppColors.gray700)),
+                        Text('${formatNumber.format(toplamGider)} ₺', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.red)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // List of Categories
                   Text(
-                    monthStr,
-                    style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.gray800),
+                    'Gider Kategorileri',
+                    style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.gray800),
                   ),
-                  const SizedBox(width: 12),
-                  IconButton(
-                    icon: const Icon(Icons.chevron_right_rounded),
-                    onPressed: () => setState(() => _selectedDate = DateTime(_selectedDate.year, _selectedDate.month + 1)),
+                  Text(
+                    'Tüm işletme giderlerinizi kategorilere göre yönetin',
+                    style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray400),
                   ),
-                  const Spacer(),
-                  IconButton(
-                    icon: const Icon(Icons.refresh_rounded, color: AppColors.primary600),
-                    onPressed: () => setState(() {}),
-                  ),
+                  const SizedBox(height: 14),
+
+                  _buildGiderCategoryListItem('arac', 'Araç Giderleri', 'Araç yakıt, bakım ve onarım giderleri', aracTotal, Colors.red, Icons.local_shipping_rounded),
+                  _buildGiderCategoryListItem('personel', 'Personel Giderleri', 'Maaş, prim ve personel ödemeleri', personelTotal, Colors.green, Icons.people_rounded),
+                  _buildGiderCategoryListItem('genel', 'Genel Giderler', 'Elektrik, su, kira ve diğer giderler', genelTotal, Colors.orange, Icons.calculate_rounded),
+                  _buildGiderCategoryListItem('bakim', 'Bakım & Onarım', 'Ekipman ve tesis bakım giderleri', bakimTotal, Colors.purple, Icons.build_rounded),
+                  _buildGiderCategoryListItem('musteri', 'Müşteri Giderleri', 'Müşteri ağırlama ve temsil giderleri', musteriTotal, Colors.blue, Icons.monetization_on_rounded),
+                  _buildGiderCategoryListItem('firma', 'Firma Ödemeleri', 'Yem alışı ve diğer firma ödemeleri', firmaTotal, Colors.orange, Icons.business_rounded),
                 ],
-              ),
-              const SizedBox(height: 16),
-
-              // Summary
-              AppCard(
-                shadow: AppShadows.sm,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('Toplam Gider', style: GoogleFonts.inter(fontWeight: FontWeight.bold, color: AppColors.gray700)),
-                    Text('${formatNumber.format(toplamGider)} ₺', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.red)),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // List of Categories
-              Text(
-                'Gider Kategorileri',
-                style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.gray800),
-              ),
-              Text(
-                'Tüm işletme giderlerinizi kategorilere göre yönetin',
-                style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray400),
-              ),
-              const SizedBox(height: 14),
-
-              _buildGiderCategoryListItem('arac', 'Araç Giderleri', 'Araç yakıt, bakım ve onarım giderleri', aracTotal, Colors.red, Icons.local_shipping_rounded),
-              _buildGiderCategoryListItem('personel', 'Personel Giderleri', 'Maaş, prim ve personel ödemeleri', personelTotal, Colors.green, Icons.people_rounded),
-              _buildGiderCategoryListItem('genel', 'Genel Giderler', 'Elektrik, su, kira ve diğer giderler', genelTotal, Colors.orange, Icons.calculate_rounded),
-              _buildGiderCategoryListItem('bakim', 'Bakım & Onarım', 'Ekipman ve tesis bakım giderleri', bakimTotal, Colors.purple, Icons.build_rounded),
-              _buildGiderCategoryListItem('musteri', 'Müşteri Giderleri', 'Müşteri ağırlama ve temsil giderleri', musteriTotal, Colors.blue, Icons.monetization_on_rounded),
-              _buildGiderCategoryListItem('firma', 'Firma Ödemeleri', 'Yem alışı ve diğer firma ödemeleri', firmaTotal, Colors.orange, Icons.business_rounded),
-            ],
+              );
+            },
           );
         },
-      ),
-    );
-  }
+      );
+    },
+  ),
+);
+}
 
   Widget _buildGiderCategoryListItem(String key, String title, String subtitle, double amount, Color color, IconData icon) {
     final formatNumber = NumberFormat('#,##0', 'tr_TR');
@@ -2009,213 +2197,413 @@ class _GiderKategoriDetayScreenState extends State<GiderKategoriDetayScreen> {
             return const Center(child: CircularProgressIndicator());
           }
 
-          final docs = snapshot.data?.docs ?? [];
-          
-          int totalCount = 0;
-          int aktifCount = 0;
-          int odendiCount = 0;
-          int iptalCount = 0;
+          if (widget.kategori == 'firma') {
+            return StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('cari_islemler')
+                  .where('firma', isEqualTo: currentFirmaName)
+                  .where('tip', isEqualTo: 'odeme')
+                  .snapshots(),
+              builder: (context, cariSnapshot) {
+                if (cariSnapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
 
-          final List<QueryDocumentSnapshot> monthDocs = [];
+                final List<Map<String, dynamic>> items = [];
 
-          for (var doc in docs) {
-            final data = doc.data() as Map<String, dynamic>;
-            DateTime? date;
-            final rawDate = data['tarih'] ?? data['verildigiTarih'] ?? data['vereseTarih'] ?? data['tarihStr'];
-            if (rawDate != null) {
-              final str = rawDate.toString();
-              try {
-                date = DateFormat('dd.MM.yyyy').parse(str);
-              } catch (_) {
-                try {
-                  date = DateFormat('dd MMMM yyyy', 'tr_TR').parse(str);
-                } catch (_) {}
-              }
-            }
-            if (date == null && data['timestamp'] != null) {
-              date = (data['timestamp'] as Timestamp).toDate();
-            }
-            date ??= DateTime.now();
+                final giderDocs = snapshot.data?.docs ?? [];
+                for (var doc in giderDocs) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  items.add({
+                    'id': doc.id,
+                    'aciklama': data['aciklama'] as String? ?? '',
+                    'ekAciklama': data['ekAciklama'] as String? ?? '',
+                    'tarih': data['tarih'] as String? ?? '',
+                    'tutar': (data['tutar'] as num?)?.toDouble() ?? 0.0,
+                    'durum': data['durum'] as String? ?? 'aktif',
+                    'timestamp': data['timestamp'],
+                    'rawDate': data['tarih'] ?? data['verildigiTarih'] ?? data['vereseTarih'] ?? data['tarihStr'],
+                    'isCariIslem': false,
+                    'isProducerPayment': false,
+                  });
+                }
 
-            if (date.year == _selectedDate.year && date.month == _selectedDate.month) {
-              monthDocs.add(doc);
-              final durum = data['durum'] as String? ?? 'aktif';
-              if (durum == 'aktif') aktifCount++;
-              else if (durum == 'odendi') odendiCount++;
-              else if (durum == 'iptal') iptalCount++;
-              totalCount++;
+                final cariDocs = cariSnapshot.data?.docs ?? [];
+                for (var doc in cariDocs) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  final cariFirmaName = data['cariFirmaName'] as String? ?? 'Bilinmeyen Firma';
+                  final aciklama = data['aciklama'] as String? ?? '';
+                  items.add({
+                    'id': doc.id,
+                    'aciklama': 'Firma Ödemesi: $cariFirmaName',
+                    'ekAciklama': aciklama.isNotEmpty ? aciklama : (data['odemeYontemi'] as String? ?? ''),
+                    'tarih': data['tarih'] as String? ?? '',
+                    'tutar': (data['tutar'] as num?)?.toDouble() ?? 0.0,
+                    'durum': 'odendi',
+                    'timestamp': data['timestamp'],
+                    'rawDate': data['tarih'] ?? data['verildigiTarih'] ?? data['vereseTarih'] ?? data['tarihStr'],
+                    'isCariIslem': true,
+                    'isProducerPayment': false,
+                  });
+                }
+
+                return _buildListWithItems(items);
+              },
+            );
+          } else if (widget.kategori == 'musteri') {
+            return StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('tahsilatlar')
+                  .where('firma', isEqualTo: currentFirmaName)
+                  .snapshots(),
+              builder: (context, tahsilatSnapshot) {
+                if (tahsilatSnapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                final List<Map<String, dynamic>> items = [];
+
+                final giderDocs = snapshot.data?.docs ?? [];
+                for (var doc in giderDocs) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  items.add({
+                    'id': doc.id,
+                    'aciklama': data['aciklama'] as String? ?? '',
+                    'ekAciklama': data['ekAciklama'] as String? ?? '',
+                    'tarih': data['tarih'] as String? ?? '',
+                    'tutar': (data['tutar'] as num?)?.toDouble() ?? 0.0,
+                    'durum': data['durum'] as String? ?? 'aktif',
+                    'timestamp': data['timestamp'],
+                    'rawDate': data['tarih'] ?? data['verildigiTarih'] ?? data['vereseTarih'] ?? data['tarihStr'],
+                    'isCariIslem': false,
+                    'isProducerPayment': false,
+                  });
+                }
+
+                final fs = FirestoreService();
+                final tahDocs = tahsilatSnapshot.data?.docs ?? [];
+                for (var doc in tahDocs) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  if (fs.getTahsilatType(data) == 'odeme') {
+                    final ureticiName = data['uretici'] as String? ?? 'Bilinmeyen Üretici';
+                    final aciklama = data['aciklama'] as String? ?? '';
+                    items.add({
+                      'id': doc.id,
+                      'aciklama': 'Üretici Ödemesi: $ureticiName',
+                      'ekAciklama': aciklama.isNotEmpty ? aciklama : (data['odemeYontemi'] as String? ?? ''),
+                      'tarih': data['tarih'] as String? ?? '',
+                      'tutar': (data['tutar'] as num?)?.toDouble() ?? 0.0,
+                      'durum': 'odendi',
+                      'timestamp': data['timestamp'],
+                      'rawDate': data['tarih'] ?? data['verildigiTarih'] ?? data['vereseTarih'] ?? data['tarihStr'],
+                      'isCariIslem': false,
+                      'isProducerPayment': true,
+                    });
+                  }
+                }
+
+                return _buildListWithItems(items);
+              },
+            );
+          } else {
+            final List<Map<String, dynamic>> items = [];
+            final docs = snapshot.data?.docs ?? [];
+            for (var doc in docs) {
+              final data = doc.data() as Map<String, dynamic>;
+              items.add({
+                'id': doc.id,
+                'aciklama': data['aciklama'] as String? ?? '',
+                'ekAciklama': data['ekAciklama'] as String? ?? '',
+                'tarih': data['tarih'] as String? ?? '',
+                'tutar': (data['tutar'] as num?)?.toDouble() ?? 0.0,
+                'durum': data['durum'] as String? ?? 'aktif',
+                'timestamp': data['timestamp'],
+                'rawDate': data['tarih'] ?? data['verildigiTarih'] ?? data['vereseTarih'] ?? data['tarihStr'],
+                'isCariIslem': false,
+                'isProducerPayment': false,
+              });
             }
+            return _buildListWithItems(items);
           }
+        },
+      ),
+    );
+  }
 
-          // Filter by status tab
-          final filteredDocs = monthDocs.where((doc) {
-            if (_selectedStatus == 'tumu') return true;
-            final data = doc.data() as Map<String, dynamic>;
-            final durum = data['durum'] as String? ?? 'aktif';
-            return durum == _selectedStatus;
-          }).toList();
+  Widget _buildListWithItems(List<Map<String, dynamic>> items) {
+    final formatNumber = NumberFormat('#,##0.00', 'tr_TR');
+    final monthStr = DateFormat('MMMM yyyy', 'tr_TR').format(_selectedDate);
 
-          double totalTutar = filteredDocs.fold(0.0, (sum, doc) {
-            final data = doc.data() as Map<String, dynamic>;
-            final tutarVal = data['tutar'] ?? 0.0;
-            return sum + (tutarVal is num ? tutarVal.toDouble() : 0.0);
-          });
+    int totalCount = 0;
+    int aktifCount = 0;
+    int odendiCount = 0;
+    int iptalCount = 0;
 
-          return Column(
+    final List<Map<String, dynamic>> monthItems = [];
+
+    for (var item in items) {
+      DateTime? date;
+      final rawDate = item['rawDate'];
+      if (rawDate != null) {
+        final str = rawDate.toString();
+        try {
+          date = DateFormat('dd.MM.yyyy').parse(str);
+        } catch (_) {
+          try {
+            date = DateFormat('dd MMMM yyyy', 'tr_TR').parse(str);
+          } catch (_) {}
+        }
+      }
+      if (date == null && item['timestamp'] != null) {
+        final tsVal = item['timestamp'];
+        if (tsVal is Timestamp) {
+          date = tsVal.toDate();
+        }
+      }
+      date ??= DateTime.now();
+
+      if (date.year == _selectedDate.year && date.month == _selectedDate.month) {
+        monthItems.add(item);
+        final durum = item['durum'] as String? ?? 'aktif';
+        if (durum == 'aktif') aktifCount++;
+        else if (durum == 'odendi') odendiCount++;
+        else if (durum == 'iptal') iptalCount++;
+        totalCount++;
+      }
+    }
+
+    // Filter by status tab
+    final filteredItems = monthItems.where((item) {
+      if (_selectedStatus == 'tumu') return true;
+      final durum = item['durum'] as String? ?? 'aktif';
+      return durum == _selectedStatus;
+    }).toList();
+
+    double totalTutar = filteredItems.fold(0.0, (sum, item) {
+      final double tutarVal = item['tutar'] ?? 0.0;
+      return sum + tutarVal;
+    });
+
+    return Column(
+      children: [
+        // Date Selector
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // Date Selector
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.chevron_left_rounded),
-                      onPressed: () => _changeMonth(-1),
-                    ),
-                    Row(
-                      children: [
-                        const Icon(Icons.calendar_month_rounded, color: AppColors.primary600, size: 18),
-                        const SizedBox(width: 8),
-                        Text(
-                          monthStr,
-                          style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.gray800),
-                        ),
-                      ],
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.chevron_right_rounded),
-                      onPressed: () => _changeMonth(1),
-                    ),
-                  ],
-                ),
+              IconButton(
+                icon: const Icon(Icons.chevron_left_rounded),
+                onPressed: () => _changeMonth(-1),
               ),
-
-              // Status Tabs
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      _buildStatusTab('tumu', 'Tümü', totalCount),
-                      _buildStatusTab('aktif', 'Aktif', aktifCount),
-                      _buildStatusTab('odendi', 'Ödenen', odendiCount),
-                      _buildStatusTab('iptal', 'İptal', iptalCount),
-                    ],
+              Row(
+                children: [
+                  const Icon(Icons.calendar_month_rounded, color: AppColors.primary600, size: 18),
+                  const SizedBox(width: 8),
+                  Text(
+                    monthStr,
+                    style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.gray800),
                   ),
-                ),
+                ],
               ),
+              IconButton(
+                icon: const Icon(Icons.chevron_right_rounded),
+                onPressed: () => _changeMonth(1),
+              ),
+            ],
+          ),
+        ),
 
-              // Summary Card
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: AppCard(
-                  padding: const EdgeInsets.all(16),
-                  shadow: AppShadows.sm,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('Toplam Tutar', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.gray700)),
-                      Text('${formatNumber.format(totalTutar)} ₺', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.red)),
-                    ],
+        // Status Tabs
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _buildStatusTab('tumu', 'Tümü', totalCount),
+                _buildStatusTab('aktif', 'Aktif', aktifCount),
+                _buildStatusTab('odendi', 'Ödenen', odendiCount),
+                _buildStatusTab('iptal', 'İptal', iptalCount),
+              ],
+            ),
+          ),
+        ),
+
+        // Summary Card
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: AppCard(
+            padding: const EdgeInsets.all(16),
+            shadow: AppShadows.sm,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Toplam Tutar', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.gray700)),
+                Text('${formatNumber.format(totalTutar)} ₺', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.red)),
+              ],
+            ),
+          ),
+        ),
+
+        // List of expenses
+        Expanded(
+          child: filteredItems.isEmpty
+              ? Center(
+                  child: Text(
+                    'Bu filtreye uygun gider bulunamadı.',
+                    style: GoogleFonts.inter(fontSize: 13, color: AppColors.gray500),
                   ),
-                ),
-              ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  itemCount: filteredItems.length,
+                  itemBuilder: (context, index) {
+                    final item = filteredItems[index];
+                    final aciklama = item['aciklama'] as String? ?? '';
+                    final ekAciklama = item['ekAciklama'] as String? ?? '';
+                    final tarih = item['tarih'] as String? ?? '';
+                    final double tutar = item['tutar'] ?? 0.0;
+                    final durum = item['durum'] as String? ?? 'aktif';
+                    final isCariIslem = item['isCariIslem'] as bool? ?? false;
 
-              // List of expenses
-              Expanded(
-                child: filteredDocs.isEmpty
-                    ? Center(
-                        child: Text(
-                          'Bu filtreye uygun gider bulunamadı.',
-                          style: GoogleFonts.inter(fontSize: 13, color: AppColors.gray500),
-                        ),
-                      )
-                    : ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        itemCount: filteredDocs.length,
-                        itemBuilder: (context, index) {
-                          final doc = filteredDocs[index];
-                          final data = doc.data() as Map<String, dynamic>;
-                          final aciklama = data['aciklama'] as String? ?? '';
-                          final ekAciklama = data['ekAciklama'] as String? ?? '';
-                          final tarih = data['tarih'] as String? ?? '';
-                          final double tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
-                          final durum = data['durum'] as String? ?? 'aktif';
+                    Color statusColor;
+                    String statusText;
+                    if (durum == 'aktif') {
+                      statusColor = Colors.blue;
+                      statusText = 'Aktif';
+                    } else if (durum == 'odendi') {
+                      statusColor = Colors.green;
+                      statusText = 'Ödendi';
+                    } else {
+                      statusColor = Colors.red;
+                      statusText = 'İptal';
+                    }
 
-                          Color statusColor;
-                          String statusText;
-                          if (durum == 'aktif') {
-                            statusColor = Colors.blue;
-                            statusText = 'Aktif';
-                          } else if (durum == 'odendi') {
-                            statusColor = Colors.green;
-                            statusText = 'Ödendi';
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 10),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: AppShadows.sm,
+                        border: Border.all(color: AppColors.gray200),
+                      ),
+                      child: InkWell(
+                        onTap: () {
+                          if (isCariIslem) {
+                            _showCariIslemRedirectDialog(context);
+                          } else if (item['isProducerPayment'] == true) {
+                            _showProducerPaymentRedirectDialog(context);
                           } else {
-                            statusColor = Colors.red;
-                            statusText = 'İptal';
+                            _showGiderIslemleriDialog(context, item['id'], aciklama, tutar, durum);
                           }
-
-                          return Container(
-                            margin: const EdgeInsets.only(bottom: 10),
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(12),
-                              boxShadow: AppShadows.sm,
-                              border: Border.all(color: AppColors.gray200),
-                            ),
-                            child: InkWell(
-                              onTap: () => _showGiderIslemleriDialog(context, doc.id, aciklama, tutar, durum),
-                              child: Row(
+                        },
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(aciklama, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.gray800)),
-                                        if (ekAciklama.isNotEmpty) ...[
-                                          const SizedBox(height: 2),
-                                          Text(ekAciklama, style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500)),
-                                        ],
-                                        const SizedBox(height: 4),
-                                        Row(
-                                          children: [
-                                            Text(tarih, style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray400)),
-                                            const SizedBox(width: 8),
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                              decoration: BoxDecoration(
-                                                color: statusColor.withValues(alpha: 0.1),
-                                                borderRadius: BorderRadius.circular(4),
-                                              ),
-                                              child: Text(
-                                                statusText,
-                                                style: GoogleFonts.inter(fontSize: 9, fontWeight: FontWeight.bold, color: statusColor),
-                                              ),
-                                            ),
-                                          ],
+                                  Text(aciklama, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.gray800)),
+                                  if (ekAciklama.isNotEmpty) ...[
+                                    const SizedBox(height: 2),
+                                    Text(ekAciklama, style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500)),
+                                  ],
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    children: [
+                                      Text(tarih, style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray400)),
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: statusColor.withValues(alpha: 0.1),
+                                          borderRadius: BorderRadius.circular(4),
                                         ),
-                                      ],
-                                    ),
+                                        child: Text(
+                                          statusText,
+                                          style: GoogleFonts.inter(fontSize: 9, fontWeight: FontWeight.bold, color: statusColor),
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                  Text(
-                                    '- ${formatNumber.format(tutar)} ₺',
-                                    style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.red),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  const Icon(Icons.more_vert_rounded, color: AppColors.gray400),
                                 ],
                               ),
                             ),
-                          );
-                        },
+                            Text(
+                              '- ${formatNumber.format(tutar)} ₺',
+                              style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.red),
+                            ),
+                            const SizedBox(width: 4),
+                            const Icon(Icons.more_vert_rounded, color: AppColors.gray400),
+                          ],
+                        ),
                       ),
-              ),
-            ],
-          );
-        },
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+
+  void _showCariIslemRedirectDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Tedarikçi Firma Ödemesi', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
+        content: const Text(
+          'Tedarikçi firmalara yapılan ödemeler Cari Firmalar sayfasından yönetilmektedir.\n\nİlgili sayfaya gitmek ister misiniz?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Vazgeç', style: GoogleFonts.inter(color: AppColors.gray500)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary600,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () {
+              Navigator.pop(ctx);
+              context.go('/firma/firmalar');
+            },
+            child: const Text('Sayfaya Git'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showProducerPaymentRedirectDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Üretici Hesap Ödemesi', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
+        content: const Text(
+          'Üreticilere yapılan süt ödemeleri Süt Ödemeleri sayfasından yönetilmektedir.\n\nİlgili sayfaya gitmek ister misiniz?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Vazgeç', style: GoogleFonts.inter(color: AppColors.gray500)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary600,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () {
+              Navigator.pop(ctx);
+              context.go('/firma/finans/sut-odemeleri');
+            },
+            child: const Text('Sayfaya Git'),
+          ),
+        ],
       ),
     );
   }

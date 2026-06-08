@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -769,13 +769,19 @@ class _FirmaProfilScreenState extends State<FirmaProfilScreen> {
                 ),
               ),
             ),
+
+            // ── ABONELİK BİLGİ KARTI ──
+            const SizedBox(height: 16),
+            _buildSubscriptionCard(firmSnap),
+
+            const SizedBox(height: 80),
             ],
           ),
         ),
       );
     },
   );
-}
+  }
 
   Widget _buildDetailItem(IconData icon, String label, String value) {
     return Padding(
@@ -783,9 +789,7 @@ class _FirmaProfilScreenState extends State<FirmaProfilScreen> {
       child: Container(
         padding: const EdgeInsets.only(bottom: 10),
         decoration: const BoxDecoration(
-          border: Border(
-            bottom: BorderSide(color: AppColors.gray100),
-          ),
+          border: Border(bottom: BorderSide(color: AppColors.gray100)),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -794,24 +798,10 @@ class _FirmaProfilScreenState extends State<FirmaProfilScreen> {
               children: [
                 Icon(icon, size: 18, color: AppColors.gray400),
                 const SizedBox(width: 8),
-                Text(
-                  label,
-                  style: GoogleFonts.inter(
-                    fontSize: 13,
-                    color: AppColors.gray500,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
+                Text(label, style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray500, fontWeight: FontWeight.w500)),
               ],
             ),
-            Text(
-              value,
-              style: GoogleFonts.inter(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: AppColors.gray800,
-              ),
-            ),
+            Text(value, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.gray800)),
           ],
         ),
       ),
@@ -820,43 +810,19 @@ class _FirmaProfilScreenState extends State<FirmaProfilScreen> {
 
   Widget _buildReadOnlyDetailItem(IconData icon, String label, String value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
-            children: [
-              Icon(icon, size: 18, color: AppColors.gray400),
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: GoogleFonts.inter(
-                  fontSize: 13,
-                  color: AppColors.gray500,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-          Text(
-            value,
-            style: GoogleFonts.inter(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: AppColors.gray800,
-            ),
-          ),
+          Icon(icon, size: 18, color: AppColors.gray400),
+          const SizedBox(width: 8),
+          Text('$label: ', style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray500, fontWeight: FontWeight.w500)),
+          Expanded(child: Text(value, style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.gray700))),
         ],
       ),
     );
   }
 
-  Widget _buildEditField(
-    IconData icon,
-    String label,
-    TextEditingController controller,
-    FormFieldValidator<String>? validator,
-  ) {
+  Widget _buildEditField(IconData icon, String label, TextEditingController controller, FormFieldValidator<String>? validator) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: TextFormField(
@@ -868,24 +834,163 @@ class _FirmaProfilScreenState extends State<FirmaProfilScreen> {
           labelStyle: GoogleFonts.inter(fontSize: 12, color: AppColors.gray500, fontWeight: FontWeight.w500),
           prefixIcon: Icon(icon, size: 18, color: AppColors.gray400),
           contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          border: const OutlineInputBorder(
-            borderRadius: BorderRadius.all(Radius.circular(8)),
-            borderSide: BorderSide(color: AppColors.gray300),
-          ),
-          enabledBorder: const OutlineInputBorder(
-            borderRadius: BorderRadius.all(Radius.circular(8)),
-            borderSide: BorderSide(color: AppColors.gray300),
-          ),
-          focusedBorder: const OutlineInputBorder(
-            borderRadius: BorderRadius.all(Radius.circular(8)),
-            borderSide: BorderSide(color: AppColors.primary500, width: 1.5),
-          ),
-          errorBorder: const OutlineInputBorder(
-            borderRadius: BorderRadius.all(Radius.circular(8)),
-            borderSide: BorderSide(color: Colors.red),
-          ),
+          border: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(8)), borderSide: BorderSide(color: AppColors.gray300)),
+          enabledBorder: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(8)), borderSide: BorderSide(color: AppColors.gray300)),
+          focusedBorder: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(8)), borderSide: BorderSide(color: AppColors.primary500, width: 1.5)),
+          errorBorder: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(8)), borderSide: BorderSide(color: Colors.red)),
         ),
       ),
     );
   }
+}
+
+Widget _buildSubscriptionCard(AsyncSnapshot<QuerySnapshot> firmSnap) {
+  String abonelikTipi = '';
+  String expiryStr = '-';
+  int daysLeft = 0;
+  bool isExpired = false;
+
+  if (firmSnap.hasData && firmSnap.data!.docs.isNotEmpty) {
+    final data = firmSnap.data!.docs.first.data() as Map<String, dynamic>;
+    abonelikTipi = data['abonelikTipi'] as String? ?? '';
+    final Timestamp? ts = data['abonelikBitis'] as Timestamp?;
+    if (ts != null) {
+      final expiry = ts.toDate();
+      expiryStr = DateFormat('dd.MM.yyyy').format(expiry);
+      daysLeft = expiry.difference(DateTime.now()).inDays;
+      isExpired = DateTime.now().isAfter(expiry);
+    }
+  }
+
+  final Color cardColor = isExpired
+      ? const Color(0xFFFEF2F2)
+      : daysLeft <= 7
+          ? const Color(0xFFFFFBEB)
+          : const Color(0xFFF0FDF4);
+
+  final Color borderColor = isExpired
+      ? const Color(0xFFFCA5A5)
+      : daysLeft <= 7
+          ? const Color(0xFFFDE68A)
+          : const Color(0xFFBBF7D0);
+
+  final Color iconColor = isExpired
+      ? const Color(0xFFEF4444)
+      : daysLeft <= 7
+          ? const Color(0xFFF59E0B)
+          : const Color(0xFF10B981);
+
+  final IconData icon = isExpired
+      ? Icons.lock_rounded
+      : daysLeft <= 7
+          ? Icons.warning_amber_rounded
+          : Icons.verified_rounded;
+
+  return Container(
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: cardColor,
+      borderRadius: BorderRadius.circular(14),
+      border: Border.all(color: borderColor, width: 1.2),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, color: iconColor, size: 20),
+            const SizedBox(width: 8),
+            Text(
+              'Abonelik Bilgileri',
+              style: GoogleFonts.inter(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF1E293B),
+              ),
+            ),
+            const Spacer(),
+            if (abonelikTipi.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: iconColor.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  abonelikTipi == 'deneme' ? '7 Günlük Deneme' : abonelikTipi,
+                  style: GoogleFonts.inter(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: iconColor,
+                  ),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        if (!isExpired) ...[
+          Row(
+            children: [
+              const Icon(Icons.calendar_today_rounded, size: 14, color: Color(0xFF64748B)),
+              const SizedBox(width: 6),
+              Text(
+                'Bitiş tarihi: $expiryStr',
+                style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF475569)),
+              ),
+              const SizedBox(width: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: iconColor.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  daysLeft <= 0 ? 'Bugün' : '$daysLeft gün kaldı',
+                  style: GoogleFonts.inter(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: iconColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+        ],
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.7),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.phone_rounded, size: 16, color: Color(0xFF2563EB)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  isExpired
+                      ? 'Aboneliğiniz sona erdi. İletişime geçin:'
+                      : 'Abonelik için lütfen iletişime geçin:',
+                  style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFF475569)),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 6),
+        Center(
+          child: Text(
+            '0536 259 0990',
+            style: GoogleFonts.inter(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: const Color(0xFF2563EB),
+              letterSpacing: 0.5,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
 }

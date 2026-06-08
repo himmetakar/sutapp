@@ -22,6 +22,7 @@ class _SurucuSutBosaltScreenState extends State<SurucuSutBosaltScreen> {
   final _formKey = GlobalKey<FormState>();
   final _amountController = TextEditingController();
 
+  String? _selectedSourceTank;
   String? _selectedTargetTank;
   bool _isSaving = false;
 
@@ -144,14 +145,22 @@ class _SurucuSutBosaltScreenState extends State<SurucuSutBosaltScreen> {
                 );
               }
 
-              final tank = tankList.first;
+              if (_selectedSourceTank == null || !tankList.any((t) => t['ad'] == _selectedSourceTank)) {
+                _selectedSourceTank = tankList.isNotEmpty ? tankList.first['ad'] as String? : null;
+              }
+
+              final tank = tankList.firstWhere(
+                (t) => t['ad'] == _selectedSourceTank,
+                orElse: () => tankList.first,
+              );
               final tankName = tank['ad'] ?? '';
               final double currentStock = (tank['stok'] as num?)?.toDouble() ?? 0.0;
 
               return FutureBuilder<QuerySnapshot>(
-                future: _db.collection('tanklar')
-                    .where('firma', isEqualTo: currentFirmaName)
-                    .get(),
+                future: _firestoreService.getQueryWithCachePriority(
+                  _db.collection('tanklar')
+                      .where('firma', isEqualTo: currentFirmaName),
+                ),
                 builder: (context, tanksSnapshot) {
                   if (tanksSnapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
@@ -201,8 +210,8 @@ class _SurucuSutBosaltScreenState extends State<SurucuSutBosaltScreen> {
                       if (_amountController.text.isEmpty && !_isSaving) {
                         _amountController.text = remainingStock.toStringAsFixed(0);
                       }
-                      if (_selectedTargetTank == null && otherTanks.isNotEmpty) {
-                        _selectedTargetTank = otherTanks.first['ad'] as String;
+                      if (_selectedTargetTank == null || !otherTanks.any((t) => t['ad'] == _selectedTargetTank)) {
+                        _selectedTargetTank = otherTanks.isNotEmpty ? otherTanks.first['ad'] as String : null;
                       }
 
                       return Form(
@@ -299,6 +308,29 @@ class _SurucuSutBosaltScreenState extends State<SurucuSutBosaltScreen> {
                                     style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.gray800),
                                   ),
                                   const SizedBox(height: 16),
+                                  if (tankList.length > 1) ...[
+                                    DropdownButtonFormField<String>(
+                                      value: _selectedSourceTank,
+                                      decoration: const InputDecoration(labelText: 'Boşaltılacak Araç Tankı *'),
+                                      items: tankList.map((t) {
+                                        final name = t['ad'] ?? '';
+                                        final double stock = (t['stok'] as num?)?.toDouble() ?? 0.0;
+                                        final label = '$name (${stock.toStringAsFixed(0)} LT)';
+                                        return DropdownMenuItem(
+                                          value: name as String,
+                                          child: Text(label, style: const TextStyle(fontSize: 13)),
+                                        );
+                                      }).toList(),
+                                      onChanged: (val) {
+                                        setState(() {
+                                          _selectedSourceTank = val;
+                                          _amountController.clear();
+                                        });
+                                      },
+                                      validator: (val) => val == null ? 'Araç tankı seçmelisiniz' : null,
+                                    ),
+                                    const SizedBox(height: 16),
+                                  ],
                                   DropdownButtonFormField<String>(
                                     value: _selectedTargetTank,
                                     decoration: const InputDecoration(labelText: 'Boşaltılacak Hedef Tank *'),
@@ -327,7 +359,7 @@ class _SurucuSutBosaltScreenState extends State<SurucuSutBosaltScreen> {
                                     ),
                                     validator: (value) {
                                       if (value == null || value.isEmpty) return 'Boşaltılacak miktarı giriniz';
-                                      final double? val = double.tryParse(value);
+                                      final double? val = double.tryParse(value.replaceAll(',', '.'));
                                       if (val == null || val <= 0) return 'Lütfen geçerli bir miktar girin';
                                       if (val > remainingStock) return 'Maksimum $remainingStock LT boşaltabilirsiniz';
                                       return null;
@@ -484,7 +516,7 @@ class _SurucuSutBosaltScreenState extends State<SurucuSutBosaltScreen> {
       _isSaving = true;
     });
 
-    final double amount = double.parse(_amountController.text);
+    final double amount = double.parse(_amountController.text.replaceAll(',', '.'));
     final String formattedDate = DateFormat('dd.MM.yyyy').format(DateTime.now());
 
     try {

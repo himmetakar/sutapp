@@ -7,7 +7,7 @@ class FileDownloadHelper {
     throw UnsupportedError('Cannot download file without platform implementation.');
   }
 
-  static Future<void> downloadBinaryFile({
+  static Future<String?> downloadBinaryFile({
     required String fileName,
     required List<int> bytes,
   }) async {

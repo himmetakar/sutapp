@@ -75,7 +75,9 @@ class _FirmaTahsilatScreenState extends State<FirmaTahsilatScreen> {
     final producers = producersQuery.docs
         .map((p) => p.data()['name'] as String? ?? '')
         .where((p) => p.isNotEmpty)
-        .toList();
+        .toSet()   // Aynı isimli üretici 2 kez gelirse çakışmayı önle
+        .toList()
+      ..sort();
 
     if (producers.isEmpty) {
       if (mounted) {

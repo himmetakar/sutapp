@@ -12,6 +12,7 @@ import '../../widgets/common_widgets.dart';
 import '../../services/firestore_service.dart';
 import '../../providers/auth_provider.dart';
 import '../firma/urunler_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class UreticiDashboard extends StatelessWidget {
   const UreticiDashboard({super.key});
@@ -29,25 +30,22 @@ class UreticiDashboard extends StatelessWidget {
   DateTime? _getDocDate(QueryDocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>?;
     if (data == null) return null;
-    final rawDate = data['tahsilEdilecegiTarih'] ?? data['verildigiTarih'];
+    final rawDate = data['tarih'] ?? data['verildigiTarih'] ?? data['tahsilEdilecegiTarih'] ?? data['vereseTarih'] ?? data['tarihStr'];
     if (rawDate != null) {
       try {
-        return DateFormat('dd.MM.yyyy').parse(rawDate.toString());
+        if (rawDate.toString().contains('.')) {
+          return DateFormat('dd.MM.yyyy').parse(rawDate.toString());
+        } else {
+          return DateFormat('dd MMMM yyyy', 'tr_TR').parse(rawDate.toString());
+        }
       } catch (_) {
         try {
-          return DateFormat('dd MMMM yyyy', 'tr_TR').parse(rawDate.toString());
+          return DateTime.parse(rawDate.toString());
         } catch (_) {}
       }
     }
     final ts = data['timestamp'] as Timestamp?;
     if (ts != null) return ts.toDate();
-    final dateStr = data['tarih'] as String?;
-    if (dateStr != null && dateStr.isNotEmpty) {
-      try {
-        final parts = dateStr.split('.');
-        return DateTime(int.parse(parts[2]), int.parse(parts[1]), int.parse(parts[0]));
-      } catch (_) {}
-    }
     return null;
   }
 
@@ -76,6 +74,15 @@ class UreticiDashboard extends StatelessWidget {
           if (firms.isNotEmpty) {
             currentFirma = firms.first.toString();
           }
+        }
+
+        if (producerSnap.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (currentFirma.isEmpty) {
+          return const Center(
+            child: Text('Kayıtlı firma bulunamadı.'),
+          );
         }
 
         return StreamBuilder<DocumentSnapshot>(
@@ -326,35 +333,14 @@ class UreticiDashboard extends StatelessWidget {
                                                           child: Column(
                                                             crossAxisAlignment: CrossAxisAlignment.start,
                                                             children: [
-                                                               Row(
-                                                                 children: [
-                                                                   Text(
-                                                                     'Üretici Paneli',
-                                                                     style: GoogleFonts.inter(
-                                                                       fontSize: isDesktop ? 22 : 18,
-                                                                       fontWeight: FontWeight.w700,
-                                                                       color: AppColors.gray900,
-                                                                     ),
-                                                                   ),
-                                                                   const SizedBox(width: 8),
-                                                                   ElevatedButton.icon(
-                                                                     onPressed: () => context.push('/uretici/dijital-kart'),
-                                                                     icon: const Icon(Icons.badge_rounded, size: 13),
-                                                                     label: Text(
-                                                                       'Dijital Süt Kartı',
-                                                                       style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.bold),
-                                                                     ),
-                                                                     style: ElevatedButton.styleFrom(
-                                                                       backgroundColor: AppColors.primary600,
-                                                                       foregroundColor: Colors.white,
-                                                                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                                                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                                                       minimumSize: Size.zero,
-                                                                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                                                     ),
-                                                                   ),
-                                                                 ],
-                                                               ),
+                                                              Text(
+                                                                'Üretici Paneli',
+                                                                style: GoogleFonts.inter(
+                                                                  fontSize: isDesktop ? 22 : 18,
+                                                                  fontWeight: FontWeight.w700,
+                                                                  color: AppColors.gray900,
+                                                                ),
+                                                              ),
                                                               if (producerName.isNotEmpty) ...[
                                                                 const SizedBox(height: 4),
                                                                 Text(
@@ -1221,74 +1207,124 @@ class _PopUpAdWrapperState extends State<PopUpAdWrapper> {
 
   void _checkForPopUpAds() {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      // Kısa bekleme: ekran render olduktan sonra dialog gösterilsin
+      await Future.delayed(const Duration(milliseconds: 800));
+      if (!mounted) return;
+
       try {
         final query = await FirebaseFirestore.instance
             .collection('duyurular')
             .where('isGlobal', isEqualTo: true)
+            .where('isPopUp', isEqualTo: true)
             .get();
 
         final docs = query.docs.where((doc) {
           final data = doc.data() as Map<String, dynamic>?;
           if (data == null) return false;
-          final isPopUp = data['isPopUp'] as bool? ?? false;
           final targetRoles = data['targetRoles'] as List<dynamic>?;
-          return isPopUp && (targetRoles != null && targetRoles.contains(widget.role));
+          return targetRoles != null && targetRoles.contains(widget.role);
         }).toList();
 
-        if (docs.isNotEmpty) {
-          docs.sort((a, b) {
-            final aTime = (a.data() as Map<String, dynamic>)['timestamp'] as Timestamp?;
-            final bTime = (b.data() as Map<String, dynamic>)['timestamp'] as Timestamp?;
-            if (aTime == null) return 1;
-            if (bTime == null) return -1;
-            return bTime.compareTo(aTime);
-          });
-          final doc = docs.first;
-          final docId = doc.id;
-          
-          if (_shownPopups.contains(docId)) return;
-          _shownPopups.add(docId);
+        if (docs.isEmpty) return;
 
-          final data = doc.data() as Map<String, dynamic>?;
-          final baslik = data?['baslik'] ?? '';
-          final icerik = data?['icerik'] ?? '';
+        docs.sort((a, b) {
+          final aTime = (a.data() as Map<String, dynamic>)['timestamp'] as Timestamp?;
+          final bTime = (b.data() as Map<String, dynamic>)['timestamp'] as Timestamp?;
+          if (aTime == null) return 1;
+          if (bTime == null) return -1;
+          return bTime.compareTo(aTime);
+        });
 
-          if (!mounted) return;
+        final doc = docs.first;
+        final docId = doc.id;
 
-          showDialog(
-            context: context,
-            barrierDismissible: true,
-            builder: (ctx) {
-              return AlertDialog(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                title: Row(
-                  children: [
-                    const Icon(Icons.campaign_rounded, color: Colors.blueAccent),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        baslik,
-                        style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16),
-                      ),
+        final prefs = await SharedPreferences.getInstance();
+        final List<String> shownList = prefs.getStringList('shown_popups') ?? [];
+        if (shownList.contains(docId)) return;
+
+        shownList.add(docId);
+        await prefs.setStringList('shown_popups', shownList);
+
+        final data = doc.data() as Map<String, dynamic>?;
+        final baslik = data?['baslik'] ?? '';
+        final icerik = data?['icerik'] ?? '';
+        final imageUrl = data?['imageUrl'] as String?;
+
+        if (!mounted) return;
+
+        showDialog(
+          context: context,
+          barrierDismissible: true,
+          barrierColor: Colors.black54,
+          builder: (ctx) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+              contentPadding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+              title: Row(
+                children: [
+                  const Icon(Icons.campaign_rounded, color: Colors.blueAccent),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      baslik,
+                      style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16),
                     ),
-                  ],
-                ),
-                content: Text(
-                  icerik,
-                  style: GoogleFonts.inter(fontSize: 13, color: AppColors.gray700),
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    child: Text('Kapat', style: GoogleFonts.inter(fontWeight: FontWeight.bold)),
                   ),
                 ],
-              );
-            },
-          );
-        }
+              ),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (imageUrl != null && imageUrl.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(
+                              maxHeight: 200,
+                              minWidth: double.infinity,
+                            ),
+                            child: imageUrl.startsWith('data:image')
+                                ? Image.memory(
+                                    base64Decode(imageUrl.contains(',') ? imageUrl.split(',').last : imageUrl),
+                                    fit: BoxFit.cover,
+                                    gaplessPlayback: true,
+                                    errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                                  )
+                                : Image.network(
+                                    imageUrl,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                                  ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                      Text(
+                        icerik,
+                        style: GoogleFonts.inter(fontSize: 13, color: AppColors.gray700),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: Text('Kapat', style: GoogleFonts.inter(fontWeight: FontWeight.bold)),
+                ),
+              ],
+            );
+          },
+        );
       } catch (e) {
-        print('Error checking pop-up ads: $e');
+        debugPrint('Pop-up hata: $e');
       }
     });
   }

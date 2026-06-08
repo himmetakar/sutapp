@@ -1770,58 +1770,127 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
 
                         return StreamBuilder<QuerySnapshot>(
                           stream: FirebaseFirestore.instance
-                              .collection('urunler_siparisler')
+                              .collection('urunler_kategoriler')
                               .where('firma', isEqualTo: currentFirmaName)
                               .snapshots(),
-                          builder: (context, siparisSnap) {
-                            final sDocs = siparisSnap.data?.docs ?? [];
-                            final thisMonthSiparisler = sDocs.where((doc) {
-                              final sData = doc.data() as Map<String, dynamic>;
-                              final durum = sData['durum'] ?? 'Bekliyor';
-                              return durum == 'Teslim Edildi' && _isDocInSelectedMonth(doc, _maliOzetMonth);
-                            }).toList();
-
-                            double hijyenGelir = 0.0;
-                            double yemGelir = 0.0;
-                            double tohumGelir = 0.0;
-                            double ekipmanGelir = 0.0;
-                            double digerGelir = 0.0;
-
-                            for (var doc in thisMonthSiparisler) {
-                              final sData = doc.data() as Map<String, dynamic>;
-                              final List<dynamic> items = sData['kalemler'] ?? [];
-                              for (var item in items) {
-                                if (item is Map) {
-                                  final String urunName = item['urun'] ?? '';
-                                  final double totalItem = (item['toplam'] as num?)?.toDouble() ?? 0.0;
-                                  final String category = productToCategory[urunName.toLowerCase().trim()] ?? '';
-
-                                  if (category.toLowerCase() == 'yem') {
-                                    yemGelir += totalItem;
-                                  } else if (category.toLowerCase() == 'hijyen') {
-                                    hijyenGelir += totalItem;
-                                  } else if (category.toLowerCase() == 'tohum') {
-                                    tohumGelir += totalItem;
-                                  } else if (category.toLowerCase() == 'ekipman') {
-                                    ekipmanGelir += totalItem;
-                                  } else {
-                                    final lowerUrun = urunName.toLowerCase();
-                                    if (lowerUrun.contains('yem')) {
-                                      yemGelir += totalItem;
-                                    } else if (lowerUrun.contains('hijyen') || lowerUrun.contains('deterjan') || lowerUrun.contains('dezenfektan') || lowerUrun.contains('sabun')) {
-                                      hijyenGelir += totalItem;
-                                    } else if (lowerUrun.contains('tohum')) {
-                                      tohumGelir += totalItem;
-                                    } else if (lowerUrun.contains('ekipman') || lowerUrun.contains('makine') || lowerUrun.contains('pompa')) {
-                                      ekipmanGelir += totalItem;
-                                    } else {
-                                      digerGelir += totalItem;
-                                    }
-                                  }
+                          builder: (context, categoriesSnap) {
+                            final List<String> categories = [];
+                            if (categoriesSnap.hasData) {
+                              for (var doc in categoriesSnap.data!.docs) {
+                                final name = (doc.data() as Map<String, dynamic>)['ad'] as String? ?? '';
+                                if (name.isNotEmpty && !categories.contains(name)) {
+                                  categories.add(name);
                                 }
                               }
                             }
-                            final double totalProductGelir = hijyenGelir + yemGelir + tohumGelir + ekipmanGelir + digerGelir;
+                            if (categories.isEmpty) {
+                              categories.addAll(['Araç Gereç', 'Vitamin', 'Yem', 'İlaç']);
+                            }
+
+                            return StreamBuilder<QuerySnapshot>(
+                              stream: FirebaseFirestore.instance
+                                  .collection('urunler_siparisler')
+                                  .where('firma', isEqualTo: currentFirmaName)
+                                  .snapshots(),
+                              builder: (context, siparisSnap) {
+                                return StreamBuilder<QuerySnapshot>(
+                                  stream: FirebaseFirestore.instance
+                                      .collection('giderler')
+                                      .where('firma', isEqualTo: currentFirmaName)
+                                      .snapshots(),
+                                  builder: (context, giderSnap) {
+                                    return StreamBuilder<QuerySnapshot>(
+                                      stream: FirebaseFirestore.instance
+                                          .collection('cari_islemler')
+                                          .where('firma', isEqualTo: currentFirmaName)
+                                          .where('tip', isEqualTo: 'odeme')
+                                          .snapshots(),
+                                      builder: (context, cariIslemSnap) {
+                                        final sDocs = siparisSnap.data?.docs ?? [];
+                                        final thisMonthSiparisler = sDocs.where((doc) {
+                                          final sData = doc.data() as Map<String, dynamic>;
+                                          final durum = sData['durum'] ?? 'Bekliyor';
+                                          return durum == 'Teslim Edildi' && _isDocInSelectedMonth(doc, _maliOzetMonth);
+                                        }).toList();
+
+                                        final Map<String, double> categoryRevenues = {
+                                          for (var cat in categories) cat: 0.0
+                                        };
+                                        double digerGelir = 0.0;
+
+                                        for (var doc in thisMonthSiparisler) {
+                                          final sData = doc.data() as Map<String, dynamic>;
+                                          final List<dynamic> items = sData['kalemler'] ?? [];
+                                          for (var item in items) {
+                                            if (item is Map) {
+                                              final String urunName = item['urun'] ?? '';
+                                              final double totalItem = (item['toplam'] as num?)?.toDouble() ?? 0.0;
+                                              final String category = productToCategory[urunName.toLowerCase().trim()] ?? '';
+
+                                              String? matchedCategory;
+                                              if (category.isNotEmpty) {
+                                                for (var cat in categories) {
+                                                  if (cat.toLowerCase().trim() == category.toLowerCase().trim()) {
+                                                    matchedCategory = cat;
+                                                    break;
+                                                  }
+                                                }
+                                              }
+                                              if (matchedCategory == null) {
+                                                final lowerUrun = urunName.toLowerCase().trim();
+                                                for (var cat in categories) {
+                                                  final lowerCat = cat.toLowerCase().trim();
+                                                  if (lowerCat.isNotEmpty && lowerUrun.contains(lowerCat)) {
+                                                    matchedCategory = cat;
+                                                    break;
+                                                  }
+                                                }
+                                              }
+
+                                              if (matchedCategory != null) {
+                                                categoryRevenues[matchedCategory] = (categoryRevenues[matchedCategory] ?? 0.0) + totalItem;
+                                              } else {
+                                                digerGelir += totalItem;
+                                              }
+                                            }
+                                          }
+                                        }
+                                        final double totalProductGelir = categoryRevenues.values.fold(0.0, (sum, val) => sum + val) + digerGelir;
+
+                                        double operatingExpenses = 0.0;
+                                        if (giderSnap.hasData) {
+                                          for (var doc in giderSnap.data!.docs) {
+                                            final data = doc.data() as Map<String, dynamic>;
+                                            final t = _parseDocDate(data);
+                                            if (t != null && t.year == _maliOzetMonth.year && t.month == _maliOzetMonth.month) {
+                                              final durum = data['durum'] as String? ?? 'aktif';
+                                              if (durum == 'iptal') continue;
+                                              final double tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
+                                              operatingExpenses += tutar;
+                                            }
+                                          }
+                                        }
+                                        if (cariIslemSnap.hasData) {
+                                          for (var doc in cariIslemSnap.data!.docs) {
+                                            final data = doc.data() as Map<String, dynamic>;
+                                            final t = _parseDocDate(data);
+                                            if (t != null && t.year == _maliOzetMonth.year && t.month == _maliOzetMonth.month) {
+                                              final double tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
+                                              operatingExpenses += tutar;
+                                            }
+                                          }
+                                        }
+
+                                IconData getCategoryIcon(String cat) {
+                                  final lower = cat.toLowerCase();
+                                  if (lower.contains('araç') || lower.contains('gereç') || lower.contains('ekipman') || lower.contains('makine')) return Icons.build_rounded;
+                                  if (lower.contains('vitamin')) return Icons.science_rounded;
+                                  if (lower.contains('yem')) return Icons.eco_rounded;
+                                  if (lower.contains('ilaç') || lower.contains('ilac')) return Icons.medical_services_rounded;
+                                  if (lower.contains('hijyen') || lower.contains('temizlik') || lower.contains('deterjan') || lower.contains('dezenfektan') || lower.contains('sabun')) return Icons.cleaning_services_rounded;
+                                  if (lower.contains('tohum') || lower.contains('bitki') || lower.contains('tarım')) return Icons.grain_rounded;
+                                  return Icons.folder_rounded;
+                                }
 
                             // 4. Financial Calculations based on selected month
                             final double netOdeyecek = (grossMilkPrice - totalAvans - totalCeza - totalKesinti).clamp(0.0, double.infinity);
@@ -1979,8 +2048,8 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
                               }
                             }
 
-                            final double totalExpenses = grossMilkPrice + totalAvans + totalCeza + totalKesinti;
-                            final double totalIncomes = milkRevenue + totalProductGelir + totalProducerTahsilat;
+                            final double totalIncomes = totalProducerTahsilat + totalKesinti;
+                            final double totalExpenses = totalAvans + totalOdeme + operatingExpenses;
                             final double netProfit = totalIncomes - totalExpenses;
 
                             return Column(
@@ -2188,11 +2257,21 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
                                 const SizedBox(height: 12),
                                 Column(
                                   children: [
-                                    _buildMockupProductRevenueRow('1. HİJYEN', formatNumber.format(hijyenGelir) + '₺', Icons.cleaning_services_rounded),
-                                    _buildMockupProductRevenueRow('2. YEM', formatNumber.format(yemGelir) + '₺', Icons.agriculture_rounded),
-                                    _buildMockupProductRevenueRow('3. TOHUM', formatNumber.format(tohumGelir) + '₺', Icons.grain_rounded),
-                                    _buildMockupProductRevenueRow('4. EKİPMAN', formatNumber.format(ekipmanGelir) + '₺', Icons.construction_rounded),
-                                    _buildMockupProductRevenueRow('5. DİĞER', formatNumber.format(digerGelir) + '₺', Icons.widgets_rounded),
+                                    ...categories.asMap().entries.map((entry) {
+                                      final idx = entry.key + 1;
+                                      final catName = entry.value;
+                                      final revenue = categoryRevenues[catName] ?? 0.0;
+                                      return _buildMockupProductRevenueRow(
+                                        '$idx. ${catName.toUpperCase()}',
+                                        formatNumber.format(revenue) + ' ₺',
+                                        getCategoryIcon(catName),
+                                      );
+                                    }),
+                                    _buildMockupProductRevenueRow(
+                                      '${categories.length + 1}. DİĞER',
+                                      formatNumber.format(digerGelir) + ' ₺',
+                                      Icons.widgets_rounded,
+                                    ),
                                   ],
                                 ),
                               ],
@@ -2210,6 +2289,12 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
       },
     );
   },
+);
+},
+);
+},
+);
+},
 );
 },
 );

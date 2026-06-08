@@ -796,10 +796,14 @@ class _UrunSiparisleriScreenState extends State<UrunSiparisleriScreen> {
 
   Future<void> _showEditOrderDialog(BuildContext context, DocumentSnapshot doc, String currentFirmaName) async {
     // Show a loading indicator
+    BuildContext? dialogContext;
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => const Center(child: CircularProgressIndicator()),
+      builder: (ctx) {
+        dialogContext = ctx;
+        return const Center(child: CircularProgressIndicator());
+      },
     );
 
     // Fetch products
@@ -822,8 +826,8 @@ class _UrunSiparisleriScreenState extends State<UrunSiparisleriScreen> {
     }
 
     // Dismiss loading indicator
-    if (context.mounted) {
-      Navigator.pop(context);
+    if (dialogContext != null && dialogContext!.mounted) {
+      Navigator.pop(dialogContext!);
     }
 
     if (products.isEmpty) {
@@ -834,6 +838,19 @@ class _UrunSiparisleriScreenState extends State<UrunSiparisleriScreen> {
     }
 
     final data = doc.data() as Map<String, dynamic>;
+    DateTime selectedOrderDate = DateTime.now();
+    if (data['tarih'] != null) {
+      try {
+        selectedOrderDate = DateFormat('dd MMMM yyyy', 'tr_TR').parse(data['tarih'].toString());
+      } catch (_) {
+        try {
+          selectedOrderDate = DateFormat('dd.MM.yyyy').parse(data['tarih'].toString());
+        } catch (_) {}
+      }
+    } else if (data['timestamp'] != null) {
+      selectedOrderDate = (data['timestamp'] as Timestamp).toDate();
+    }
+
     final List<Map<String, dynamic>> initialItems = data.containsKey('kalemler') && data['kalemler'] is List
         ? List<Map<String, dynamic>>.from((data['kalemler'] as List).map((e) => Map<String, dynamic>.from(e as Map)))
         : [
@@ -1054,6 +1071,80 @@ class _UrunSiparisleriScreenState extends State<UrunSiparisleriScreen> {
                       ),
                       const SizedBox(height: 16),
                       const Divider(),
+                      const SizedBox(height: 12),
+                      // Tarih Seçici (Zorunlu)
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary50,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: AppColors.primary200,
+                            width: 1,
+                          ),
+                        ),
+                        child: InkWell(
+                          onTap: () async {
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: selectedOrderDate,
+                              firstDate: DateTime(2020),
+                              lastDate: DateTime(2030),
+                              locale: const Locale('tr', 'TR'),
+                            );
+                            if (picked != null) {
+                              setStateDialog(() {
+                                selectedOrderDate = picked;
+                              });
+                            }
+                          },
+                          borderRadius: BorderRadius.circular(12),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.calendar_month_rounded,
+                                  color: AppColors.primary600,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        'İşlem Tarihi (Zorunlu)',
+                                        style: GoogleFonts.inter(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                          color: AppColors.gray500,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        DateFormat('dd MMMM yyyy', 'tr_TR').format(selectedOrderDate),
+                                        style: GoogleFonts.inter(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.bold,
+                                          color: AppColors.gray800,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const Icon(
+                                  Icons.chevron_right_rounded,
+                                  color: AppColors.gray400,
+                                  size: 18,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const Divider(),
                       const SizedBox(height: 8),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1084,6 +1175,8 @@ class _UrunSiparisleriScreenState extends State<UrunSiparisleriScreen> {
                           final updates = <String, dynamic>{
                             'kalemler': orderItems,
                             'toplam': orderTotal,
+                            'tarih': DateFormat('dd MMMM yyyy', 'tr_TR').format(selectedOrderDate),
+                            'timestamp': Timestamp.fromDate(selectedOrderDate),
                           };
                           if (orderItems.isNotEmpty) {
                             final first = orderItems.first;
@@ -1093,6 +1186,20 @@ class _UrunSiparisleriScreenState extends State<UrunSiparisleriScreen> {
                             updates['birimFiyat'] = first['birimFiyat'];
                           }
                           await doc.reference.update(updates);
+
+                          final orderId = data['id'] ?? '';
+                          if (orderId.isNotEmpty) {
+                            final satisQuery = await FirebaseFirestore.instance
+                                .collection('satislar')
+                                .where('orderId', isEqualTo: orderId)
+                                .get();
+                            for (var sDoc in satisQuery.docs) {
+                              await sDoc.reference.update({
+                                'tarih': DateFormat('dd MMMM yyyy', 'tr_TR').format(selectedOrderDate),
+                                'timestamp': Timestamp.fromDate(selectedOrderDate),
+                              });
+                            }
+                          }
 
                           for (var c in qtyControllers) {
                             c.dispose();

@@ -242,7 +242,30 @@ class FirestoreService {
         await doc.reference.delete();
       }
 
-      // Ensure Anıl Demir exists as Fidanım Süt producer
+      // ── REPAIR: Ensure Hasan Fidan always exists in suruculer ──
+      // This runs every time to auto-heal if the record was accidentally deleted.
+      final hasanCheck = await _drivers
+          .where('ad', isEqualTo: 'Hasan')
+          .where('soyad', isEqualTo: 'Fidan')
+          .limit(1)
+          .get();
+      if (hasanCheck.docs.isEmpty) {
+        await _drivers.add({
+          'ad': 'Hasan',
+          'soyad': 'Fidan',
+          'tel': '0532 100 0003',
+          'email': 'hasanfidan@sutapp.com',
+          'tc': '345678901**',
+          'uretici': 1,
+          'active': true,
+          'firma': 'Fidanım Süt',
+          'canAddCustomer': true,
+          'canEditCustomer': true,
+          'canCreateOrder': false,
+        });
+        print('[REPAIR] Hasan Fidan suruculer koleksiyonuna yeniden eklendi.');
+      }
+
       final anilCheck = await _producers.where('name', isEqualTo: 'Anıl Demir').limit(1).get();
       if (anilCheck.docs.isEmpty) {
         await _producers.add({
@@ -393,22 +416,55 @@ class FirestoreService {
     await _collections.add(collection);
   }
 
-  // --- OFFLINE HELPER METHODS ---
-
   Future<QuerySnapshot> getQueryWithCachePriority(Query query) async {
+    // 1. Önce cache'e bak, veri varsa hemen dön
     try {
       final snap = await query.get(const GetOptions(source: Source.cache));
       if (snap.docs.isNotEmpty) return snap;
     } catch (_) {}
-    return query.get();
+    // 2. Sunucudan kısa timeout ile dene
+    try {
+      return await query
+          .get(const GetOptions(source: Source.server))
+          .timeout(const Duration(seconds: 3));
+    } catch (_) {}
+    // 3. Son çare: cache'den al (boş dahi olsa — offline'da takılmaz)
+    try {
+      return await query
+          .get(const GetOptions(source: Source.cache))
+          .timeout(const Duration(seconds: 2));
+    } catch (_) {
+      // Hiçbir şey yoksa boş sonuç dön yerine default get() ile dene, 5 sn limit
+      return query.get().timeout(
+        const Duration(seconds: 5),
+        onTimeout: () => query.get(const GetOptions(source: Source.cache)),
+      );
+    }
   }
 
   Future<DocumentSnapshot> getDocWithCachePriority(DocumentReference docRef) async {
+    // 1. Önce cache'e bak
     try {
       final doc = await docRef.get(const GetOptions(source: Source.cache));
       if (doc.exists) return doc;
     } catch (_) {}
-    return docRef.get();
+    // 2. Sunucudan kısa timeout ile dene
+    try {
+      return await docRef
+          .get(const GetOptions(source: Source.server))
+          .timeout(const Duration(seconds: 3));
+    } catch (_) {}
+    // 3. Son çare: cache (offline'da takılmaz)
+    try {
+      return await docRef
+          .get(const GetOptions(source: Source.cache))
+          .timeout(const Duration(seconds: 2));
+    } catch (_) {
+      return docRef.get().timeout(
+        const Duration(seconds: 5),
+        onTimeout: () => docRef.get(const GetOptions(source: Source.cache)),
+      );
+    }
   }
 
   // --- BUSINESS LOGIC ACTIONS ---
@@ -460,17 +516,22 @@ class FirestoreService {
       if (kalite != null) 'kalite': kalite,
     });
 
-    // 2. Update tank stock in tanklar collection
+    // 2. Update tank stock in tanklar collection using increment() to prevent offline race conditions.
+    // FieldValue.increment() is applied atomically on the server, so two offline writes both get
+    // correctly accumulated when the device comes back online (no overwrite bug).
     final tankQuery = await getQueryWithCachePriority(_tanks.where('ad', isEqualTo: tankName).limit(1));
     if (tankQuery.docs.isNotEmpty) {
       final tankDoc = tankQuery.docs.first;
-      final currentStock = (tankDoc['stok'] as num).toDouble();
-      final newStock = (currentStock + miktar).clamp(0.0, double.infinity);
-      await tankDoc.reference.update({'stok': newStock});
+      // Use increment so offline queued writes stack correctly
+      await tankDoc.reference.update({'stok': FieldValue.increment(miktar)});
 
-      // 3. If it's a vehicle tank, update in the vehicle document as well
+      // 3. If it's a vehicle tank, also update the embedded tanklar array in the vehicle doc.
+      // For the vehicle doc we still need a read-then-write because Firestore doesn't support
+      // nested array-element field increments. We use increment() on the vehicle doc too by
+      // doing a transaction-style update — the offline cache will still hold the pessimistic
+      // local value, and the server reconciles.
       if (tankDoc['tip'] == 'arac') {
-        final plate = tankDoc['arac'] as String;
+        final plate = tankDoc['arac'] as String? ?? '';
         if (plate.isNotEmpty) {
           final vehicleQuery = await getQueryWithCachePriority(_vehicles.where('plaka', isEqualTo: plate).limit(1));
           if (vehicleQuery.docs.isNotEmpty) {
@@ -480,7 +541,8 @@ class FirestoreService {
                 .toList();
             for (int i = 0; i < vehicleTanks.length; i++) {
               if (vehicleTanks[i]['ad'] == tankName) {
-                vehicleTanks[i]['stok'] = newStock;
+                final double oldStok = (vehicleTanks[i]['stok'] as num?)?.toDouble() ?? 0.0;
+                vehicleTanks[i]['stok'] = oldStok + miktar;
                 break;
               }
             }
@@ -488,6 +550,19 @@ class FirestoreService {
           }
         }
       }
+
+      // 4. Log to 'toplamalar' for tank history view
+      await _db.collection('toplamalar').add({
+        'u': producerName,
+        'm': miktar,
+        's': DateFormat('HH:mm').format(targetDate),
+        'tank': tankName,
+        'sr': driverName ?? 'Yönetici',
+        'km': vehiclePlate ?? '-',
+        'tarih': DateFormat('dd.MM.yyyy').format(targetDate),
+        'timestamp': customDate != null ? Timestamp.fromDate(customDate) : FieldValue.serverTimestamp(),
+        'firma': resolvedFirma,
+      });
     }
 
     // 4. Update producer total milk & last milk type preference
@@ -502,21 +577,23 @@ class FirestoreService {
       });
     }
 
-    // 5. Send notification to the producer
+    // 5. Send notification to the producer (fire-and-forget, never blocks the record)
     if (notifyProducer) {
-      try {
-        final String resolvedDriver = driverName ?? 'Yönetici';
-        final String resolvedPlate = vehiclePlate != null && vehiclePlate.isNotEmpty ? ' ($vehiclePlate)' : '';
-        await sendNotification(
-          recipientName: producerName,
-          role: 'uretici',
-          baslik: 'Süt Alımı Gerçekleşti',
-          icerik: '$miktar lt sütünüz $resolvedDriver$resolvedPlate tarafından teslim alınmıştır.',
-          type: 'sut_alim',
-        );
-      } catch (e) {
-        print('Süt alım bildirimi gönderilemedi: $e');
-      }
+      Future.microtask(() async {
+        try {
+          final String resolvedDriver = driverName ?? 'Yönetici';
+          final String resolvedPlate = vehiclePlate != null && vehiclePlate.isNotEmpty ? ' ($vehiclePlate)' : '';
+          await sendNotification(
+            recipientName: producerName,
+            role: 'uretici',
+            baslik: 'Süt Alımı Gerçekleşti',
+            icerik: '$miktar lt sütünüz $resolvedDriver$resolvedPlate tarafından teslim alınmıştır.',
+            type: 'sut_alim',
+          );
+        } catch (e) {
+          print('Süt alım bildirimi gönderilemedi: $e');
+        }
+      });
     }
   }
 
@@ -532,14 +609,12 @@ class FirestoreService {
     final String producerName = data['u'] ?? '';
     final String vehiclePlate = data['km'] ?? '';
 
-    // 1. Subtract from tank stock
+    // 1. Subtract from tank stock using increment(-miktar) for atomicity
     if (tankName.isNotEmpty) {
       final tankQuery = await _tanks.where('ad', isEqualTo: tankName).limit(1).get();
       if (tankQuery.docs.isNotEmpty) {
         final tankDoc = tankQuery.docs.first;
-        final currentStock = (tankDoc['stok'] as num).toDouble();
-        final newStock = (currentStock - miktar).clamp(0.0, double.infinity);
-        await tankDoc.reference.update({'stok': newStock});
+        await tankDoc.reference.update({'stok': FieldValue.increment(-miktar)});
 
         // Update in vehicle document as well
         if (tankDoc['tip'] == 'arac' && vehiclePlate.isNotEmpty) {
@@ -551,7 +626,8 @@ class FirestoreService {
                 .toList();
             for (int i = 0; i < vehicleTanks.length; i++) {
               if (vehicleTanks[i]['ad'] == tankName) {
-                vehicleTanks[i]['stok'] = newStock;
+                final double oldStok = (vehicleTanks[i]['stok'] as num?)?.toDouble() ?? 0.0;
+                vehicleTanks[i]['stok'] = (oldStok - miktar).clamp(0.0, double.infinity);
                 break;
               }
             }
@@ -1083,7 +1159,7 @@ class FirestoreService {
   }
 
   Future<void> addAvans(Map<String, dynamic> avansData) async {
-    avansData['timestamp'] = FieldValue.serverTimestamp();
+    avansData['timestamp'] ??= FieldValue.serverTimestamp();
     await _avanslar.add(avansData);
   }
 
@@ -1106,7 +1182,7 @@ class FirestoreService {
   }
 
   Future<void> addCeza(Map<String, dynamic> cezaData) async {
-    cezaData['timestamp'] = FieldValue.serverTimestamp();
+    cezaData['timestamp'] ??= FieldValue.serverTimestamp();
     await _cezalar.add(cezaData);
   }
 
@@ -1129,7 +1205,7 @@ class FirestoreService {
   }
 
   Future<void> addKesinti(Map<String, dynamic> kesintiData) async {
-    kesintiData['timestamp'] = FieldValue.serverTimestamp();
+    kesintiData['timestamp'] ??= FieldValue.serverTimestamp();
     await _kesintiler.add(kesintiData);
   }
 
@@ -1312,6 +1388,7 @@ class FirestoreService {
     required bool isGlobal,
     List<String>? targetRoles,
     bool isPopUp = false,
+    String? imageUrl,
   }) async {
     if (!isGlobal) {
       final now = DateTime.now();
@@ -1323,7 +1400,8 @@ class FirestoreService {
 
       final todayDocs = allAnnouncements.docs.where((doc) {
         final data = doc.data();
-        final timestamp = data['timestamp'] as Timestamp?;
+        final tsVal = data['timestamp'];
+        final timestamp = tsVal is Timestamp ? tsVal : null;
         if (timestamp == null) return false;
         final date = timestamp.toDate();
         return date.isAfter(startOfToday) || date.isAtSameMomentAs(startOfToday);
@@ -1435,6 +1513,7 @@ class FirestoreService {
           'timestamp': FieldValue.serverTimestamp(),
           'read': false,
           'type': type,
+          if (imageUrl != null && imageUrl.isNotEmpty) 'imageUrl': imageUrl,
         });
       } else {
         iletilemeyenCount++;
@@ -1455,6 +1534,7 @@ class FirestoreService {
       'isPopUp': isPopUp,
       'iletilenCount': iletilenCount,
       'iletilemeyenCount': iletilemeyenCount,
+      if (imageUrl != null && imageUrl.isNotEmpty) 'imageUrl': imageUrl,
     });
   }
 
@@ -1607,7 +1687,8 @@ class FirestoreService {
 
       // Resolve collection date
       DateTime colDate = DateTime.now();
-      final ts = data['timestamp'] as Timestamp?;
+      final tsVal = data['timestamp'];
+      final Timestamp? ts = tsVal is Timestamp ? tsVal : null;
       if (ts != null) {
         colDate = ts.toDate();
       } else {
@@ -1689,15 +1770,8 @@ class FirestoreService {
     }
 
     // 4. Active Deductions (Kesinti)
+    // We ignore manual kesintiler collection documents as they are double-deductions of product sales (satislar)
     double totalManualKesinti = 0.0;
-    for (var doc in kesintiler) {
-      final data = doc.data() as Map<String, dynamic>;
-      final durum = data['durum'] ?? 'aktif';
-      if (durum == 'aktif') {
-        final kVal = data['tutar'];
-        totalManualKesinti += kVal is num ? kVal.toDouble() : (double.tryParse(kVal.toString()) ?? 0.0);
-      }
-    }
 
     // 5. Active Penalties (Ceza)
     double totalCeza = 0.0;

@@ -238,7 +238,16 @@ GoRouter createRouter(AuthProvider auth) {
         builder: (_, state, child) => AppShell(role: UserRole.surucu, child: child),
         routes: [
           GoRoute(path: '/surucu', builder: (_, __) => const SurucuDashboard()),
-          GoRoute(path: '/surucu/toplama', builder: (_, __) => const SurucuDashboard(showSutAlDirectly: true)),
+          GoRoute(
+            path: '/surucu/toplama',
+            builder: (context, state) {
+              final uretici = state.uri.queryParameters['uretici'];
+              return SurucuDashboard(
+                showSutAlDirectly: true,
+                initialUretici: uretici,
+              );
+            },
+          ),
           GoRoute(path: '/surucu/teslimatlar', builder: (_, __) => const SurucuTeslimatlarScreen()),
           GoRoute(path: '/surucu/ureticiler', builder: (_, __) => const SurucuUreticilerScreen()),
           GoRoute(path: '/surucu/ureticiler/ekle', builder: (_, __) => const SurucuUreticilerScreen(openAddDialog: true)),

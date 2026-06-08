@@ -140,7 +140,7 @@ class AuthProvider extends ChangeNotifier {
                 'phone': rawPhone,
                 'il': '',
                 'ilce': '',
-                'mahalleKoy': '',
+                'mahalleKoy': dFirma, // store firma name for subscription lookup
                 'adresDetay': '',
                 'postaKodu': '',
                 'firmaId': '',
@@ -312,6 +312,26 @@ class AuthProvider extends ChangeNotifier {
         'firmaId': firmaId ?? '',
         'firmaName': firmaName ?? '',
       };
+
+      // For firma role: create a firmalar record with 7-day free trial
+      if (role == UserRole.firma && (firmaName == null || firmaName.isEmpty)) {
+        final trialExpiry = DateTime.now().add(const Duration(days: 7));
+        final newFirmaRef = await FirebaseFirestore.instance.collection('firmalar').add({
+          'ad': displayName,
+          'tel': firebaseUser.phoneNumber ?? _verifiedPhone ?? '',
+          'adres': '$mahalleKoy, $ilce, $il',
+          'yetkili': displayName,
+          'maxPersonel': 5,
+          'maxUretici': 50,
+          'maxArac': 2,
+          'maxMesaj': 10,
+          'abonelikBitis': Timestamp.fromDate(trialExpiry),
+          'abonelikTipi': 'deneme',
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+        userData['firmaId'] = newFirmaRef.id;
+        userData['firmaName'] = displayName;
+      }
 
       await _firestoreService.createUserProfile(firebaseUser.uid, userData);
       

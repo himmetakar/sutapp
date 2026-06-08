@@ -24,10 +24,11 @@ class QuickActionsDialogs {
     showDialog(
       context: context,
       builder: (ctx) => FutureBuilder<QuerySnapshot>(
-        future: FirebaseFirestore.instance
-            .collection('ureticiler')
-            .where('firmalar', arrayContains: currentFirmaName)
-            .get(),
+        future: FirestoreService().getQueryWithCachePriority(
+          FirebaseFirestore.instance
+              .collection('ureticiler')
+              .where('firmalar', arrayContains: currentFirmaName),
+        ),
         builder: (ctx1, ureticiSnapshot) {
           if (ureticiSnapshot.hasError) {
             debugPrint('showSutGirisiDialog: uretici query error: ${ureticiSnapshot.error}');
@@ -43,7 +44,9 @@ class QuickActionsDialogs {
             );
           }
           return FutureBuilder<QuerySnapshot>(
-            future: FirebaseFirestore.instance.collection('tanklar').where('firma', isEqualTo: currentFirmaName).get(),
+            future: FirestoreService().getQueryWithCachePriority(
+              FirebaseFirestore.instance.collection('tanklar').where('firma', isEqualTo: currentFirmaName),
+            ),
             builder: (ctx2, tankSnapshot) {
               if (tankSnapshot.hasError) {
                 debugPrint('showSutGirisiDialog: tank query error: ${tankSnapshot.error}');
@@ -270,7 +273,8 @@ class QuickActionsDialogs {
 
                         final bool isOverflow = (targetCurrentStock + miktar > targetCapacity);
 
-                        await FirestoreService().recordMilkCollection(
+                        // Run in background without awaiting to prevent UI hang when offline
+                        FirestoreService().recordMilkCollection(
                           producerName: selectedUretici!,
                           tankName: selectedTank!,
                           miktar: miktar,

@@ -70,6 +70,31 @@ class _SutOdemeleriScreenState extends State<SutOdemeleriScreen> {
     return _paymentControllers[producerName]!;
   }
 
+  bool _isDocBeforeOrInSelectedMonth(DocumentSnapshot doc, DateTime selectedMonth) {
+    final data = doc.data() as Map<String, dynamic>?;
+    if (data == null) return false;
+
+    final rawDate = data['tahsilEdilecegiTarih'] ?? data['verildigiTarih'] ?? data['tarih'] ?? data['vereseTarih'];
+    if (rawDate != null) {
+      try {
+        DateTime parsed;
+        if (rawDate.toString().contains('.')) {
+          parsed = DateFormat('dd.MM.yyyy').parse(rawDate.toString());
+        } else {
+          parsed = DateFormat('dd MMMM yyyy', 'tr_TR').parse(rawDate.toString());
+        }
+        return parsed.year < selectedMonth.year || (parsed.year == selectedMonth.year && parsed.month <= selectedMonth.month);
+      } catch (_) {}
+    }
+
+    if (data['timestamp'] != null && data['timestamp'] is Timestamp) {
+      final date = (data['timestamp'] as Timestamp).toDate();
+      return date.year < selectedMonth.year || (date.year == selectedMonth.year && date.month <= selectedMonth.month);
+    }
+
+    return false;
+  }
+
   bool _isDocInSelectedMonth(DocumentSnapshot doc, DateTime selectedMonth) {
     final data = doc.data() as Map<String, dynamic>?;
     if (data == null) return false;
@@ -87,7 +112,7 @@ class _SutOdemeleriScreenState extends State<SutOdemeleriScreen> {
       } catch (_) {}
     }
 
-    if (data['timestamp'] != null) {
+    if (data['timestamp'] != null && data['timestamp'] is Timestamp) {
       final date = (data['timestamp'] as Timestamp).toDate();
       return date.month == selectedMonth.month && date.year == selectedMonth.year;
     }
@@ -419,7 +444,7 @@ class _SutOdemeleriScreenState extends State<SutOdemeleriScreen> {
     // Collections
     for (var doc in collections) {
       final data = doc.data() as Map<String, dynamic>;
-      final dateStr = data['timestamp'] != null ? DateFormat('dd.MM.yyyy').format((data['timestamp'] as Timestamp).toDate()) : '-';
+      final dateStr = (data['timestamp'] != null && data['timestamp'] is Timestamp) ? DateFormat('dd.MM.yyyy').format((data['timestamp'] as Timestamp).toDate()) : '-';
       final double m = (data['m'] as num?)?.toDouble() ?? 0.0;
       final String rawType = data['tip'] ?? 'Soğuk süt';
       final String priceKey = _firestoreService.mapMilkTypeToPriceKey(rawType);
@@ -483,22 +508,7 @@ class _SutOdemeleriScreenState extends State<SutOdemeleriScreen> {
       });
     }
 
-    // Kesintiler
-    for (var doc in kesintiler) {
-      final data = doc.data() as Map<String, dynamic>;
-      final dateStr = data['tarih'] ?? '-';
-      final double tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
-      final durum = data['durum'] ?? 'aktif';
-      final tur = data['kesintiTuru'] ?? 'Kesinti';
-      items.add({
-        'tarih': dateStr,
-        'tur': tur,
-        'aciklama': '${data['aciklama'] ?? ''} (${durum == 'aktif' ? 'Aktif' : 'Ödendi'})',
-        'alacak': 0.0,
-        'borc': durum == 'aktif' ? tutar : 0.0,
-        'color': durum == 'aktif' ? Colors.redAccent : AppColors.gray400,
-      });
-    }
+    // Kesintiler (Excluded manual kesintiler as they are double-deductions of satislar)
 
     // Cezalar
     for (var doc in cezalar) {
@@ -728,6 +738,9 @@ class _SutOdemeleriScreenState extends State<SutOdemeleriScreen> {
       body: StreamBuilder<QuerySnapshot>(
         stream: _firestoreService.getProducersStream(firma: currentFirmaName),
         builder: (context, prodSnapshot) {
+          if (prodSnapshot.hasError) {
+            return Center(child: Text('Üreticiler yüklenirken hata oluştu: ${prodSnapshot.error}', style: GoogleFonts.inter()));
+          }
           if (prodSnapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
@@ -741,53 +754,107 @@ class _SutOdemeleriScreenState extends State<SutOdemeleriScreen> {
           }
 
           // Extract unique groups and regions for filter chips
-          final groups = ['Tümü', ...allProducers.map((p) => p['group'] as String? ?? '').where((g) => g.isNotEmpty).toSet().toList()];
-          final regions = ['Tümü', ...allProducers.map((p) => p['bolge'] as String? ?? '').where((r) => r.isNotEmpty).toSet().toList()];
+          final groups = ['Tümü', ...allProducers.map((p) => p['group']?.toString() ?? '').where((g) => g.isNotEmpty).toSet().toList()];
+          final regions = ['Tümü', ...allProducers.map((p) => p['bolge']?.toString() ?? '').where((r) => r.isNotEmpty).toSet().toList()];
 
           return StreamBuilder<QuerySnapshot>(
             stream: _firestoreService.getMilkPricesStream(firma: currentFirmaName),
             builder: (context, pricesSnap) {
+              if (pricesSnap.hasError) {
+                return Center(child: Text('Fiyatlar yüklenirken hata oluştu: ${pricesSnap.error}', style: GoogleFonts.inter()));
+              }
+              if (pricesSnap.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
               final priceDocs = pricesSnap.data?.docs ?? [];
               final pricesList = priceDocs.map((d) => d.data() as Map<String, dynamic>).toList();
 
               return StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance.collection('toplamalar').where('firma', isEqualTo: currentFirmaName).snapshots(),
                 builder: (context, collectionsSnap) {
+                  if (collectionsSnap.hasError) {
+                    return Center(child: Text('Toplamalar yüklenirken hata oluştu: ${collectionsSnap.error}', style: GoogleFonts.inter()));
+                  }
+                  if (collectionsSnap.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
                   final allCollections = collectionsSnap.data?.docs ?? [];
 
                   return StreamBuilder<QuerySnapshot>(
                     stream: FirebaseFirestore.instance.collection('tahsilatlar').where('firma', isEqualTo: currentFirmaName).snapshots(),
                     builder: (context, tahsilatlarSnap) {
+                      if (tahsilatlarSnap.hasError) {
+                        return Center(child: Text('Tahsilatlar yüklenirken hata oluştu: ${tahsilatlarSnap.error}', style: GoogleFonts.inter()));
+                      }
+                      if (tahsilatlarSnap.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
                       final allTahsilatlar = tahsilatlarSnap.data?.docs ?? [];
 
                       return StreamBuilder<QuerySnapshot>(
                         stream: FirebaseFirestore.instance.collection('avanslar').where('firma', isEqualTo: currentFirmaName).snapshots(),
                         builder: (context, avanslarSnap) {
+                          if (avanslarSnap.hasError) {
+                            return Center(child: Text('Avanslar yüklenirken hata oluştu: ${avanslarSnap.error}', style: GoogleFonts.inter()));
+                          }
+                          if (avanslarSnap.connectionState == ConnectionState.waiting) {
+                            return const Center(child: CircularProgressIndicator());
+                          }
                           final allAvanslar = avanslarSnap.data?.docs ?? [];
 
                           return StreamBuilder<QuerySnapshot>(
                             stream: FirebaseFirestore.instance.collection('kesintiler').where('firma', isEqualTo: currentFirmaName).snapshots(),
                             builder: (context, kesintilerSnap) {
+                              if (kesintilerSnap.hasError) {
+                                return Center(child: Text('Kesintiler yüklenirken hata oluştu: ${kesintilerSnap.error}', style: GoogleFonts.inter()));
+                              }
+                              if (kesintilerSnap.connectionState == ConnectionState.waiting) {
+                                return const Center(child: CircularProgressIndicator());
+                              }
                               final allKesintiler = kesintilerSnap.data?.docs ?? [];
 
                               return StreamBuilder<QuerySnapshot>(
                                 stream: FirebaseFirestore.instance.collection('cezalar').where('firma', isEqualTo: currentFirmaName).snapshots(),
                                 builder: (context, cezalarSnap) {
+                                  if (cezalarSnap.hasError) {
+                                    return Center(child: Text('Cezalar yüklenirken hata oluştu: ${cezalarSnap.error}', style: GoogleFonts.inter()));
+                                  }
+                                  if (cezalarSnap.connectionState == ConnectionState.waiting) {
+                                    return const Center(child: CircularProgressIndicator());
+                                  }
                                   final allCezalar = cezalarSnap.data?.docs ?? [];
 
                                   return StreamBuilder<QuerySnapshot>(
                                     stream: FirebaseFirestore.instance.collection('devirler').where('firma', isEqualTo: currentFirmaName).snapshots(),
                                     builder: (context, devirlerSnap) {
+                                      if (devirlerSnap.hasError) {
+                                        return Center(child: Text('Devirler yüklenirken hata oluştu: ${devirlerSnap.error}', style: GoogleFonts.inter()));
+                                      }
+                                      if (devirlerSnap.connectionState == ConnectionState.waiting) {
+                                        return const Center(child: CircularProgressIndicator());
+                                      }
                                       final allDevirler = devirlerSnap.data?.docs ?? [];
 
                                       return StreamBuilder<QuerySnapshot>(
                                         stream: FirebaseFirestore.instance.collection('satislar').where('firma', isEqualTo: currentFirmaName).snapshots(),
                                         builder: (context, satislarSnap) {
+                                          if (satislarSnap.hasError) {
+                                            return Center(child: Text('Satışlar yüklenirken hata oluştu: ${satislarSnap.error}', style: GoogleFonts.inter()));
+                                          }
+                                          if (satislarSnap.connectionState == ConnectionState.waiting) {
+                                            return const Center(child: CircularProgressIndicator());
+                                          }
                                           final allSatislar = satislarSnap.data?.docs ?? [];
 
                                           return StreamBuilder<DocumentSnapshot>(
                                             stream: FirebaseFirestore.instance.collection('finans_ayarlari').doc(currentFirmaName).snapshots(),
                                             builder: (context, settingsSnap) {
+                                              if (settingsSnap.hasError) {
+                                                return Center(child: Text('Finans ayarları yüklenirken hata oluştu: ${settingsSnap.error}', style: GoogleFonts.inter()));
+                                              }
+                                              if (settingsSnap.connectionState == ConnectionState.waiting) {
+                                                return const Center(child: CircularProgressIndicator());
+                                              }
                                               final sData = settingsSnap.data?.data() as Map<String, dynamic>? ?? {};
                                               final double bagkurOran = (sData['bagkurOran'] as num?)?.toDouble() ?? 2.10;
                                               final double stopajOran = (sData['stopajOran'] as num?)?.toDouble() ?? 1.00;
@@ -803,10 +870,10 @@ class _SutOdemeleriScreenState extends State<SutOdemeleriScreen> {
 
                                               // Filter producers by: search query, group, region
                                               final filteredProducers = allProducers.where((p) {
-                                                final name = (p['name'] as String? ?? '').toLowerCase();
-                                                final phone = (p['phone'] as String? ?? '').toLowerCase();
-                                                final group = p['group'] as String? ?? '';
-                                                final bolge = p['bolge'] as String? ?? '';
+                                                final name = (p['name']?.toString() ?? '').toLowerCase();
+                                                final phone = (p['phone']?.toString() ?? '').toLowerCase();
+                                                final group = p['group']?.toString() ?? '';
+                                                final bolge = p['bolge']?.toString() ?? '';
 
                                                 final matchesSearch = name.contains(_searchQuery.toLowerCase()) || phone.contains(_searchQuery.toLowerCase());
                                                 final matchesGroup = _selectedGroup == 'Tümü' || group == _selectedGroup;
@@ -823,18 +890,40 @@ class _SutOdemeleriScreenState extends State<SutOdemeleriScreen> {
                                               final List<Map<String, dynamic>> compiledData = [];
 
                                               for (var p in filteredProducers) {
-                                                final name = p['name'] as String;
-                                                final bolge = p['bolge'] ?? '';
-                                                final group = p['group'] ?? '';
+                                                final name = p['name']?.toString() ?? '';
+                                                if (name.isEmpty) continue;
+                                                final bolge = p['bolge']?.toString() ?? '';
+                                                final group = p['group']?.toString() ?? '';
                                                 final kesintiAyarlari = p['kesintiAyarlari'] as Map<String, dynamic>?;
 
-                                                final pCollections = allCollections.where((doc) => doc['u'] == name).toList();
-                                                final pTahsilatlar = allTahsilatlar.where((doc) => doc['uretici'] == name).toList();
-                                                final pAvanslar = allAvanslar.where((doc) => doc['uretici'] == name).toList();
-                                                final pKesintiler = allKesintiler.where((doc) => doc['uretici'] == name).toList();
-                                                final pCezalar = allCezalar.where((doc) => doc['uretici'] == name).toList();
-                                                final pDevirler = allDevirler.where((doc) => doc['uretici'] == name).toList();
-                                                final pSatislar = allSatislar.where((doc) => doc['uretici'] == name).toList();
+                                                final pCollections = allCollections.where((doc) {
+                                                  final data = doc.data() as Map<String, dynamic>?;
+                                                  return data != null && data['u'] == name && _isDocBeforeOrInSelectedMonth(doc, _selectedMonth);
+                                                }).toList();
+                                                final pTahsilatlar = allTahsilatlar.where((doc) {
+                                                  final data = doc.data() as Map<String, dynamic>?;
+                                                  return data != null && data['uretici'] == name && _isDocBeforeOrInSelectedMonth(doc, _selectedMonth);
+                                                }).toList();
+                                                final pAvanslar = allAvanslar.where((doc) {
+                                                  final data = doc.data() as Map<String, dynamic>?;
+                                                  return data != null && data['uretici'] == name && _isDocBeforeOrInSelectedMonth(doc, _selectedMonth);
+                                                }).toList();
+                                                final pKesintiler = allKesintiler.where((doc) {
+                                                  final data = doc.data() as Map<String, dynamic>?;
+                                                  return data != null && data['uretici'] == name && _isDocBeforeOrInSelectedMonth(doc, _selectedMonth);
+                                                }).toList();
+                                                final pCezalar = allCezalar.where((doc) {
+                                                  final data = doc.data() as Map<String, dynamic>?;
+                                                  return data != null && data['uretici'] == name && _isDocBeforeOrInSelectedMonth(doc, _selectedMonth);
+                                                }).toList();
+                                                final pDevirler = allDevirler.where((doc) {
+                                                  final data = doc.data() as Map<String, dynamic>?;
+                                                  return data != null && data['uretici'] == name && _isDocBeforeOrInSelectedMonth(doc, _selectedMonth);
+                                                }).toList();
+                                                final pSatislar = allSatislar.where((doc) {
+                                                  final data = doc.data() as Map<String, dynamic>?;
+                                                  return data != null && data['uretici'] == name && _isDocBeforeOrInSelectedMonth(doc, _selectedMonth);
+                                                }).toList();
 
                                                 // 1. Calculate general cumulative ledger
                                                 final fullLedger = _firestoreService.calculateLedger(
@@ -1145,15 +1234,15 @@ class _SutOdemeleriScreenState extends State<SutOdemeleriScreen> {
                                             final fullLedger = data['fullLedger'] as Map<String, dynamic>;
                                             final monthLedger = data['monthLedger'] as Map<String, dynamic>;
                                             
-                                            final name = prod['name'] as String;
-                                            final phone = prod['phone'] as String;
-                                            final bolge = prod['bolge'] ?? '';
-                                            final group = prod['group'] ?? '';
+                                            final name = prod['name']?.toString() ?? '';
+                                            final phone = prod['phone']?.toString() ?? '';
+                                            final bolge = prod['bolge']?.toString() ?? '';
+                                            final group = prod['group']?.toString() ?? '';
                                             
-                                            final double net = fullLedger['netBalance'];
-                                            final double monthAlacak = data['monthAlacak'] as double;
-                                            final double monthOdenen = data['monthOdenen'] as double;
-                                            final double netPayable = data['netPayable'] as double;
+                                            final double net = (fullLedger['netBalance'] as num?)?.toDouble() ?? 0.0;
+                                            final double monthAlacak = (data['monthAlacak'] as num?)?.toDouble() ?? 0.0;
+                                            final double monthOdenen = (data['monthOdenen'] as num?)?.toDouble() ?? 0.0;
+                                            final double netPayable = (data['netPayable'] as num?)?.toDouble() ?? 0.0;
 
                                             final isChecked = _selectedProducers.contains(name);
                                             final ctrl = _getController(name, netPayable);
@@ -1291,24 +1380,6 @@ class _SutOdemeleriScreenState extends State<SutOdemeleriScreen> {
                                                         label: const Text('Tekil Öde', style: TextStyle(fontSize: 10)),
                                                         style: TextButton.styleFrom(
                                                           foregroundColor: AppColors.success,
-                                                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                                                        ),
-                                                      ),
-                                                      TextButton.icon(
-                                                        onPressed: () => _showYemSatisDialog(context, name, currentFirmaName),
-                                                        icon: const Icon(Icons.shopping_bag_rounded, size: 12),
-                                                        label: const Text('Yem Sat', style: TextStyle(fontSize: 10)),
-                                                        style: TextButton.styleFrom(
-                                                          foregroundColor: Colors.orange,
-                                                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                                                        ),
-                                                      ),
-                                                      TextButton.icon(
-                                                        onPressed: () => _showAvansDialog(context, name, currentFirmaName),
-                                                        icon: const Icon(Icons.handshake_rounded, size: 12),
-                                                        label: const Text('Avans Ver', style: TextStyle(fontSize: 10)),
-                                                        style: TextButton.styleFrom(
-                                                          foregroundColor: Colors.blue,
                                                           padding: const EdgeInsets.symmetric(horizontal: 8),
                                                         ),
                                                       ),

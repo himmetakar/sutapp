@@ -325,6 +325,27 @@ export default function SatisRaporlari() {
         timestamp: serverTimestamp()
       });
 
+      // Also write to sut_satislari so it appears in "Süt Transferleri" and "Cari Hesap" in mobile app
+      let tankName = 'Merkez';
+      if (form.tankId) {
+        const selectedTankDoc = tanklar.find(t => t.id === form.tankId);
+        if (selectedTankDoc) {
+          tankName = selectedTankDoc.ad || selectedTankDoc.tankAdi || 'Merkez';
+        }
+      }
+      await addDoc(collection(db, 'sut_satislari'), {
+        aliciFirma: buyer,
+        kaynakTank: tankName,
+        miktar: m,
+        fiyat: bf,
+        toplam: total,
+        not: form.aciklama || '',
+        tarih: trDate,
+        durum: 'Tamamlandı',
+        firma: currentFirmaName,
+        timestamp: serverTimestamp()
+      });
+
       // Clear form
       setForm({
         aliciFirma: 'Sütaş',

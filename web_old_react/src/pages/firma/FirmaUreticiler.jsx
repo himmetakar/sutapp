@@ -17,11 +17,18 @@ const demoUreticiler = [
 ];
 
 export default function FirmaUreticiler() {
+  const [ureticiler, setUreticiler] = useState(demoUreticiler);
   const [search, setSearch] = useState('');
   const [selectedGrup, setSelectedGrup] = useState('Tümü');
   const [showModal, setShowModal] = useState(false);
 
-  const filtered = demoUreticiler.filter(u => {
+  const handleDelete = (id, name) => {
+    if (window.confirm(`${name} isimli üreticiyi tamamen silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`)) {
+      setUreticiler(prev => prev.filter(u => u.id !== id));
+    }
+  };
+
+  const filtered = ureticiler.filter(u => {
     const matchSearch = u.name.toLowerCase().includes(search.toLowerCase()) ||
       u.phone.includes(search);
     const matchGrup = selectedGrup === 'Tümü' || u.group === selectedGrup;
@@ -107,7 +114,13 @@ export default function FirmaUreticiler() {
                   <td>
                     <div style={{ display: 'flex', gap: '4px' }}>
                       <button className="btn btn-ghost btn-sm"><FiEdit2 /></button>
-                      <button className="btn btn-ghost btn-sm" style={{ color: '#ef4444' }}><FiTrash2 /></button>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        style={{ color: '#ef4444' }}
+                        onClick={() => handleDelete(u.id, u.name)}
+                      >
+                        <FiTrash2 />
+                      </button>
                     </div>
                   </td>
                 </tr>

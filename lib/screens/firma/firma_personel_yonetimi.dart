@@ -60,6 +60,14 @@ class FirmaPersonelYonetimiScreen extends StatelessWidget {
                 ),
                 _buildMenuCard(
                   context: context,
+                  icon: Icons.format_list_bulleted_rounded,
+                  title: 'Personel Listesi',
+                  iconColor: Colors.white,
+                  bgColor: const Color(0xFF0891B2),
+                  onTap: () => context.push('/firma/personel/liste'),
+                ),
+                _buildMenuCard(
+                  context: context,
                   icon: Icons.bar_chart_rounded,
                   title: 'Personel Performans Rapor',
                   iconColor: Colors.white,

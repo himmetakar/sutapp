@@ -36,6 +36,25 @@ class _SurucuTeslimatlarScreenState extends State<SurucuTeslimatlarScreen> with 
     super.dispose();
   }
 
+  // Cache-first helper: try local cache first, fall back to server with a 2s timeout
+  Future<QuerySnapshot> _fetchCacheFirst(Query query) async {
+    try {
+      final snap = await query.get(const GetOptions(source: Source.cache));
+      if (snap.docs.isNotEmpty) return snap;
+    } catch (_) {}
+    try {
+      return await query
+          .get(const GetOptions(source: Source.server))
+          .timeout(const Duration(seconds: 2));
+    } catch (_) {
+      try {
+        return await query.get(const GetOptions(source: Source.cache));
+      } catch (_) {
+        return query.get();
+      }
+    }
+  }
+
   Future<void> _loadDriverAndProducers() async {
     setState(() {
       _isLoadingProducers = true;
@@ -44,11 +63,11 @@ class _SurucuTeslimatlarScreenState extends State<SurucuTeslimatlarScreen> with 
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       _driverName = authProvider.user?.displayName ?? 'Ahmet Kara';
-      
-      // Load driver profile to get company
-      final allDriversQuery = await FirebaseFirestore.instance
-          .collection('suruculer')
-          .get();
+
+      // Load driver profile to get company (cache-first)
+      final allDriversQuery = await _fetchCacheFirst(
+        FirebaseFirestore.instance.collection('suruculer'),
+      );
 
       DocumentSnapshot? matchedDriverDoc;
       for (var doc in allDriversQuery.docs) {
@@ -57,7 +76,7 @@ class _SurucuTeslimatlarScreenState extends State<SurucuTeslimatlarScreen> with 
         final soyad = data['soyad'] ?? '';
         final fullName = '$ad $soyad'.trim();
         final email = data['email'] ?? '';
-        
+
         if (fullName.toLowerCase() == _driverName.toLowerCase() ||
             (email.isNotEmpty && email == authProvider.user?.email)) {
           matchedDriverDoc = doc;
@@ -72,12 +91,13 @@ class _SurucuTeslimatlarScreenState extends State<SurucuTeslimatlarScreen> with 
       }
 
       if (_firmaName.isEmpty) {
-        // Fallback search in vehicles
-        final vehicleQuery = await FirebaseFirestore.instance
-            .collection('araclar')
-            .where('suruculer', arrayContains: _driverName)
-            .limit(1)
-            .get();
+        // Fallback search in vehicles (cache-first)
+        final vehicleQuery = await _fetchCacheFirst(
+          FirebaseFirestore.instance
+              .collection('araclar')
+              .where('suruculer', arrayContains: _driverName)
+              .limit(1),
+        );
         if (vehicleQuery.docs.isNotEmpty) {
           _firmaName = vehicleQuery.docs.first['firma'] ?? '';
         }
@@ -87,19 +107,20 @@ class _SurucuTeslimatlarScreenState extends State<SurucuTeslimatlarScreen> with 
         _firmaName = 'Kayseri Çiftlik'; // absolute fallback
       }
 
-      // Load assignments for this driver
-      final atamalarQuery = await FirebaseFirestore.instance
-          .collection('toplayici_atamalari')
-          .where('firma', isEqualTo: _firmaName)
-          .where('toplayici', isEqualTo: _driverName)
-          .get();
+      // Load assignments (cache-first)
+      final atamalarQuery = await _fetchCacheFirst(
+        FirebaseFirestore.instance
+            .collection('toplayici_atamalari')
+            .where('firma', isEqualTo: _firmaName)
+            .where('toplayici', isEqualTo: _driverName),
+      );
 
       final List<String> assignedProducers = [];
       final List<String> assignedGroups = [];
       final List<String> assignedBirlikler = [];
 
       for (var doc in atamalarQuery.docs) {
-        final data = doc.data();
+        final data = doc.data() as Map<String, dynamic>;
         final hTip = data['hedefTip'];
         final hAd = data['hedefAd'];
         if (hTip == 'uretici') {
@@ -111,15 +132,16 @@ class _SurucuTeslimatlarScreenState extends State<SurucuTeslimatlarScreen> with 
         }
       }
 
-      // Fetch all producers of this firma and match
-      final prodQuery = await FirebaseFirestore.instance
-          .collection('ureticiler')
-          .where('firmalar', arrayContains: _firmaName)
-          .get();
+      // Fetch all producers of this firma (cache-first)
+      final prodQuery = await _fetchCacheFirst(
+        FirebaseFirestore.instance
+            .collection('ureticiler')
+            .where('firmalar', arrayContains: _firmaName),
+      );
 
       final List<String> matchedProducers = [];
       for (var doc in prodQuery.docs) {
-        final data = doc.data();
+        final data = doc.data() as Map<String, dynamic>;
         final name = data['name'] ?? '';
         final group = data['group'] ?? '';
         final bolge = data['bolge'] ?? '';
@@ -133,24 +155,23 @@ class _SurucuTeslimatlarScreenState extends State<SurucuTeslimatlarScreen> with 
         }
       }
 
-      // ──── CRITICAL FIX ────
-      // Directly named assignments (hedefTip == 'uretici') must always appear,
-      // even if that producer's `firmalar` field doesn't include this firma.
+      // Directly named assignments must always appear
       for (final name in assignedProducers) {
         if (!matchedProducers.contains(name)) {
           matchedProducers.add(name);
         }
       }
 
-      // Fetch all products of this company
-      final productsQuery = await FirebaseFirestore.instance
-          .collection('urunler')
-          .where('firma', isEqualTo: _firmaName)
-          .get();
-      
+      // Fetch all products of this company (cache-first)
+      final productsQuery = await _fetchCacheFirst(
+        FirebaseFirestore.instance
+            .collection('urunler')
+            .where('firma', isEqualTo: _firmaName),
+      );
+
       final List<Map<String, dynamic>> loadedProducts = [];
       for (var doc in productsQuery.docs) {
-        final data = doc.data();
+        final data = doc.data() as Map<String, dynamic>;
         loadedProducts.add({
           'ad': data['ad'] ?? '',
           'fiyat': (data['fiyat'] as num?)?.toDouble() ?? 0.0,
@@ -354,7 +375,7 @@ class _SurucuTeslimatlarScreenState extends State<SurucuTeslimatlarScreen> with 
     for (int i = 0; i < originalItems.length; i++) {
       final originalItem = originalItems[i];
       final double origQty = (originalItem['miktar'] as num?)?.toDouble() ?? 0.0;
-      final double delivQty = double.tryParse(controllers[i].text) ?? 0.0;
+      final double delivQty = double.tryParse(controllers[i].text.replaceAll(',', '.')) ?? 0.0;
 
       if (delivQty < origQty) {
         final double missingQty = origQty - delivQty;
@@ -525,7 +546,7 @@ class _SurucuTeslimatlarScreenState extends State<SurucuTeslimatlarScreen> with 
                     // 2. Finalize order delivery
                     double newOrderTotal = 0.0;
                     for (int i = 0; i < originalItems.length; i++) {
-                      final double qty = double.tryParse(controllers[i].text) ?? 0.0;
+                      final double qty = double.tryParse(controllers[i].text.replaceAll(',', '.')) ?? 0.0;
                       final double unitPrice = (originalItems[i]['birimFiyat'] as num?)?.toDouble() ?? 0.0;
                       newOrderTotal += qty * unitPrice;
                     }
@@ -595,7 +616,7 @@ class _SurucuTeslimatlarScreenState extends State<SurucuTeslimatlarScreen> with 
             for (int i = 0; i < items.length; i++) {
               final item = items[i];
               final double unitPrice = (item['birimFiyat'] as num?)?.toDouble() ?? 0.0;
-              final double qty = double.tryParse(controllers[i].text) ?? 0.0;
+              final double qty = double.tryParse(controllers[i].text.replaceAll(',', '.')) ?? 0.0;
               final double itemTotal = qty * unitPrice;
               newOrderTotal += itemTotal;
 
@@ -656,7 +677,7 @@ class _SurucuTeslimatlarScreenState extends State<SurucuTeslimatlarScreen> with 
                           final String unit = item['birim'] ?? 'Adet';
                           final double price = (item['birimFiyat'] as num?)?.toDouble() ?? 0.0;
                           final double currentQty = (item['miktar'] as num?)?.toDouble() ?? 1.0;
-                          final double updatedQty = double.tryParse(controllers[index].text) ?? 0.0;
+                          final double updatedQty = double.tryParse(controllers[index].text.replaceAll(',', '.')) ?? 0.0;
                           final double totalItem = updatedQty * price;
 
                           return Padding(
@@ -776,7 +797,7 @@ class _SurucuTeslimatlarScreenState extends State<SurucuTeslimatlarScreen> with 
 
                     for (int i = 0; i < items.length; i++) {
                       final double currentQty = (items[i]['miktar'] as num?)?.toDouble() ?? 1.0;
-                      final double updatedQty = double.tryParse(controllers[i].text) ?? 0.0;
+                      final double updatedQty = double.tryParse(controllers[i].text.replaceAll(',', '.')) ?? 0.0;
                       if (updatedQty < 0) {
                         hasNegative = true;
                       }
@@ -1326,7 +1347,7 @@ class _SurucuTeslimatlarScreenState extends State<SurucuTeslimatlarScreen> with 
                           const SizedBox(width: 12),
                           ElevatedButton.icon(
                             onPressed: () {
-                              final double? qty = double.tryParse(quantityCtrl.text);
+                              final double? qty = double.tryParse(quantityCtrl.text.replaceAll(',', '.'));
                               if (qty == null || qty <= 0 || selectedProduct == null) {
                                 return;
                               }

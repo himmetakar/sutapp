@@ -18,8 +18,17 @@ class _UreticiProfilScreenState extends State<UreticiProfilScreen> {
   Widget build(BuildContext context) {
     final auth = Provider.of<AuthProvider>(context);
     final user = auth.user;
-    final avatarChar = user?.displayName.isNotEmpty == true 
-        ? user!.displayName.substring(0, 1).toUpperCase() 
+
+    // Wait until user is loaded — show loading indicator to avoid flash
+    if (user == null) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    final displayName = user.displayName;
+    final avatarChar = displayName.isNotEmpty
+        ? displayName.substring(0, 1).toUpperCase()
         : 'Ü';
 
     return Scaffold(
@@ -52,7 +61,7 @@ class _UreticiProfilScreenState extends State<UreticiProfilScreen> {
                       ),
                       const SizedBox(height: 16),
                       Text(
-                        user?.displayName ?? 'Üretici',
+                        user.displayName.isNotEmpty ? user.displayName : 'Üretici',
                         style: GoogleFonts.inter(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
@@ -89,9 +98,9 @@ class _UreticiProfilScreenState extends State<UreticiProfilScreen> {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      _buildInfoRow(Icons.mail_outline_rounded, 'E-posta', user?.email ?? '-'),
+                      _buildInfoRow(Icons.mail_outline_rounded, 'E-posta', user.email ?? '-'),
                       const Divider(height: 24, color: AppColors.gray200),
-                      _buildInfoRow(Icons.phone_outlined, 'Telefon', user?.phone ?? '-'),
+                      _buildInfoRow(Icons.phone_outlined, 'Telefon', user.phone ?? '-'),
                       const Divider(height: 24, color: AppColors.gray200),
                       _buildInfoRow(Icons.badge_outlined, 'Rol', 'Üretici'),
                     ],

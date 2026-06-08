@@ -7,8 +7,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import '../../providers/auth_provider.dart';
 import '../../config/theme.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class FirmaHomeScreen extends StatefulWidget {
+  static final ValueNotifier<String> currentMenuNotifier = ValueNotifier<String>('main');
+
   const FirmaHomeScreen({super.key});
 
   @override
@@ -23,6 +26,23 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
   void initState() {
     super.initState();
     _checkForPopUpAds();
+    _currentMenu = FirmaHomeScreen.currentMenuNotifier.value;
+    FirmaHomeScreen.currentMenuNotifier.addListener(_onNotifierChange);
+  }
+
+  @override
+  void dispose() {
+    FirmaHomeScreen.currentMenuNotifier.removeListener(_onNotifierChange);
+    FirmaHomeScreen.currentMenuNotifier.value = 'main';
+    super.dispose();
+  }
+
+  void _onNotifierChange() {
+    if (mounted) {
+      setState(() {
+        _currentMenu = FirmaHomeScreen.currentMenuNotifier.value;
+      });
+    }
   }
 
   void _checkForPopUpAds() {
@@ -52,12 +72,17 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
           final doc = docs.first;
           final docId = doc.id;
           
-          if (_shownPopups.contains(docId)) return;
-          _shownPopups.add(docId);
+          final prefs = await SharedPreferences.getInstance();
+          final List<String> shownList = prefs.getStringList('shown_popups') ?? [];
+          if (shownList.contains(docId)) return;
+          
+          shownList.add(docId);
+          await prefs.setStringList('shown_popups', shownList);
 
           final data = doc.data() as Map<String, dynamic>?;
           final baslik = data?['baslik'] ?? '';
           final icerik = data?['icerik'] ?? '';
+          final imageUrl = data?['imageUrl'] as String?;
 
           if (!mounted) return;
 
@@ -79,9 +104,31 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
                     ),
                   ],
                 ),
-                content: Text(
-                  icerik,
-                  style: GoogleFonts.inter(fontSize: 13, color: AppColors.gray700),
+                content: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (imageUrl != null && imageUrl.isNotEmpty) ...[
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.network(
+                            imageUrl,
+                            fit: BoxFit.cover,
+                            width: double.infinity,
+                            errorBuilder: (context, error, stackTrace) {
+                              return const SizedBox.shrink();
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                      Text(
+                        icerik,
+                        style: GoogleFonts.inter(fontSize: 13, color: AppColors.gray700),
+                      ),
+                    ],
+                  ),
                 ),
                 actions: [
                   TextButton(
@@ -101,18 +148,14 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
 
   void _onCardTap(String target) {
     if (target == 'personel' || target == 'sut_tank') {
-      setState(() {
-        _currentMenu = target;
-      });
+      FirmaHomeScreen.currentMenuNotifier.value = target;
     } else {
       context.push(target);
     }
   }
 
   void _onBackTap() {
-    setState(() {
-      _currentMenu = 'main';
-    });
+    FirmaHomeScreen.currentMenuNotifier.value = 'main';
   }
 
   @override
@@ -340,11 +383,11 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
               // Modular Grid
               GridView.count(
                 crossAxisCount: 2,
-                crossAxisSpacing: 16,
-                mainAxisSpacing: 16,
+                crossAxisSpacing: 14,
+                mainAxisSpacing: 14,
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                childAspectRatio: 1.0,
+                childAspectRatio: 1.22,
                 children: [
                   // Üretici Yönetimi
                   _buildMenuCard(
@@ -415,11 +458,11 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
               // Submenu Grid
               GridView.count(
                 crossAxisCount: 2,
-                crossAxisSpacing: 16,
-                mainAxisSpacing: 16,
+                crossAxisSpacing: 14,
+                mainAxisSpacing: 14,
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                childAspectRatio: 1.0,
+                childAspectRatio: 1.22,
                 children: [
                   _buildMenuCard(
                     icon: Icons.people_outline_rounded,
@@ -444,79 +487,101 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
               _buildCenteredSubmenuHeader('Süt Yönetimi'),
               const SizedBox(height: 24),
 
-              // Submenu Grid (3 columns for 11 cards)
+              // Submenu Grid
               GridView.count(
-                crossAxisCount: 3,
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 10,
+                crossAxisCount: 2,
+                crossAxisSpacing: 14,
+                mainAxisSpacing: 14,
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                childAspectRatio: 0.85,
+                childAspectRatio: 1.22,
                 children: [
-                  _buildSubmenuCard(
+                  _buildMenuCard(
                     icon: Icons.calendar_month_rounded,
                     title: 'Aylık Süt Kayıtları',
-                    color: const Color(0xFF2563EB),
+                    subtitle: 'Aylık teslimat listesi',
+                    iconColor: Colors.white,
+                    bgColor: const Color(0xFF2563EB),
                     onTap: () => context.push('/firma/aylik-sut'),
                   ),
-                  _buildSubmenuCard(
+                  _buildMenuCard(
                     icon: Icons.water_drop_rounded,
                     title: 'Süt Toplamalar',
-                    color: const Color(0xFF10B981),
+                    subtitle: 'Günlük süt alımları',
+                    iconColor: Colors.white,
+                    bgColor: const Color(0xFF10B981),
                     onTap: () => context.push('/firma/toplamalar'),
                   ),
-                  _buildSubmenuCard(
+                  _buildMenuCard(
                     icon: Icons.speed_rounded,
                     title: 'Tank Durumu',
-                    color: const Color(0xFF0284C7),
+                    subtitle: 'Depo stok durumları',
+                    iconColor: Colors.white,
+                    bgColor: const Color(0xFF0284C7),
                     onTap: () => context.push('/firma/tanklar'),
                   ),
-                  _buildSubmenuCard(
+                  _buildMenuCard(
                     icon: Icons.water_drop_rounded,
                     title: 'Tank İçerik Detay',
-                    color: const Color(0xFF0369A1),
+                    subtitle: 'Süt kalitesi ve detaylar',
+                    iconColor: Colors.white,
+                    bgColor: const Color(0xFF0369A1),
                     onTap: () => context.push('/firma/tanklar/detay'),
                   ),
-                  _buildSubmenuCard(
+                  _buildMenuCard(
                     icon: Icons.input_rounded,
                     title: 'Süt Kabul',
-                    color: const Color(0xFF0891B2),
+                    subtitle: 'Süt boşaltma ve kabuller',
+                    iconColor: Colors.white,
+                    bgColor: const Color(0xFF0891B2),
                     onTap: () => context.push('/firma/sut-kabul'),
                   ),
-                  _buildSubmenuCard(
+                  _buildMenuCard(
                     icon: Icons.bar_chart_rounded,
                     title: 'Süt Toplama Raporu',
-                    color: const Color(0xFF0F766E),
+                    subtitle: 'Detaylı toplama raporu',
+                    iconColor: Colors.white,
+                    bgColor: const Color(0xFF0F766E),
                     onTap: () => context.push('/firma/raporlar'),
                   ),
-                  _buildSubmenuCard(
+                  _buildMenuCard(
                     icon: Icons.add_circle_outline_rounded,
                     title: 'Tank Ekle',
-                    color: const Color(0xFF2563EB),
+                    subtitle: 'Yeni süt tankı tanımla',
+                    iconColor: Colors.white,
+                    bgColor: const Color(0xFF2563EB),
                     onTap: () => context.push('/firma/tanklar/ekle'),
                   ),
-                  _buildSubmenuCard(
+                  _buildMenuCard(
                     icon: Icons.assignment_ind_rounded,
                     title: 'Tank Atama',
-                    color: const Color(0xFF4F46E5),
+                    subtitle: 'Sürücü-tank eşleştirme',
+                    iconColor: Colors.white,
+                    bgColor: const Color(0xFF4F46E5),
                     onTap: () => context.push('/firma/tanklar/atama'),
                   ),
-                  _buildSubmenuCard(
+                  _buildMenuCard(
                     icon: Icons.analytics_rounded,
                     title: 'Süt Satış Raporu',
-                    color: const Color(0xFF7C3AED),
+                    subtitle: 'Müşteri satış detayları',
+                    iconColor: Colors.white,
+                    bgColor: const Color(0xFF7C3AED),
                     onTap: () => context.push('/firma/satis-raporlari'),
                   ),
-                  _buildSubmenuCard(
+                  _buildMenuCard(
                     icon: Icons.sync_alt_rounded,
                     title: 'Süt Transfer & Takip',
-                    color: const Color(0xFF059669),
+                    subtitle: 'Depolar arası aktarım',
+                    iconColor: Colors.white,
+                    bgColor: const Color(0xFF059669),
                     onTap: () => context.push('/firma/sut-transferleri'),
                   ),
-                  _buildSubmenuCard(
+                  _buildMenuCard(
                     icon: Icons.science_rounded,
                     title: 'Süt Analiz',
-                    color: const Color(0xFFD97706),
+                    subtitle: 'Laboratuvar sonuçları',
+                    iconColor: Colors.white,
+                    bgColor: const Color(0xFFD97706),
                     onTap: () => context.push('/firma/sut-analiz'),
                   ),
                 ],
@@ -531,24 +596,26 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
 }
 
   Widget _buildCenteredSubmenuHeader(String title) {
+    final bool isDesktop = MediaQuery.of(context).size.width >= 1024;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Align(
-          alignment: Alignment.centerLeft,
-          child: IconButton(
-            onPressed: _onBackTap,
-            icon: const Icon(Icons.arrow_back_ios_new_rounded),
-            style: IconButton.styleFrom(
-              backgroundColor: AppColors.gray100,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
+        if (isDesktop)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: IconButton(
+              onPressed: _onBackTap,
+              icon: const Icon(Icons.arrow_back_ios_new_rounded),
+              style: IconButton.styleFrom(
+                backgroundColor: AppColors.gray100,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                padding: const EdgeInsets.all(10),
               ),
-              padding: const EdgeInsets.all(10),
             ),
           ),
-        ),
-        const SizedBox(height: 10),
+        if (isDesktop) const SizedBox(height: 10),
         Container(
           width: 54,
           height: 54,
@@ -587,20 +654,23 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
   }
 
   Widget _buildSubmenuHeader(String title) {
+    final bool isDesktop = MediaQuery.of(context).size.width >= 1024;
     return Row(
       children: [
-        IconButton(
-          onPressed: _onBackTap,
-          icon: const Icon(Icons.arrow_back_ios_new_rounded),
-          style: IconButton.styleFrom(
-            backgroundColor: AppColors.gray100,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
+        if (isDesktop) ...[
+          IconButton(
+            onPressed: _onBackTap,
+            icon: const Icon(Icons.arrow_back_ios_new_rounded),
+            style: IconButton.styleFrom(
+              backgroundColor: AppColors.gray100,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              padding: const EdgeInsets.all(10),
             ),
-            padding: const EdgeInsets.all(10),
           ),
-        ),
-        const SizedBox(width: 14),
+          const SizedBox(width: 14),
+        ],
         Text(
           title,
           style: GoogleFonts.inter(
@@ -680,60 +750,62 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
   }) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(14),
       child: Ink(
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(color: AppColors.gray200, width: 1),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.03),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
+              color: Colors.black.withValues(alpha: 0.02),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
             ),
           ],
         ),
         child: Padding(
-          padding: const EdgeInsets.all(16.0),
+          padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 12.0),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Container(
-                width: 50,
-                height: 50,
+                width: 42,
+                height: 42,
                 decoration: BoxDecoration(
                   color: bgColor,
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: bgColor.withValues(alpha: 0.2),
-                      blurRadius: 8,
-                      offset: const Offset(0, 3),
+                      color: bgColor.withValues(alpha: 0.15),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
                     ),
                   ],
                 ),
-                child: Icon(icon, color: iconColor, size: 22),
+                child: Icon(icon, color: iconColor, size: 18),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
               Text(
                 title,
                 textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: GoogleFonts.inter(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
                   color: AppColors.gray800,
                 ),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 2),
               Text(
                 subtitle,
                 textAlign: TextAlign.center,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: GoogleFonts.inter(
-                  fontSize: 10.5,
+                  fontSize: 9.5,
                   fontWeight: FontWeight.w500,
                   color: AppColors.gray500,
                 ),

@@ -36,7 +36,21 @@ class FirmaToplamalar extends StatelessWidget {
             return Center(child: Text('Hata: ${snapshot.error}'));
           }
 
-          final docs = List<QueryDocumentSnapshot>.from(snapshot.data?.docs ?? []);
+          final allDocs = List<QueryDocumentSnapshot>.from(snapshot.data?.docs ?? []);
+          
+          final now = DateTime.now();
+          final todayStart = DateTime(now.year, now.month, now.day);
+          final todayEnd = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+          
+          final docs = allDocs.where((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            final timestamp = data['timestamp'] as Timestamp?;
+            if (timestamp == null) return true; // Newly added local docs count as today
+            final date = timestamp.toDate();
+            return date.isAfter(todayStart.subtract(const Duration(milliseconds: 1))) &&
+                date.isBefore(todayEnd.add(const Duration(milliseconds: 1)));
+          }).toList();
+
           docs.sort((a, b) {
             final aTime = (a.data() as Map)['timestamp'] as Timestamp?;
             final bTime = (b.data() as Map)['timestamp'] as Timestamp?;

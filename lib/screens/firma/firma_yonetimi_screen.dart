@@ -828,10 +828,33 @@ class _FirmaCariEkstreScreenState extends State<FirmaCariEkstreScreen> {
     final doc = pw.Document();
     final formatNumber = NumberFormat('#,##0.00', 'tr_TR');
 
+    // Türkçe karakter desteği için Unicode fontları yükle
+    final fontRegular = await PdfGoogleFonts.robotoRegular();
+    final fontBold = await PdfGoogleFonts.robotoBold();
+    final fontItalic = await PdfGoogleFonts.robotoItalic();
+
+    pw.TextStyle baseStyle({
+      double fontSize = 10,
+      pw.Font? font,
+      PdfColor? color,
+    }) =>
+        pw.TextStyle(font: font ?? fontRegular, fontSize: fontSize, color: color);
+
+    pw.TextStyle boldStyle({double fontSize = 10, PdfColor? color}) =>
+        pw.TextStyle(font: fontBold, fontSize: fontSize, color: color);
+
+    pw.TextStyle italicStyle({double fontSize = 10, PdfColor? color}) =>
+        pw.TextStyle(font: fontItalic, fontSize: fontSize, color: color);
+
     doc.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.all(36),
+        theme: pw.ThemeData.withFont(
+          base: fontRegular,
+          bold: fontBold,
+          italic: fontItalic,
+        ),
         build: (pw.Context context) {
           return [
             // Company Header Logo/Name
@@ -841,14 +864,14 @@ class _FirmaCariEkstreScreenState extends State<FirmaCariEkstreScreen> {
                 pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    pw.Text(tenantFirmaName.toUpperCase(), style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900)),
-                    pw.Text('Cari Hesap Hesap Ekstresi', style: pw.TextStyle(fontSize: 10, color: PdfColors.grey600, fontStyle: pw.FontStyle.italic)),
+                    pw.Text(tenantFirmaName.toUpperCase(), style: boldStyle(fontSize: 16, color: PdfColors.blue900)),
+                    pw.Text('Cari Hesap Ekstresi', style: italicStyle(fontSize: 10, color: PdfColors.grey600)),
                   ],
                 ),
                 pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.end,
                   children: [
-                    pw.Text('Rapor Tarihi: ${DateFormat('dd.MM.yyyy HH:mm').format(DateTime.now())}', style: const pw.TextStyle(fontSize: 8)),
+                    pw.Text('Rapor Tarihi: ${DateFormat('dd.MM.yyyy HH:mm').format(DateTime.now())}', style: baseStyle(fontSize: 8)),
                   ],
                 ),
               ],
@@ -871,29 +894,30 @@ class _FirmaCariEkstreScreenState extends State<FirmaCariEkstreScreen> {
                   pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.start,
                     children: [
-                      pw.Text('Müşteri/Tedarikçi: $partnerName', style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
+                      pw.Text('Müşteri/Tedarikçi: $partnerName', style: boldStyle(fontSize: 11)),
                       pw.SizedBox(height: 2),
-                      pw.Text('Kart Tipi: ${partnerTip == 'alici' ? 'Alıcı (Süt Sattığımız)' : 'Tedarikçi (Yem vb. Aldığımız)'}', style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
+                      pw.Text(
+                        'Kart Tipi: ${partnerTip == 'alici' ? 'Alıcı (Süt Sattığımız)' : 'Tedarikçi (Yem vb. Aldığımız)'}',
+                        style: baseStyle(fontSize: 9, color: PdfColors.grey700),
+                      ),
                     ],
                   ),
                   pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.end,
                     children: [
-                      pw.Text('Net Bakiye', style: pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
+                      pw.Text('Net Bakiye', style: baseStyle(fontSize: 8, color: PdfColors.grey600)),
                       pw.SizedBox(height: 2),
                       pw.Text(
                         '${formatNumber.format(finalBalance.abs())} TL',
-                        style: pw.TextStyle(
+                        style: boldStyle(
                           fontSize: 13,
-                          fontWeight: pw.FontWeight.bold,
                           color: finalBalance > 0 ? PdfColors.green900 : finalBalance < 0 ? PdfColors.red900 : PdfColors.black,
                         ),
                       ),
                       pw.Text(
                         finalBalance > 0 ? 'Bize Borçlu' : finalBalance < 0 ? 'Bizden Alacaklı' : 'Dengede',
-                        style: pw.TextStyle(
+                        style: boldStyle(
                           fontSize: 8,
-                          fontWeight: pw.FontWeight.bold,
                           color: finalBalance > 0 ? PdfColors.green800 : finalBalance < 0 ? PdfColors.red800 : PdfColors.grey600,
                         ),
                       ),
@@ -920,9 +944,9 @@ class _FirmaCariEkstreScreenState extends State<FirmaCariEkstreScreen> {
                   formatNumber.format(running),
                 ];
               }).toList(),
-              headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8.5, color: PdfColors.white),
+              headerStyle: boldStyle(fontSize: 8.5, color: PdfColors.white),
               headerDecoration: const pw.BoxDecoration(color: PdfColors.blue800),
-              cellStyle: const pw.TextStyle(fontSize: 7.5),
+              cellStyle: baseStyle(fontSize: 7.5),
               cellAlignment: pw.Alignment.centerLeft,
               cellAlignments: {
                 3: pw.Alignment.centerRight,

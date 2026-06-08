@@ -160,7 +160,7 @@ class _GelirlerScreenState extends State<GelirlerScreen> {
         final durum = data['durum'] as String? ?? 'aktif';
         if (durum == 'iptal') continue;
 
-        final date = _getDocDate(data['timestamp']);
+        final date = _getDocDate(data['tarih'] ?? data['timestamp']);
         if (_isWithinFilter(date)) {
           final double tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
           final tur = data['kesintiTuru'] as String? ?? 'Yem Kesintisi';
@@ -188,7 +188,7 @@ class _GelirlerScreenState extends State<GelirlerScreen> {
       final firestoreService = FirestoreService();
       for (var doc in tahsilatSnap.docs) {
         final data = doc.data();
-        final date = _getDocDate(data['timestamp'] ?? data['tarih']);
+        final date = _getDocDate(data['tarih'] ?? data['timestamp']);
         if (_isWithinFilter(date)) {
           final double tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
           final type = firestoreService.getTahsilatType(data);
@@ -212,7 +212,24 @@ class _GelirlerScreenState extends State<GelirlerScreen> {
 
       for (var doc in giderSnap.docs) {
         final data = doc.data();
-        final date = _getDocDate(data['timestamp']);
+        final date = _getDocDate(data['tarih'] ?? data['timestamp']);
+        if (_isWithinFilter(date)) {
+          final double tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
+          tempExpenses += tutar;
+          tempExpensesCount++;
+        }
+      }
+
+      // 4b. Fetch Cari Islemler payments to suppliers (Firma Ödemeleri)
+      final cariIslemSnap = await FirebaseFirestore.instance
+          .collection('cari_islemler')
+          .where('firma', isEqualTo: currentFirmaName)
+          .where('tip', isEqualTo: 'odeme')
+          .get();
+
+      for (var doc in cariIslemSnap.docs) {
+        final data = doc.data();
+        final date = _getDocDate(data['tarih'] ?? data['timestamp']);
         if (_isWithinFilter(date)) {
           final double tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
           tempExpenses += tutar;
@@ -245,7 +262,7 @@ class _GelirlerScreenState extends State<GelirlerScreen> {
 
       for (var doc in toplamalarSnap.docs) {
         final data = doc.data();
-        final date = _getDocDate(data['timestamp']);
+        final date = _getDocDate(data['tarih'] ?? data['timestamp']);
         if (_isWithinFilter(date)) {
           final double m = (data['m'] as num?)?.toDouble() ?? 0.0;
           final String ureticiName = data['u'] ?? '';

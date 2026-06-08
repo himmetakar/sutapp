@@ -763,6 +763,7 @@ class _AvansVerScreenState extends State<AvansVerScreen> {
                         'aciklama': _aciklamaCtrl.text,
                         'verildigiTarih': DateFormat('dd.MM.yyyy').format(_verildigiTarih),
                         'tahsilEdilecegiTarih': DateFormat('dd.MM.yyyy').format(_tahsilEdilecegiTarih),
+                        'timestamp': Timestamp.fromDate(_verildigiTarih),
                         'durum': 'aktif',
                       });
 

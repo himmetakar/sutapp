@@ -66,5 +66,11 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Üreticilerin ve teslimat noktalarının konumunu belirlemek için konumunuza ihtiyaç duyulmaktadır.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>Arka planda teslimat rotasını optimize etmek ve konum takibi yapabilmek için konumunuza ihtiyaç duyulmaktadır.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Harita üzerinde rota takibi ve teslimat noktalarını görebilmek için konumunuza ihtiyaç duyulmaktadır.</string>
 </dict>
 </plist>

@@ -25,6 +25,11 @@ class _FirmaFirmalarScreenState extends State<FirmaFirmalarScreen> {
   String _searchQuery = '';
   final _searchCtrl = TextEditingController();
   String _selectedListTab = 'tumu'; // 'tumu' | 'alici' | 'tedarikci'
+  String _paymentPeriod = 'ay'; // 'hafta' | 'ay' | 'tumzaman'
+  String _paymentFilter = 'tumu'; // 'tumu' | 'tahsilat' | 'odeme'
+  // Stream'i sabit tutarak her rebuild'de yeniden abonelik olmayı önle
+  Stream<QuerySnapshot>? _cariIslemlerStream;
+  String? _lastTenantFirma;
 
   @override
   void dispose() {
@@ -1351,162 +1356,369 @@ class _FirmaFirmalarScreenState extends State<FirmaFirmalarScreen> {
             ),
 
             // TAB 3: ODEMELER (ALL TRANSACTIONS LOG)
-            Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: () => _showAllTxTransactionDialog(context, 'Tahsilat'),
-                          icon: const Icon(Icons.add_rounded, color: Colors.white, size: 18),
-                          label: Text('Tahsilat Al', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 14)),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF10B981),
-                            foregroundColor: Colors.white,
-                            minimumSize: const Size(double.infinity, 48),
-                            elevation: 0,
-                            shadowColor: Colors.transparent,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                          ),
+            StreamBuilder<QuerySnapshot>(
+              stream: () {
+                // Stream'i bir kez oluştur — rebuild'lerde aynı kalır, veri titremez
+                if (_cariIslemlerStream == null || _lastTenantFirma != tenantFirma) {
+                  _lastTenantFirma = tenantFirma;
+                  _cariIslemlerStream = _db
+                      .collection('cari_islemler')
+                      .where('firma', isEqualTo: tenantFirma)
+                      .snapshots();
+                }
+                return _cariIslemlerStream!;
+              }(),
+              builder: (context, snapshot) {
+                // Dart tarafında timestamp'e göre sırala (Firestore index gerektirmez)
+                final allDocs = List.from(snapshot.data?.docs ?? []);
+                allDocs.sort((a, b) {
+                  final aTs = (a.data() as Map)['timestamp'];
+                  final bTs = (b.data() as Map)['timestamp'];
+                  if (aTs == null && bTs == null) return 0;
+                  if (aTs == null) return 1;
+                  if (bTs == null) return -1;
+                  return (bTs as Timestamp).compareTo(aTs as Timestamp);
+                });
+                final now = DateTime.now();
+
+                // Dönem filtresi
+                DateTime? periodStart;
+                if (_paymentPeriod == 'hafta') {
+                  periodStart = now.subtract(const Duration(days: 7));
+                } else if (_paymentPeriod == 'ay') {
+                  periodStart = DateTime(now.year, now.month, 1);
+                }
+
+                // Filtre uygula
+                final filteredDocs = allDocs.where((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  final tip = data['tip'] as String? ?? 'odeme';
+                  if (_paymentFilter != 'tumu' && tip != _paymentFilter) return false;
+                  if (periodStart != null) {
+                    DateTime? docDate;
+                    final tarihStr = data['tarih'] as String?;
+                    if (tarihStr != null && tarihStr.isNotEmpty) {
+                      try { docDate = DateFormat('dd.MM.yyyy').parse(tarihStr); } catch (_) {}
+                    }
+                    if (docDate == null && data['timestamp'] != null) {
+                      final ts = data['timestamp'];
+                      if (ts is Timestamp) docDate = ts.toDate();
+                    }
+                    if (docDate == null || docDate.isBefore(periodStart)) return false;
+                  }
+                  return true;
+                }).toList();
+
+                // Toplamlar
+                double totalTahsilat = 0.0;
+                double totalOdeme = 0.0;
+                for (var doc in filteredDocs) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  final tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
+                  if ((data['tip'] as String? ?? '') == 'tahsilat') {
+                    totalTahsilat += tutar;
+                  } else {
+                    totalOdeme += tutar;
+                  }
+                }
+
+                Widget buildFilterChip(String val, String label, {bool isPeriod = true}) {
+                  final isSelected = isPeriod ? _paymentPeriod == val : _paymentFilter == val;
+                  return GestureDetector(
+                    onTap: () => setState(() {
+                      if (isPeriod) _paymentPeriod = val;
+                      else _paymentFilter = val;
+                    }),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                      decoration: BoxDecoration(
+                        color: isSelected ? AppColors.primary600 : Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: isSelected ? AppColors.primary600 : AppColors.gray200,
+                          width: 1.5,
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: () => _showAllTxTransactionDialog(context, 'Ödeme'),
-                          icon: const Icon(Icons.remove_rounded, color: Colors.white, size: 18),
-                          label: Text('Ödeme Yap', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 14)),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFFEF4444),
-                            foregroundColor: Colors.white,
-                            minimumSize: const Size(double.infinity, 48),
-                            elevation: 0,
-                            shadowColor: Colors.transparent,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                          ),
+                      child: Text(
+                        label,
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                          color: isSelected ? Colors.white : AppColors.gray600,
                         ),
                       ),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: StreamBuilder<QuerySnapshot>(
-                    stream: _db
-                        .collection('cari_islemler')
-                        .where('firma', isEqualTo: tenantFirma)
-                        .orderBy('timestamp', descending: true)
-                        .snapshots(),
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
-                      final docs = snapshot.data?.docs ?? [];
-                      if (docs.isEmpty) {
-                        return Center(child: Text('Kayıtlı ödeme/tahsilat bulunmuyor.', style: GoogleFonts.inter(color: AppColors.gray500)));
-                      }
+                    ),
+                  );
+                }
 
-                      return ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        itemCount: docs.length,
-                        itemBuilder: (context, index) {
-                          final doc = docs[index];
-                          final data = doc.data() as Map<String, dynamic>;
-                          final String name = data['cariFirmaName'] ?? '';
-                          final double tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
-                          final String tip = data['tip'] ?? 'tahsilat';
-                          final String yontem = data['odemeYontemi'] ?? 'Nakit';
-                          final String tarih = data['tarih'] ?? '';
-                          final String aciklama = data['aciklama'] ?? '';
-
-                          final isTahsilat = tip == 'tahsilat';
-
-                          return Container(
-                            margin: const EdgeInsets.only(bottom: 12),
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(14),
-                              boxShadow: AppShadows.sm,
-                              border: Border.all(color: AppColors.gray200),
+                return Column(
+                  children: [
+                    // ACTION BUTTONS
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: () => _showAllTxTransactionDialog(context, 'Tahsilat'),
+                              icon: const Icon(Icons.add_rounded, color: Colors.white, size: 18),
+                              label: Text('Tahsilat Al', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 14)),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF10B981),
+                                foregroundColor: Colors.white,
+                                minimumSize: const Size(double.infinity, 48),
+                                elevation: 0,
+                                shadowColor: Colors.transparent,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
                             ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Expanded(
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: () => _showAllTxTransactionDialog(context, 'Ödeme'),
+                              icon: const Icon(Icons.remove_rounded, color: Colors.white, size: 18),
+                              label: Text('Ödeme Yap', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 14)),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFFEF4444),
+                                foregroundColor: Colors.white,
+                                minimumSize: const Size(double.infinity, 48),
+                                elevation: 0,
+                                shadowColor: Colors.transparent,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // DÖNEM SELÇECTOR
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            buildFilterChip('hafta', 'Bu Hafta'),
+                            const SizedBox(width: 8),
+                            buildFilterChip('ay', 'Bu Ay'),
+                            const SizedBox(width: 8),
+                            buildFilterChip('tumzaman', 'Tüm Zamanlar'),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+
+                    // TÜR FİLTRE TABS
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            buildFilterChip('tumu', 'Tümü', isPeriod: false),
+                            const SizedBox(width: 8),
+                            buildFilterChip('tahsilat', 'Tahsilatlar', isPeriod: false),
+                            const SizedBox(width: 8),
+                            buildFilterChip('odeme', 'Ödemeler', isPeriod: false),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // ÖZEET KARTLARI
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFDCFCE7),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: const Color(0xFF86EFAC)),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.arrow_downward_rounded, size: 14, color: Color(0xFF16A34A)),
+                                      const SizedBox(width: 4),
+                                      Text('Tahsilat', style: GoogleFonts.inter(fontSize: 10, color: const Color(0xFF166534), fontWeight: FontWeight.w600)),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text('+${formatNumber.format(totalTahsilat)} ₺', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold, color: const Color(0xFF16A34A))),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFEE2E2),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: const Color(0xFFFCA5A5)),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.arrow_upward_rounded, size: 14, color: Color(0xFFDC2626)),
+                                      const SizedBox(width: 4),
+                                      Text('Ödeme', style: GoogleFonts.inter(fontSize: 10, color: const Color(0xFF7F1D1D), fontWeight: FontWeight.w600)),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text('-${formatNumber.format(totalOdeme)} ₺', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold, color: const Color(0xFFDC2626))),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // İŞLİM LİSTESİ
+                    Expanded(
+                      child: (snapshot.connectionState == ConnectionState.waiting && snapshot.data == null)
+                          ? const Center(child: CircularProgressIndicator())
+                          : filteredDocs.isEmpty
+                              ? Center(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      const Icon(Icons.receipt_long_rounded, size: 52, color: AppColors.gray300),
+                                      const SizedBox(height: 12),
+                                      Text('Bu döneme ait işlem bulunamadı', style: GoogleFonts.inter(fontSize: 13, color: AppColors.gray500)),
+                                    ],
+                                  ),
+                                )
+                              : ListView.builder(
+                                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                                  itemCount: filteredDocs.length,
+                                  itemBuilder: (context, index) {
+                                    final doc = filteredDocs[index];
+                                    final data = doc.data() as Map<String, dynamic>;
+                                    final String name = data['cariFirmaName'] ?? '';
+                                    final double tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
+                                    final String tip = data['tip'] ?? 'odeme';
+                                    final String yontem = data['odemeYontemi'] ?? 'Nakit';
+                                    final String tarih = data['tarih'] ?? '';
+                                    final String aciklama = data['aciklama'] ?? '';
+                                    final isTahsilat = tip == 'tahsilat';
+
+                                    return Container(
+                                      margin: const EdgeInsets.only(bottom: 12),
+                                      padding: const EdgeInsets.all(14),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius: BorderRadius.circular(14),
+                                        boxShadow: AppShadows.sm,
+                                        border: Border.all(
+                                          color: isTahsilat ? const Color(0xFF86EFAC) : const Color(0xFFFCA5A5),
+                                          width: 1,
+                                        ),
+                                      ),
                                       child: Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          Text(
-                                            name,
-                                            style: GoogleFonts.inter(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 15,
-                                              color: AppColors.gray800,
+                                          Row(
+                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Expanded(
+                                                child: Row(
+                                                  children: [
+                                                    Container(
+                                                      width: 32,
+                                                      height: 32,
+                                                      decoration: BoxDecoration(
+                                                        color: isTahsilat ? const Color(0xFFDCFCE7) : const Color(0xFFFEE2E2),
+                                                        shape: BoxShape.circle,
+                                                      ),
+                                                      child: Icon(
+                                                        isTahsilat ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded,
+                                                        size: 16,
+                                                        color: isTahsilat ? const Color(0xFF16A34A) : const Color(0xFFDC2626),
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 10),
+                                                    Expanded(
+                                                      child: Column(
+                                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                                        children: [
+                                                          Text(
+                                                            name.isNotEmpty ? name : (isTahsilat ? 'Tahsilat' : 'Ödeme'),
+                                                            style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 14, color: AppColors.gray800),
+                                                          ),
+                                                          const SizedBox(height: 3),
+                                                          Container(
+                                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                                            decoration: BoxDecoration(
+                                                              color: isTahsilat ? const Color(0xFFDCFCE7) : const Color(0xFFFEE2E2),
+                                                              borderRadius: BorderRadius.circular(6),
+                                                            ),
+                                                            child: Text(
+                                                              isTahsilat ? 'Tahsilat' : 'Ödeme',
+                                                              style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.bold, color: isTahsilat ? const Color(0xFF16A34A) : const Color(0xFFDC2626)),
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                              Text(
+                                                '${isTahsilat ? "+" : "-"}${formatNumber.format(tutar)} ₺',
+                                                style: GoogleFonts.inter(
+                                                  fontSize: 15,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: isTahsilat ? const Color(0xFF16A34A) : const Color(0xFFDC2626),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 10),
+                                          Row(
+                                            children: [
+                                              const Icon(Icons.calendar_month_outlined, size: 13, color: AppColors.gray400),
+                                              const SizedBox(width: 4),
+                                              Text(tarih, style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500)),
+                                              const SizedBox(width: 14),
+                                              const Icon(Icons.credit_card_outlined, size: 13, color: AppColors.gray400),
+                                              const SizedBox(width: 4),
+                                              Text(yontem, style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500)),
+                                            ],
+                                          ),
+                                          if (aciklama.isNotEmpty) ...[
+                                            const SizedBox(height: 6),
+                                            Text(
+                                              aciklama,
+                                              style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray400, fontStyle: FontStyle.italic),
                                             ),
-                                          ),
-                                          const SizedBox(height: 6),
-                                          StatusBadge(
-                                            label: isTahsilat ? 'Tahsilat' : 'Ödeme',
-                                            color: Colors.white,
-                                            bgColor: isTahsilat ? const Color(0xFF10B981) : const Color(0xFFEF4444),
-                                          ),
+                                          ],
                                         ],
                                       ),
-                                    ),
-                                    Text(
-                                      '${isTahsilat ? "-" : "+"}${formatNumber.format(tutar)} ₺',
-                                      style: GoogleFonts.inter(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.bold,
-                                        color: isTahsilat ? const Color(0xFF10B981) : const Color(0xFFEF4444),
-                                      ),
-                                    ),
-                                  ],
+                                    );
+                                  },
                                 ),
-                                const SizedBox(height: 12),
-                                Row(
-                                  children: [
-                                    const Icon(Icons.calendar_month_outlined, size: 14, color: AppColors.gray400),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      tarih,
-                                      style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500),
-                                    ),
-                                    const SizedBox(width: 16),
-                                    const Icon(Icons.credit_card_outlined, size: 14, color: AppColors.gray400),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      yontem,
-                                      style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500),
-                                    ),
-                                  ],
-                                ),
-                                if (aciklama.isNotEmpty) ...[
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    aciklama,
-                                    style: GoogleFonts.inter(
-                                      fontSize: 11,
-                                      color: AppColors.gray400,
-                                      fontStyle: FontStyle.italic,
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          );
-                        },
-                      );
-                    },
-                  ),
-                ),
-              ],
+                    ),
+                  ],
+                );
+              },
             ),
           ],
         ),

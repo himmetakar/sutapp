@@ -673,6 +673,7 @@ class _CezaKesScreenState extends State<CezaKesScreen> {
                         'oran': _cezaTipi == 'oransal' ? val : 0.0,
                         'aciklama': _aciklamaCtrl.text,
                         'tarih': DateFormat('dd.MM.yyyy').format(_cezaTarihi),
+                        'timestamp': Timestamp.fromDate(_cezaTarihi),
                         'durum': 'aktif',
                       });
 

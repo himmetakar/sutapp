@@ -1,9 +1,11 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/firestore_service.dart';
 import '../../config/theme.dart';
@@ -19,6 +21,7 @@ class _FirmaDuyuruGonderScreenState extends State<FirmaDuyuruGonderScreen> {
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
   final _contentController = TextEditingController();
+  String? _imageBase64; // base64 encoded image
   bool _targetDrivers = true;
   bool _targetProducers = true;
   bool _sending = false;
@@ -64,6 +67,7 @@ class _FirmaDuyuruGonderScreenState extends State<FirmaDuyuruGonderScreen> {
         targetDrivers: _targetDrivers,
         targetProducers: _targetProducers,
         isGlobal: false,
+        imageUrl: _imageBase64 ?? '',
       );
 
       if (mounted) {
@@ -178,6 +182,14 @@ class _FirmaDuyuruGonderScreenState extends State<FirmaDuyuruGonderScreen> {
                           return null;
                         },
                       ),
+                      const SizedBox(height: 16),
+
+                      // Image Picker
+                      _buildImagePickerWidget(
+                        imageBase64: _imageBase64,
+                        onPick: (base64) => setState(() => _imageBase64 = base64),
+                        onRemove: () => setState(() => _imageBase64 = null),
+                      ),
                       const SizedBox(height: 20),
 
                       // Target Groups Checkboxes
@@ -262,6 +274,7 @@ class _AdminDuyuruGonderScreenState extends State<AdminDuyuruGonderScreen> {
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
   final _contentController = TextEditingController();
+  String? _imageBase64;
   bool _sendToAdmin = false;
   bool _sendToFirma = true;
   bool _sendToSurucu = true;
@@ -278,7 +291,10 @@ class _AdminDuyuruGonderScreenState extends State<AdminDuyuruGonderScreen> {
 
   Future<void> _send(AuthProvider auth) async {
     if (!_formKey.currentState!.validate()) return;
-    if (!_sendToAdmin && !_sendToFirma && !_sendToSurucu && !_sendToUretici) {
+
+    // Pop-up seçiliyse tüm rollere gönder, rol seçimi gerekmez
+    final bool allUsers = _isPopUp;
+    if (!allUsers && !_sendToAdmin && !_sendToFirma && !_sendToSurucu && !_sendToUretici) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Lütfen en az bir hedef rol seçin.')),
       );
@@ -288,11 +304,16 @@ class _AdminDuyuruGonderScreenState extends State<AdminDuyuruGonderScreen> {
     setState(() => _sending = true);
 
     try {
-      final List<String> targetRoles = [];
-      if (_sendToAdmin) targetRoles.add('admin');
-      if (_sendToFirma) targetRoles.add('firma');
-      if (_sendToSurucu) targetRoles.add('surucu');
-      if (_sendToUretici) targetRoles.add('uretici');
+      // Pop-up seçiliyse tüm rollere gönder
+      final List<String> targetRoles = allUsers
+          ? ['admin', 'firma', 'surucu', 'uretici']
+          : [];
+      if (!allUsers) {
+        if (_sendToAdmin) targetRoles.add('admin');
+        if (_sendToFirma) targetRoles.add('firma');
+        if (_sendToSurucu) targetRoles.add('surucu');
+        if (_sendToUretici) targetRoles.add('uretici');
+      }
 
       final user = auth.user;
 
@@ -306,6 +327,7 @@ class _AdminDuyuruGonderScreenState extends State<AdminDuyuruGonderScreen> {
         isGlobal: true,
         targetRoles: targetRoles,
         isPopUp: _isPopUp,
+        imageUrl: _imageBase64 ?? '',
       );
 
       if (mounted) {
@@ -409,6 +431,14 @@ class _AdminDuyuruGonderScreenState extends State<AdminDuyuruGonderScreen> {
                           return null;
                         },
                       ),
+                      const SizedBox(height: 16),
+
+                      // Image Picker
+                      _buildImagePickerWidget(
+                        imageBase64: _imageBase64,
+                        onPick: (base64) => setState(() => _imageBase64 = base64),
+                        onRemove: () => setState(() => _imageBase64 = null),
+                      ),
                       const SizedBox(height: 20),
 
                       // Target Roles Checkboxes
@@ -456,9 +486,23 @@ class _AdminDuyuruGonderScreenState extends State<AdminDuyuruGonderScreen> {
                       const SizedBox(height: 12),
                       CheckboxListTile(
                         value: _isPopUp,
-                        onChanged: (val) => setState(() => _isPopUp = val ?? false),
+                        onChanged: (val) => setState(() {
+                          _isPopUp = val ?? false;
+                          // Pop-up seçilince tüm rolleri otomatik işaretle
+                          if (_isPopUp) {
+                            _sendToAdmin = true;
+                            _sendToFirma = true;
+                            _sendToSurucu = true;
+                            _sendToUretici = true;
+                          }
+                        }),
                         title: Text('Pop-up Reklam Bildirimi', style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.bold, color: Colors.blueAccent)),
-                        subtitle: Text('Kullanıcılar uygulamaya girdiğinde tam ekran pop-up olarak gösterilir', style: GoogleFonts.inter(fontSize: 10.5, color: AppColors.gray400)),
+                        subtitle: Text(
+                          _isPopUp
+                              ? '✅ Tüm kullanıcılara (firma, toplayıcı, üretici) gönderilecek'
+                              : 'Kullanıcılar uygulamaya girdiğinde tam ekran pop-up olarak gösterilir',
+                          style: GoogleFonts.inter(fontSize: 10.5, color: _isPopUp ? Colors.blueAccent : AppColors.gray400),
+                        ),
                         activeColor: Colors.blueAccent,
                         contentPadding: EdgeInsets.zero,
                         controlAffinity: ListTileControlAffinity.leading,
@@ -645,4 +689,94 @@ class _AdminDuyuruGonderScreenState extends State<AdminDuyuruGonderScreen> {
       ),
     );
   }
+}
+
+// ─── Shared image picker widget ────────────────────────────────────────────
+Widget _buildImagePickerWidget({
+  required String? imageBase64,
+  required void Function(String base64) onPick,
+  required void Function() onRemove,
+}) {
+  return Builder(builder: (context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Pick button
+        OutlinedButton.icon(
+          onPressed: () async {
+            try {
+              final picker = ImagePicker();
+              final XFile? file = await picker.pickImage(
+                source: ImageSource.gallery,
+                maxWidth: 1024,
+                maxHeight: 1024,
+                imageQuality: 75,
+              );
+              if (file != null) {
+                final bytes = await file.readAsBytes();
+                final ext = file.name.split('.').last.toLowerCase();
+                final mime = ext == 'png' ? 'image/png' : 'image/jpeg';
+                final base64Str = 'data:$mime;base64,${base64Encode(bytes)}';
+                onPick(base64Str);
+              }
+            } catch (e) {
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Görsel seçilemedi: $e'),
+                    backgroundColor: AppColors.danger,
+                  ),
+                );
+              }
+            }
+          },
+          icon: const Icon(Icons.photo_library_rounded, size: 18),
+          label: Text(
+            imageBase64 == null ? 'Görsel Seç (İsteğe Bağlı)' : 'Görseli Değiştir',
+            style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600),
+          ),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppColors.primary600,
+            side: const BorderSide(color: AppColors.primary600),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            padding: const EdgeInsets.symmetric(vertical: 12),
+          ),
+        ),
+
+        // Preview
+        if (imageBase64 != null) ...[
+          const SizedBox(height: 10),
+          Stack(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.memory(
+                  base64Decode(imageBase64.contains(',') ? imageBase64.split(',').last : imageBase64),
+                  height: 160,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                ),
+              ),
+              Positioned(
+                top: 8,
+                right: 8,
+                child: GestureDetector(
+                  onTap: onRemove,
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.55),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.close_rounded, color: Colors.white, size: 16),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+        ],
+      ],
+    );
+  });
 }

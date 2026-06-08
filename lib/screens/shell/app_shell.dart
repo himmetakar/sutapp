@@ -11,6 +11,9 @@ import '../../config/theme.dart';
 import '../../widgets/quick_actions_dialogs.dart';
 import '../../widgets/notification_dialogs.dart';
 import '../../services/firestore_service.dart';
+import '../firma/firma_home.dart';
+import '../../widgets/subscription_gate.dart';
+
 
 class AppShell extends StatefulWidget {
   final UserRole role;
@@ -24,6 +27,24 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   int _currentIndex = 0;
   bool _sidebarExpanded = true;
+
+  @override
+  void initState() {
+    super.initState();
+    FirmaHomeScreen.currentMenuNotifier.addListener(_onFirmaHomeMenuChanged);
+  }
+
+  @override
+  void dispose() {
+    FirmaHomeScreen.currentMenuNotifier.removeListener(_onFirmaHomeMenuChanged);
+    super.dispose();
+  }
+
+  void _onFirmaHomeMenuChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
 
   List<_TabItem> get _tabs {
     switch (widget.role) {
@@ -99,6 +120,14 @@ class _AppShellState extends State<AppShell> {
 
   String get _title {
     final loc = GoRouterState.of(context).matchedLocation;
+    if (widget.role == UserRole.firma && loc == '/firma') {
+      final menu = FirmaHomeScreen.currentMenuNotifier.value;
+      if (menu == 'sut_tank') {
+        return 'Süt Yönetimi';
+      } else if (menu == 'personel') {
+        return 'Personel & Araç';
+      }
+    }
     final titles = {
       '/admin': 'Dashboard',
       '/admin/firmalar': 'Firmalar',
@@ -167,6 +196,9 @@ class _AppShellState extends State<AppShell> {
   }
 
   void _onTabTapped(int index) {
+    if (_tabs[index].path == '/firma') {
+      FirmaHomeScreen.currentMenuNotifier.value = 'main';
+    }
     setState(() => _currentIndex = index);
     context.go(_tabs[index].path);
   }
@@ -197,7 +229,9 @@ class _AppShellState extends State<AppShell> {
                   _buildWebAppBar(auth),
                   Expanded(
                     child: SelectionArea(
-                      child: widget.child,
+                      child: (widget.role == UserRole.firma || widget.role == UserRole.surucu)
+                          ? SubscriptionGate(child: widget.child)
+                          : widget.child,
                     ),
                   ),
                 ],
@@ -208,10 +242,22 @@ class _AppShellState extends State<AppShell> {
       );
     }
 
+    final showSubmenuBack = widget.role == UserRole.firma &&
+        loc == '/firma' &&
+        FirmaHomeScreen.currentMenuNotifier.value != 'main';
+
     return Scaffold(
       backgroundColor: AppColors.gray50,
       appBar: AppBar(
         title: Text(_title),
+        leading: showSubmenuBack
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new_rounded),
+                onPressed: () {
+                  FirmaHomeScreen.currentMenuNotifier.value = 'main';
+                },
+              )
+            : null,
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 8),
@@ -227,7 +273,9 @@ class _AppShellState extends State<AppShell> {
         ],
       ),
       drawer: _drawerItems.isNotEmpty ? _buildDrawer(auth, loc) : null,
-      body: widget.child,
+      body: (widget.role == UserRole.firma || widget.role == UserRole.surucu)
+          ? SubscriptionGate(child: widget.child)
+          : widget.child,
       bottomNavigationBar: _buildBottomNav(),
     );
   }

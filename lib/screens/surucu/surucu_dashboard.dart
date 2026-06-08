@@ -12,11 +12,17 @@ import '../../widgets/common_widgets.dart';
 import '../../services/firestore_service.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/location_picker_field.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class SurucuDashboard extends StatefulWidget {
   final bool showSutAlDirectly;
+  final String? initialUretici;
 
-  const SurucuDashboard({super.key, this.showSutAlDirectly = false});
+  const SurucuDashboard({
+    super.key,
+    this.showSutAlDirectly = false,
+    this.initialUretici,
+  });
 
   @override
   State<SurucuDashboard> createState() => _SurucuDashboardState();
@@ -32,6 +38,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
   String? _selectedUreticiForSutAl;
   String? _selectedQualityForm;
   String? _selectedTankForm;
+  String? _lastSelectedTank;
   String _searchQuery = '';
   bool _isSaving = false;
 
@@ -50,78 +57,133 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
   void initState() {
     super.initState();
     _checkForPopUpAds();
+    if (widget.initialUretici != null) {
+      _selectedUreticiForSutAl = widget.initialUretici;
+      _selectedUreticiForm = widget.initialUretici;
+    }
   }
 
   void _checkForPopUpAds() {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      // Kısa bekleme: ekran render olduktan sonra dialog gösterilsin
+      await Future.delayed(const Duration(milliseconds: 800));
+      if (!mounted) return;
+
       try {
+        // Cache yerine doğrudan Firestore'dan çek
         final query = await FirebaseFirestore.instance
             .collection('duyurular')
             .where('isGlobal', isEqualTo: true)
+            .where('isPopUp', isEqualTo: true)
             .get();
 
         final docs = query.docs.where((doc) {
           final data = doc.data() as Map<String, dynamic>?;
           if (data == null) return false;
-          final isPopUp = data['isPopUp'] as bool? ?? false;
           final targetRoles = data['targetRoles'] as List<dynamic>?;
-          return isPopUp && (targetRoles != null && targetRoles.contains('surucu'));
+          return targetRoles != null && targetRoles.contains('surucu');
         }).toList();
 
-        if (docs.isNotEmpty) {
-          docs.sort((a, b) {
-            final aTime = (a.data() as Map<String, dynamic>)['timestamp'] as Timestamp?;
-            final bTime = (b.data() as Map<String, dynamic>)['timestamp'] as Timestamp?;
-            if (aTime == null) return 1;
-            if (bTime == null) return -1;
-            return bTime.compareTo(aTime);
-          });
-          final doc = docs.first;
-          final docId = doc.id;
-          
-          if (_shownPopups.contains(docId)) return;
-          _shownPopups.add(docId);
+        if (docs.isEmpty) return;
 
-          final data = doc.data() as Map<String, dynamic>?;
-          final baslik = data?['baslik'] ?? '';
-          final icerik = data?['icerik'] ?? '';
+        docs.sort((a, b) {
+          final aTime = (a.data() as Map<String, dynamic>)['timestamp'] as Timestamp?;
+          final bTime = (b.data() as Map<String, dynamic>)['timestamp'] as Timestamp?;
+          if (aTime == null) return 1;
+          if (bTime == null) return -1;
+          return bTime.compareTo(aTime);
+        });
 
-          if (!mounted) return;
+        final doc = docs.first;
+        final docId = doc.id;
 
-          showDialog(
-            context: context,
-            barrierDismissible: true,
-            builder: (ctx) {
-              return AlertDialog(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                title: Row(
-                  children: [
-                    const Icon(Icons.campaign_rounded, color: Colors.blueAccent),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        baslik,
-                        style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16),
-                      ),
+        final prefs = await SharedPreferences.getInstance();
+        final List<String> shownList = prefs.getStringList('shown_popups') ?? [];
+        if (shownList.contains(docId)) return;
+
+        shownList.add(docId);
+        await prefs.setStringList('shown_popups', shownList);
+
+        final data = doc.data() as Map<String, dynamic>?;
+        final baslik = data?['baslik'] ?? '';
+        final icerik = data?['icerik'] ?? '';
+        final imageUrl = data?['imageUrl'] as String?;
+
+        if (!mounted) return;
+
+        showDialog(
+          context: context,
+          barrierDismissible: true,
+          barrierColor: Colors.black54,
+          builder: (ctx) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+              contentPadding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+              title: Row(
+                children: [
+                  const Icon(Icons.campaign_rounded, color: Colors.blueAccent),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      baslik,
+                      style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16),
                     ),
-                  ],
-                ),
-                content: Text(
-                  icerik,
-                  style: GoogleFonts.inter(fontSize: 13, color: AppColors.gray700),
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    child: Text('Kapat', style: GoogleFonts.inter(fontWeight: FontWeight.bold)),
                   ),
                 ],
-              );
-            },
-          );
-        }
+              ),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (imageUrl != null && imageUrl.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(
+                              maxHeight: 200,
+                              minWidth: double.infinity,
+                            ),
+                            child: imageUrl.startsWith('data:image')
+                                ? Image.memory(
+                                    base64Decode(imageUrl.contains(',') ? imageUrl.split(',').last : imageUrl),
+                                    fit: BoxFit.cover,
+                                    gaplessPlayback: true,
+                                    errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                                  )
+                                : Image.network(
+                                    imageUrl,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                                  ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                      Text(
+                        icerik,
+                        style: GoogleFonts.inter(fontSize: 13, color: AppColors.gray700),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: Text('Kapat', style: GoogleFonts.inter(fontWeight: FontWeight.bold)),
+                ),
+              ],
+            );
+          },
+        );
       } catch (e) {
-        print('Error checking pop-up ads: $e');
+        debugPrint('Pop-up hata: $e');
       }
     });
   }
@@ -452,7 +514,12 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
     const List<String> milkTypes = ['Soğuk Süt', 'Sıcak Süt', 'C kalite', 'D kalite'];
     
     // Track selected tank inside the dialog
-    String? localSelectedTank = tankList.isNotEmpty ? (tankList.first as Map)['ad'] as String : null;
+    String? localSelectedTank;
+    if (_lastSelectedTank != null && tankList.any((t) => (t as Map)['ad'] == _lastSelectedTank)) {
+      localSelectedTank = _lastSelectedTank;
+    } else {
+      localSelectedTank = tankList.isNotEmpty ? (tankList.first as Map)['ad'] as String : null;
+    }
 
     showDialog(
       context: context,
@@ -574,6 +641,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                             if (val != null) {
                               setDialogState(() {
                                     localSelectedTank = val;
+                                    _lastSelectedTank = val;
                               });
                             }
                           },
@@ -647,7 +715,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                   TextButton(onPressed: () => Navigator.pop(ctx), child: Text('İptal', style: GoogleFonts.inter(color: AppColors.gray500))),
                   ElevatedButton(
                     onPressed: () async {
-                      final double? miktar = double.tryParse(miktarCtrl.text);
+                      final double? miktar = double.tryParse(miktarCtrl.text.replaceAll(',', '.'));
                       if (miktar == null || miktar <= 0) return;
 
                       final bool isOverflow = tCurrentStock + miktar > tCapacity;
@@ -659,7 +727,8 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                         region = prodDoc['group'] ?? 'Merkez';
                       } catch (_) {}
 
-                      await _firestoreService.recordMilkCollection(
+                      // Run in background without awaiting to prevent UI hang when offline
+                      _firestoreService.recordMilkCollection(
                         producerName: localSelectedUretici!,
                         tankName: localSelectedTank!,
                         miktar: miktar,
@@ -670,6 +739,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                         customerType: localSelectedCustomerType ?? 'sut',
                       );
 
+                      _lastSelectedTank = localSelectedTank;
                       Navigator.pop(ctx);
                       if (isOverflow) {
                         _showLimitExceededDialog(context, localSelectedTank!);
@@ -1016,29 +1086,44 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
   Future<bool> _checkYesterdayEmptyStatus(String driverName, String plate) async {
     final now = DateTime.now();
     final yesterday = now.subtract(const Duration(days: 1));
-    
-    final startOfYesterday = DateTime(yesterday.year, yesterday.month, yesterday.day, 0, 0, 0);
-    final endOfYesterday = DateTime(yesterday.year, yesterday.month, yesterday.day, 23, 59, 59);
-    
+
     final dateStr = DateFormat('dd.MM.yyyy').format(yesterday);
-    final collectionsQuery = await FirebaseFirestore.instance
-        .collection('toplamalar')
-        .where('sr', isEqualTo: driverName)
-        .where('tarih', isEqualTo: dateStr)
-        .limit(1)
-        .get();
-        
+
+    // Use cache-first approach with a short server fallback timeout
+    Future<QuerySnapshot> fetchWithCacheFallback(Query q) async {
+      try {
+        final snap = await q.get(const GetOptions(source: Source.cache));
+        if (snap.docs.isNotEmpty) return snap;
+      } catch (_) {}
+      try {
+        return await q
+            .get(const GetOptions(source: Source.server))
+            .timeout(const Duration(seconds: 3));
+      } catch (_) {
+        return q.get(const GetOptions(source: Source.cache));
+      }
+    }
+
+    final collectionsQuery = await fetchWithCacheFallback(
+      FirebaseFirestore.instance
+          .collection('toplamalar')
+          .where('sr', isEqualTo: driverName)
+          .where('tarih', isEqualTo: dateStr)
+          .limit(1),
+    );
+
     if (collectionsQuery.docs.isEmpty) {
       return true;
     }
-    
-    final deliveriesQuery = await FirebaseFirestore.instance
-        .collection('teslimatlar')
-        .where('plaka', isEqualTo: plate)
-        .where('tarih', isEqualTo: dateStr)
-        .limit(1)
-        .get();
-        
+
+    final deliveriesQuery = await fetchWithCacheFallback(
+      FirebaseFirestore.instance
+          .collection('teslimatlar')
+          .where('plaka', isEqualTo: plate)
+          .where('tarih', isEqualTo: dateStr)
+          .limit(1),
+    );
+
     return deliveriesQuery.docs.isNotEmpty;
   }
 
@@ -1808,10 +1893,11 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                 return FutureBuilder<QuerySnapshot?>(
                   future: queryNames.isEmpty
                       ? Future.value(null)
-                      : FirebaseFirestore.instance
-                            .collection('ureticiler')
-                            .where('name', whereIn: queryNames.take(30).toList())
-                            .get(),
+                      : _firestoreService.getQueryWithCachePriority(
+                          FirebaseFirestore.instance
+                              .collection('ureticiler')
+                              .where('name', whereIn: queryNames.take(30).toList()),
+                        ),
                   builder: (context, missingSnap) {
                     final allProducers = List<QueryDocumentSnapshot>.from(myProducers);
                     if (missingSnap.hasData && missingSnap.data != null) {
@@ -1826,9 +1912,10 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
 
                     print('[ZiyaretListesi] allProducers.length=${allProducers.length}');
 
-                // Find who has been visited today and how much milk they gave
+                // Find who has been visited today, how much milk they gave, and who has pending writes
                 final today = DateTime.now();
                 final Map<String, double> todayMilkMap = {};
+                final Set<String> pendingWriteProducers = {};
                 final visitedProducersToday = collectionsDocs.where((doc) {
                   final data = doc.data() as Map<String, dynamic>;
                   final ts = data['timestamp'] as Timestamp?;
@@ -1839,6 +1926,10 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                     final String name = data['u'] ?? '';
                     final double mVal = (data['m'] as num?)?.toDouble() ?? 0.0;
                     todayMilkMap[name] = (todayMilkMap[name] ?? 0.0) + mVal;
+                    // Track pending writes — offline kayıtlar henüz sunucuya ulaşmadı
+                    if (doc.metadata.hasPendingWrites) {
+                      pendingWriteProducers.add(name);
+                    }
                   }
                   return isToday;
                 }).map((doc) => (doc.data() as Map<String, dynamic>)['u'] as String).toSet();
@@ -1999,6 +2090,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                               final double bugunVerilenSut = todayMilkMap[name] ?? 0.0;
                               final lastMilkType = data['lastMilkType'] ?? 'Soğuk süt';
                               final hasBeenVisited = visitedProducersToday.contains(name);
+                              final bool hasPendingWrite = pendingWriteProducers.contains(name);
 
                               return Container(
                                 key: ValueKey(name),
@@ -2009,29 +2101,36 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                                   bugunVerilenSut: bugunVerilenSut,
                                   lastMilkType: lastMilkType,
                                   hasBeenVisited: hasBeenVisited,
-                                  onTap: () {
-                                    setState(() {
-                                      _selectedUreticiForSutAl = name;
-                                      _selectedUreticiForm = name;
-                                      _selectedMilkTypeForm = lastMilkType;
-                                      _selectedCustomerTypeForm = data['customerType'] ?? 'sut';
-                                      
-                                      final norm = lastMilkType.trim().toLowerCase();
-                                      if (norm.contains('soğuk') || norm.contains('a kalite')) {
-                                        _selectedQualityForm = 'Soğuk Süt';
-                                      } else if (norm.contains('sıcak') || norm.contains('b kalite')) {
-                                        _selectedQualityForm = 'Sıcak Süt';
-                                      } else if (norm.contains('c kalite')) {
-                                        _selectedQualityForm = 'C kalite';
-                                      } else if (norm.contains('d kalite')) {
-                                        _selectedQualityForm = 'D kalite';
-                                      } else {
-                                        _selectedQualityForm = 'Soğuk Süt';
-                                      }
-                                      
-                                      _miktarFormCtrl.clear();
-                                    });
-                                  },
+                                  hasPendingWrite: hasPendingWrite,
+                                  onTap: hasBeenVisited
+                                      ? null
+                                      : () {
+                                          if (!widget.showSutAlDirectly) {
+                                            context.go('/surucu/toplama?uretici=${Uri.encodeComponent(name)}');
+                                          } else {
+                                            setState(() {
+                                              _selectedUreticiForSutAl = name;
+                                              _selectedUreticiForm = name;
+                                              _selectedMilkTypeForm = lastMilkType;
+                                              _selectedCustomerTypeForm = data['customerType'] ?? 'sut';
+                                              
+                                              final norm = lastMilkType.trim().toLowerCase();
+                                              if (norm.contains('soğuk') || norm.contains('a kalite')) {
+                                                _selectedQualityForm = 'Soğuk Süt';
+                                              } else if (norm.contains('sıcak') || norm.contains('b kalite')) {
+                                                _selectedQualityForm = 'Sıcak Süt';
+                                              } else if (norm.contains('c kalite')) {
+                                                _selectedQualityForm = 'C kalite';
+                                              } else if (norm.contains('d kalite')) {
+                                                _selectedQualityForm = 'D kalite';
+                                              } else {
+                                                _selectedQualityForm = 'Soğuk Süt';
+                                              }
+                                              
+                                              _miktarFormCtrl.clear();
+                                            });
+                                          }
+                                        },
                                 ),
                               );
                             },
@@ -2056,7 +2155,8 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
     required double bugunVerilenSut,
     required String lastMilkType,
     required bool hasBeenVisited,
-    required VoidCallback onTap,
+    required VoidCallback? onTap,
+    bool hasPendingWrite = false,
   }) {
     final norm = lastMilkType.trim().toLowerCase();
     final isSicak = norm.contains('sıcak') || norm.contains('b kalite') || norm.contains('b quality');
@@ -2134,26 +2234,21 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                               ),
                             ),
                           ),
-                          if (hasBeenVisited)
-                            Container(
-                              margin: const EdgeInsets.only(left: 8),
-                              width: 18,
-                              height: 18,
-                              decoration: const BoxDecoration(
-                                color: Colors.blue,
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Center(
-                                child: Text(
-                                  'S',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                          // Offline pending sync icon
+                          if (hasPendingWrite) ...[
+                            const SizedBox(width: 6),
+                            Tooltip(
+                              message: 'Yükleniyor... (Offline kayıt)',
+                              child: SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 1.8,
+                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.orange[600]!),
                                 ),
                               ),
                             ),
+                          ],
                         ],
                       ),
                       const SizedBox(height: 4),
@@ -2206,7 +2301,11 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
     // Determine vehicle tanks list
     final List<String> tanks = tankList.map((t) => (t as Map)['ad'] as String).toList();
     if (_selectedTankForm == null || !tanks.contains(_selectedTankForm)) {
-      _selectedTankForm = tanks.isNotEmpty ? tanks.first : tankName;
+      if (_lastSelectedTank != null && tanks.contains(_lastSelectedTank)) {
+        _selectedTankForm = _lastSelectedTank;
+      } else {
+        _selectedTankForm = tanks.isNotEmpty ? tanks.first : tankName;
+      }
     }
 
     final qualities = const ['Soğuk Süt', 'Sıcak Süt', 'C kalite', 'D kalite'];
@@ -2223,7 +2322,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
     final double tCapacity = (selectedTankInfo?['kap'] as num?)?.toDouble() ?? capacity;
     final double tCurrentStock = (selectedTankInfo?['stok'] as num?)?.toDouble() ?? currentStock;
 
-    final double enteredMiktar = double.tryParse(_miktarFormCtrl.text) ?? 0.0;
+    final double enteredMiktar = double.tryParse(_miktarFormCtrl.text.replaceAll(',', '.')) ?? 0.0;
     final double previewStock = tCurrentStock + enteredMiktar;
     final double previewPct = (previewStock / tCapacity).clamp(0.0, 1.0);
     final bool previewOverflow = previewStock > tCapacity;
@@ -2346,6 +2445,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                 onChanged: (val) {
                   setState(() {
                     _selectedTankForm = val;
+                    _lastSelectedTank = val;
                   });
                 },
               ),
@@ -2585,7 +2685,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
     String firma,
     List<dynamic> tankList,
   ) async {
-    final double? miktar = double.tryParse(_miktarFormCtrl.text);
+    final double? miktar = double.tryParse(_miktarFormCtrl.text.replaceAll(',', '.'));
     if (miktar == null || miktar <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -2596,31 +2696,73 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
       return;
     }
 
+    final targetTank = _selectedTankForm ?? defaultTankName;
+    final ureticiName = _selectedUreticiForSutAl;
+    final qualityForm = _selectedQualityForm ?? 'Soğuk Süt';
+    final customerTypeForm = _selectedCustomerTypeForm ?? 'sut';
+
+    if (ureticiName == null) return;
+
+    // Find capacity and stock of the selected tank
+    double tCapacity = defaultCapacity;
+    double tCurrentStock = defaultCurrentStock;
+    try {
+      final tankInfo = tankList.firstWhere((t) => (t as Map)['ad'] == targetTank);
+      tCapacity = (tankInfo['kap'] as num?)?.toDouble() ?? defaultCapacity;
+      tCurrentStock = (tankInfo['stok'] as num?)?.toDouble() ?? defaultCurrentStock;
+    } catch (_) {}
+
+    final bool isOverflow = tCurrentStock + miktar > tCapacity;
+
+    // Clear inputs immediately so user can enter the next one
+    _miktarFormCtrl.clear();
+    final savedProducer = ureticiName;
+    _lastSelectedTank = targetTank;
+
     setState(() {
-      _isSaving = true;
+      _selectedUreticiForSutAl = null;
+      _selectedQualityForm = null;
+      _selectedTankForm = null;
+      _isSaving = false;
     });
 
-    try {
-      final targetTank = _selectedTankForm ?? defaultTankName;
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle_outline_rounded, color: Colors.white, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '$savedProducer: ${miktar.toStringAsFixed(1)} LT Kayıt Başarıyla Alındı!',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: AppColors.success,
+          duration: const Duration(milliseconds: 1500),
+        ),
+      );
+    }
 
-      // Find capacity and stock of the selected tank
-      double tCapacity = defaultCapacity;
-      double tCurrentStock = defaultCurrentStock;
-      try {
-        final tankInfo = tankList.firstWhere((t) => (t as Map)['ad'] == targetTank);
-        tCapacity = (tankInfo['kap'] as num?)?.toDouble() ?? defaultCapacity;
-        tCurrentStock = (tankInfo['stok'] as num?)?.toDouble() ?? defaultCurrentStock;
-      } catch (_) {}
+    if (isOverflow && context.mounted) {
+      _showLimitExceededDialog(
+        context,
+        targetTank,
+      );
+    }
 
-      final bool isOverflow = tCurrentStock + miktar > tCapacity;
-
+    // Execute database operations in the background
+    Future.microtask(() async {
       // Get producer group/region
       String region = 'Merkez';
       try {
         final prodQuery = await _firestoreService.getQueryWithCachePriority(
           FirebaseFirestore.instance
               .collection('ureticiler')
-              .where('name', isEqualTo: _selectedUreticiForSutAl)
+              .where('name', isEqualTo: savedProducer)
               .limit(1)
         );
 
@@ -2630,67 +2772,17 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
       } catch (_) {}
 
       await _firestoreService.recordMilkCollection(
-        producerName: _selectedUreticiForSutAl!,
+        producerName: savedProducer,
         tankName: targetTank,
         miktar: miktar,
         driverName: driverName,
         vehiclePlate: plate,
         region: region,
-        sutTipi: _selectedQualityForm ?? 'Soğuk Süt',
-        customerType: _selectedCustomerTypeForm ?? 'sut',
-        kalite: _selectedQualityForm ?? 'Soğuk Süt',
+        sutTipi: qualityForm,
+        customerType: customerTypeForm,
+        kalite: qualityForm,
       );
-
-      _miktarFormCtrl.clear();
-      final savedProducer = _selectedUreticiForSutAl;
-
-      setState(() {
-        _selectedUreticiForSutAl = null;
-        _selectedQualityForm = null;
-        _selectedTankForm = null;
-      });
-
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.check_circle_outline_rounded, color: Colors.white, size: 20),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    '$savedProducer: ${miktar.toStringAsFixed(1)} LT Kayıt Başarıyla Alındı!',
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                ),
-              ],
-            ),
-            backgroundColor: AppColors.success,
-            duration: const Duration(milliseconds: 1500),
-          ),
-        );
-      }
-
-      if (isOverflow && context.mounted) {
-        _showLimitExceededDialog(
-          context,
-          targetTank,
-        );
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Kayıt sırasında hata oluştu: $e'),
-            backgroundColor: AppColors.danger,
-          ),
-        );
-      }
-    } finally {
-      setState(() {
-        _isSaving = false;
-      });
-    }
+    });
   }
 
   Widget _buildResponsiveLayout(

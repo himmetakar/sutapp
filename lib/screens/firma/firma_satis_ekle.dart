@@ -34,6 +34,7 @@ class _FirmaSatisEkleScreenState extends State<FirmaSatisEkleScreen> {
   final _storeSearchCtrl = TextEditingController();
 
   bool _isSaving = false;
+  DateTime? _selectedDate;
 
   @override
   void initState() {
@@ -55,7 +56,7 @@ class _FirmaSatisEkleScreenState extends State<FirmaSatisEkleScreen> {
   }
 
   Future<void> _saveSale() async {
-    if (_selectedUretici == null || _cart.isEmpty || _isSaving) return;
+    if (_selectedUretici == null || _cart.isEmpty || _isSaving || _selectedDate == null) return;
 
     setState(() {
       _isSaving = true;
@@ -68,7 +69,19 @@ class _FirmaSatisEkleScreenState extends State<FirmaSatisEkleScreen> {
       final rand = Random();
       const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
       final orderId = '#' + List.generate(6, (index) => chars[rand.nextInt(chars.length)]).join();
-      final String formattedDate = DateFormat('dd.MM.yyyy').format(DateTime.now());
+      
+      final DateTime dateToUse = _selectedDate!;
+      final String formattedDate = DateFormat('dd.MM.yyyy').format(dateToUse);
+      final DateTime now = DateTime.now();
+      final DateTime combinedDateTime = DateTime(
+        dateToUse.year,
+        dateToUse.month,
+        dateToUse.day,
+        now.hour,
+        now.minute,
+        now.second,
+      );
+      final Timestamp timestampToUse = Timestamp.fromDate(combinedDateTime);
 
       // Prepare items list for order and collection logs
       final List<Map<String, dynamic>> cartItemsList = _cart.values.map((item) {
@@ -96,7 +109,7 @@ class _FirmaSatisEkleScreenState extends State<FirmaSatisEkleScreen> {
           'tutar': totalVal,
           'tarih': formattedDate,
           'firma': currentFirmaName,
-          'timestamp': FieldValue.serverTimestamp(),
+          'timestamp': timestampToUse,
           'orderId': orderId,
         });
 
@@ -134,11 +147,11 @@ class _FirmaSatisEkleScreenState extends State<FirmaSatisEkleScreen> {
         'uretici': _selectedUretici,
         'firma': currentFirmaName,
         'durum': 'Bekliyor',
-        'tarih': DateFormat('dd MMMM yyyy', 'tr_TR').format(DateTime.now()),
-        'saat': DateFormat('HH:mm').format(DateTime.now()),
+        'tarih': DateFormat('dd MMMM yyyy', 'tr_TR').format(dateToUse),
+        'saat': DateFormat('HH:mm').format(now),
         'toplam': _cartTotal,
         'isDirectSale': true,
-        'timestamp': FieldValue.serverTimestamp(),
+        'timestamp': timestampToUse,
         'kalemler': cartItemsList,
       });
 
@@ -163,6 +176,7 @@ class _FirmaSatisEkleScreenState extends State<FirmaSatisEkleScreen> {
         );
         setState(() {
           _cart.clear();
+          _selectedDate = null;
         });
         context.go('/firma/urunler/siparisler');
       }
@@ -359,7 +373,71 @@ class _FirmaSatisEkleScreenState extends State<FirmaSatisEkleScreen> {
                                             setSheetState(() {});
                                           },
                                         ),
-                                        Text('$qty', style: GoogleFonts.inter(fontWeight: FontWeight.bold)),
+                                        GestureDetector(
+                                          onTap: () {
+                                            final ctrl = TextEditingController(text: qty.toString());
+                                            showDialog(
+                                              context: context,
+                                              builder: (ctx) => AlertDialog(
+                                                title: Text('Miktar Girin', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 15)),
+                                                content: TextField(
+                                                  controller: ctrl,
+                                                  keyboardType: TextInputType.number,
+                                                  autofocus: true,
+                                                  decoration: InputDecoration(
+                                                    labelText: 'Miktar ($unit)',
+                                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                                                  ),
+                                                ),
+                                                actions: [
+                                                  TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('İptal')),
+                                                  ElevatedButton(
+                                                    onPressed: () {
+                                                      final val = int.tryParse(ctrl.text.trim());
+                                                      if (val != null && val > 0) {
+                                                        setState(() {
+                                                          if (val <= stock) {
+                                                            _cart[key]!['quantity'] = val;
+                                                          } else {
+                                                            _cart[key]!['quantity'] = stock.toInt();
+                                                          }
+                                                        });
+                                                        setSheetState(() {});
+                                                      } else if (val == 0) {
+                                                        setState(() => _cart.remove(key));
+                                                        setSheetState(() {});
+                                                      }
+                                                      Navigator.pop(ctx);
+                                                    },
+                                                    style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary600, foregroundColor: Colors.white),
+                                                    child: const Text('Tamam'),
+                                                  ),
+                                                ],
+                                              ),
+                                            );
+                                          },
+                                          child: Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Text(
+                                                'Adet Gir',
+                                                style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey.shade500),
+                                              ),
+                                              const SizedBox(height: 2),
+                                              Container(
+                                                constraints: const BoxConstraints(minWidth: 72, minHeight: 32),
+                                                alignment: Alignment.center,
+                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.grey.shade100,
+                                                  border: Border.all(color: Colors.grey.shade300),
+                                                  borderRadius: BorderRadius.circular(6),
+                                                ),
+                                                child: Text('$qty', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 13, color: const Color(0xFF1E293B))),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
                                         IconButton(
                                           icon: const Icon(Icons.add_circle_outline, color: Colors.green),
                                           onPressed: () {
@@ -382,6 +460,81 @@ class _FirmaSatisEkleScreenState extends State<FirmaSatisEkleScreen> {
                               ),
                       ),
                       const Divider(),
+                      // Tarih Seçici (Zorunlu)
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: _selectedDate == null ? Colors.red.shade50 : AppColors.primary50,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: _selectedDate == null ? Colors.red.shade200 : AppColors.primary200,
+                            width: 1,
+                          ),
+                        ),
+                        child: InkWell(
+                          onTap: () async {
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: _selectedDate ?? DateTime.now(),
+                              firstDate: DateTime(2020),
+                              lastDate: DateTime(2030),
+                              locale: const Locale('tr', 'TR'),
+                            );
+                            if (picked != null) {
+                              setState(() {
+                                _selectedDate = picked;
+                              });
+                              setSheetState(() {});
+                            }
+                          },
+                          borderRadius: BorderRadius.circular(12),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.calendar_month_rounded,
+                                  color: _selectedDate == null ? Colors.red : AppColors.primary600,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        'İşlem Tarihi (Zorunlu)',
+                                        style: GoogleFonts.inter(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                          color: _selectedDate == null ? Colors.red.shade700 : AppColors.gray500,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        _selectedDate == null
+                                            ? 'Tarih Seçmek İçin Dokunun'
+                                            : DateFormat('dd MMMM yyyy', 'tr_TR').format(_selectedDate!),
+                                        style: GoogleFonts.inter(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.bold,
+                                          color: _selectedDate == null ? Colors.red.shade900 : AppColors.gray800,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Icon(
+                                  Icons.chevron_right_rounded,
+                                  color: _selectedDate == null ? Colors.red.shade400 : AppColors.gray400,
+                                  size: 18,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -396,7 +549,7 @@ class _FirmaSatisEkleScreenState extends State<FirmaSatisEkleScreen> {
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton(
-                          onPressed: _cart.isEmpty
+                          onPressed: (_cart.isEmpty || _selectedDate == null)
                               ? null
                               : () async {
                                   Navigator.pop(ctx);
@@ -408,7 +561,10 @@ class _FirmaSatisEkleScreenState extends State<FirmaSatisEkleScreen> {
                             padding: const EdgeInsets.symmetric(vertical: 14),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           ),
-                          child: Text('Satış Yap', style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.bold)),
+                          child: Text(
+                            _selectedDate == null ? 'Lütfen Tarih Seçin' : 'Satış Yap',
+                            style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.bold),
+                          ),
                         ),
                       ),
                     ],
@@ -648,6 +804,7 @@ class _FirmaSatisEkleScreenState extends State<FirmaSatisEkleScreen> {
                                                 _selectedUretici = null;
                                                 _selectedProducerDoc = null;
                                                 _cart.clear();
+                                                _selectedDate = null;
                                               });
                                             },
                                             child: const Text('Değiştir'),
@@ -705,30 +862,51 @@ class _FirmaSatisEkleScreenState extends State<FirmaSatisEkleScreen> {
                         ),
 
                         // Category icons horizontal list
-                        Container(
-                          color: Colors.white,
-                          height: 74,
-                          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-                          child: ListView(
-                            scrollDirection: Axis.horizontal,
-                            children: [
-                              _buildCategoryBox('Tümü', Icons.grid_view_rounded, AppColors.primary600, _selectedStoreCategory == 'Tümü', () {
-                                setState(() => _selectedStoreCategory = 'Tümü');
-                              }),
-                              _buildCategoryBox('Araç Gereç', Icons.build_rounded, const Color(0xFF009688), _selectedStoreCategory == 'Araç Gereç', () {
-                                setState(() => _selectedStoreCategory = 'Araç Gereç');
-                              }),
-                              _buildCategoryBox('Vitamin', Icons.science_rounded, const Color(0xFF9C27B0), _selectedStoreCategory == 'Vitamin', () {
-                                setState(() => _selectedStoreCategory = 'Vitamin');
-                              }),
-                              _buildCategoryBox('Yem', Icons.eco_rounded, const Color(0xFF4CAF50), _selectedStoreCategory == 'Yem', () {
-                                setState(() => _selectedStoreCategory = 'Yem');
-                              }),
-                              _buildCategoryBox('İlaç', Icons.medical_services_rounded, const Color(0xFFEF4444), _selectedStoreCategory == 'İlaç', () {
-                                setState(() => _selectedStoreCategory = 'İlaç');
-                              }),
-                            ],
-                          ),
+                        StreamBuilder<QuerySnapshot>(
+                          stream: FirebaseFirestore.instance
+                              .collection('urunler_kategoriler')
+                              .where('firma', isEqualTo: currentFirmaName)
+                              .snapshots(),
+                          builder: (context, catSnap) {
+                            IconData _catIcon(String cat) {
+                              if (cat.contains('Araç') || cat.contains('Gereç')) return Icons.build_rounded;
+                              if (cat.contains('Vitamin')) return Icons.science_rounded;
+                              if (cat.contains('Yem')) return Icons.eco_rounded;
+                              if (cat.contains('İlaç') || cat.contains('ilac')) return Icons.medical_services_rounded;
+                              return Icons.folder_rounded;
+                            }
+                            Color _catColor(String cat) {
+                              if (cat.contains('Araç') || cat.contains('Gereç')) return const Color(0xFF009688);
+                              if (cat.contains('Vitamin')) return const Color(0xFF9C27B0);
+                              if (cat.contains('Yem')) return const Color(0xFF4CAF50);
+                              if (cat.contains('İlaç') || cat.contains('ilac')) return const Color(0xFFEF4444);
+                              return const Color(0xFF2196F3);
+                            }
+                            final List<String> storeCats = [];
+                            if (catSnap.hasData) {
+                              for (var doc in catSnap.data!.docs) {
+                                final name = (doc.data() as Map<String, dynamic>)['ad'] as String? ?? '';
+                                if (name.isNotEmpty && !storeCats.contains(name)) storeCats.add(name);
+                              }
+                            }
+                            return Container(
+                              color: Colors.white,
+                              height: 74,
+                              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                              child: ListView(
+                                scrollDirection: Axis.horizontal,
+                                children: [
+                                  _buildCategoryBox('Tümü', Icons.grid_view_rounded, AppColors.primary600, _selectedStoreCategory == 'Tümü', () {
+                                    setState(() => _selectedStoreCategory = 'Tümü');
+                                  }),
+                                  ...storeCats.map((cat) => _buildCategoryBox(
+                                    cat, _catIcon(cat), _catColor(cat), _selectedStoreCategory == cat,
+                                    () => setState(() => _selectedStoreCategory = cat),
+                                  )),
+                                ],
+                              ),
+                            );
+                          },
                         ),
 
                         const Divider(height: 1),
@@ -800,59 +978,77 @@ class _FirmaSatisEkleScreenState extends State<FirmaSatisEkleScreen> {
                                   final qty = inCart ? _cart[docId]!['quantity'] as int : 0;
 
                                   return Container(
-                                    margin: const EdgeInsets.only(bottom: 12),
-                                    padding: const EdgeInsets.all(14),
+                                    margin: const EdgeInsets.only(bottom: 8),
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                                     decoration: BoxDecoration(
                                       color: Colors.white,
-                                      borderRadius: BorderRadius.circular(16),
+                                      borderRadius: BorderRadius.circular(12),
                                       border: Border.all(color: AppColors.gray200),
                                       boxShadow: [
                                         BoxShadow(
-                                          color: Colors.black.withOpacity(0.02),
-                                          blurRadius: 6,
-                                          offset: const Offset(0, 3),
+                                          color: Colors.black.withOpacity(0.015),
+                                          blurRadius: 8,
+                                          offset: const Offset(0, 2),
                                         )
                                       ],
                                     ),
                                     child: Row(
                                       children: [
                                         Container(
-                                          width: 44,
-                                          height: 44,
-                                          decoration: const BoxDecoration(
+                                          width: 38,
+                                          height: 38,
+                                          decoration: BoxDecoration(
                                             color: AppColors.primary50,
-                                            shape: BoxShape.circle,
+                                            borderRadius: BorderRadius.circular(8),
                                           ),
-                                          child: const Icon(Icons.shopping_bag_outlined, color: AppColors.primary600, size: 22),
+                                          child: const Icon(Icons.shopping_bag_outlined, color: AppColors.primary500, size: 20),
                                         ),
-                                        const SizedBox(width: 14),
+                                        const SizedBox(width: 12),
                                         Expanded(
                                           child: Column(
                                             crossAxisAlignment: CrossAxisAlignment.start,
                                             children: [
-                                              Text(ad, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.gray800)),
-                                              const SizedBox(height: 2),
-                                              Text(kat, style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray400)),
-                                              const SizedBox(height: 6),
-                                              Text('${formatCurrency.format(fiyat)} / $birim', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.primary600)),
-                                              const SizedBox(height: 2),
-                                              Text('Stok: ${stok.toStringAsFixed(0)} $birim', style: GoogleFonts.inter(fontSize: 11, color: stok <= 0 ? Colors.red : AppColors.gray500)),
+                                              Row(
+                                                crossAxisAlignment: CrossAxisAlignment.baseline,
+                                                textBaseline: TextBaseline.alphabetic,
+                                                children: [
+                                                  Expanded(
+                                                    child: Text(ad, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.gray800), overflow: TextOverflow.ellipsis),
+                                                  ),
+                                                  const SizedBox(width: 6),
+                                                  Text(kat, style: GoogleFonts.inter(fontSize: 9.5, color: AppColors.gray400, fontWeight: FontWeight.w500)),
+                                                ],
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Row(
+                                                crossAxisAlignment: CrossAxisAlignment.center,
+                                                children: [
+                                                  Text('${formatCurrency.format(fiyat)} / $birim', style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.bold, color: AppColors.primary600)),
+                                                  const SizedBox(width: 8),
+                                                  Text('•', style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray300)),
+                                                  const SizedBox(width: 8),
+                                                  Text('Stok: ${stok.toStringAsFixed(0)} $birim', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w500, color: stok <= 0 ? Colors.red : AppColors.gray500)),
+                                                ],
+                                              ),
                                             ],
                                           ),
                                         ),
+                                        const SizedBox(width: 8),
                                         if (inCart)
                                           Container(
+                                            height: 28,
                                             decoration: BoxDecoration(
-                                              color: AppColors.primary50,
-                                              borderRadius: BorderRadius.circular(20),
+                                              color: AppColors.gray50,
+                                              border: Border.all(color: AppColors.gray200),
+                                              borderRadius: BorderRadius.circular(14),
                                             ),
                                             child: Row(
                                               mainAxisSize: MainAxisSize.min,
                                               children: [
                                                 IconButton(
-                                                  icon: const Icon(Icons.remove, size: 14, color: AppColors.primary700),
+                                                  icon: const Icon(Icons.remove_rounded, size: 12, color: AppColors.gray600),
                                                   padding: EdgeInsets.zero,
-                                                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                                  constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
                                                   onPressed: () {
                                                     setState(() {
                                                       if (qty > 1) {
@@ -863,14 +1059,60 @@ class _FirmaSatisEkleScreenState extends State<FirmaSatisEkleScreen> {
                                                     });
                                                   },
                                                 ),
-                                                Text(
-                                                  qty.toString(),
-                                                  style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.primary800),
+                                                GestureDetector(
+                                                  onTap: () {
+                                                    final ctrl = TextEditingController(text: qty.toString());
+                                                    showDialog(
+                                                      context: context,
+                                                      builder: (ctx) => AlertDialog(
+                                                        title: Text('Miktar Girin', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 15)),
+                                                        content: TextField(
+                                                          controller: ctrl,
+                                                          keyboardType: TextInputType.number,
+                                                          autofocus: true,
+                                                          decoration: InputDecoration(
+                                                            labelText: 'Miktar ($birim)',
+                                                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                                                          ),
+                                                        ),
+                                                        actions: [
+                                                          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('İptal')),
+                                                          ElevatedButton(
+                                                            onPressed: () {
+                                                              final val = int.tryParse(ctrl.text.trim());
+                                                              if (val != null && val > 0) {
+                                                                setState(() {
+                                                                  if (val <= stok) {
+                                                                    _cart[docId]!['quantity'] = val;
+                                                                  } else {
+                                                                    _cart[docId]!['quantity'] = stok.toInt();
+                                                                    ScaffoldMessenger.of(context).showSnackBar(
+                                                                      SnackBar(content: Text('Stok yetersiz! Max: ${stok.toInt()}'), backgroundColor: AppColors.danger),
+                                                                    );
+                                                                  }
+                                                                });
+                                                              } else if (val == 0) {
+                                                                setState(() => _cart.remove(docId));
+                                                              }
+                                                              Navigator.pop(ctx);
+                                                            },
+                                                            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary600, foregroundColor: Colors.white),
+                                                            child: const Text('Tamam'),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    );
+                                                  },
+                                                  child: Container(
+                                                    alignment: Alignment.center,
+                                                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                                                    child: Text(qty.toString(), style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.gray800)),
+                                                  ),
                                                 ),
                                                 IconButton(
-                                                  icon: const Icon(Icons.add, size: 14, color: AppColors.primary700),
+                                                  icon: const Icon(Icons.add_rounded, size: 12, color: AppColors.gray600),
                                                   padding: EdgeInsets.zero,
-                                                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                                  constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
                                                   onPressed: () {
                                                     if (qty < stok) {
                                                       setState(() {
@@ -907,17 +1149,12 @@ class _FirmaSatisEkleScreenState extends State<FirmaSatisEkleScreen> {
                                               backgroundColor: const Color(0xFF2563EB),
                                               foregroundColor: Colors.white,
                                               elevation: 0,
-                                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                              minimumSize: Size.zero,
+                                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                             ),
-                                            child: Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                const Icon(Icons.add, size: 14),
-                                                const SizedBox(width: 4),
-                                                Text('Ekle', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold)),
-                                              ],
-                                            ),
+                                            child: Text('Ekle', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold)),
                                           ),
                                       ],
                                     ),
@@ -936,44 +1173,50 @@ class _FirmaSatisEkleScreenState extends State<FirmaSatisEkleScreen> {
       bottomNavigationBar: (_selectedUretici != null && _cart.isNotEmpty && !_isSaving)
           ? SafeArea(
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   boxShadow: [
                     BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -4)),
                   ],
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    // Preview list removed as per user request to clean up the bar
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(
-                          '${_cart.length} Ürün Seçildi',
-                          style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray500, fontWeight: FontWeight.bold),
+                        Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${_cart.length} Ürün Seçildi',
+                              style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray500, fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              formatCurrency.format(_cartTotal),
+                              style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.primary600),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          formatCurrency.format(_cartTotal),
-                          style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.primary600),
+                        ElevatedButton(
+                          onPressed: () => _showCartBottomSheet(_selectedUretici!),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF2563EB),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            elevation: 0,
+                          ),
+                          child: Text(
+                            'Sepeti Gör',
+                            style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 13),
+                          ),
                         ),
                       ],
-                    ),
-                    ElevatedButton(
-                      onPressed: () => _showCartBottomSheet(_selectedUretici!),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF2563EB),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        elevation: 0,
-                      ),
-                      child: Text(
-                        'Sepeti Gör',
-                        style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 13),
-                      ),
                     ),
                   ],
                 ),

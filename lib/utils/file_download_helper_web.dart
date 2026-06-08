@@ -19,7 +19,7 @@ class FileDownloadHelper {
     html.Url.revokeObjectUrl(url);
   }
 
-  static Future<void> downloadBinaryFile({
+  static Future<String?> downloadBinaryFile({
     required String fileName,
     required List<int> bytes,
   }) async {
@@ -33,5 +33,6 @@ class FileDownloadHelper {
     anchor.click();
     html.document.body?.children.remove(anchor);
     html.Url.revokeObjectUrl(url);
+    return null;
   }
 }
