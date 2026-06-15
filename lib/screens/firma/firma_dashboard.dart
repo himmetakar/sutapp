@@ -372,7 +372,7 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
               Expanded(
                 child: Column(
                   children: [
-                    _buildDonutLegend('Soğuk Süt', '%45', '5.600 L', AppColors.primary600),
+                    _buildDonutLegend('So\u011fuk S\u00fct', '%45', '5.600 L', AppColors.primary600),
                     _buildDonutLegend('Sıcak Süt', '%35', '4.350 L', AppColors.success),
                     _buildDonutLegend('C kalite', '%15', '1.850 L', AppColors.warning),
                     _buildDonutLegend('D kalite', '%5', '650 L', AppColors.danger),
@@ -719,9 +719,9 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
 
     switch (_selectedTab) {
       case 0:
-        return _buildDailyOperationsTab(isDesktop, isTablet, totalMilk, collectionCount, currentFirmaName);
+        return _buildDailyOperationsTab(isDesktop, isTablet, collections, totalMilk, collectionCount, currentFirmaName);
       case 1:
-        return _buildMonthlyOperationsTab(isDesktop, isTablet, totalMilk, collectionCount, currentFirmaName);
+        return _buildMonthlyOperationsTab(isDesktop, isTablet, collections, totalMilk, collectionCount, currentFirmaName);
       case 2:
         return _buildTankStatusTab(isDesktop, isTablet, currentFirmaName);
       case 3:
@@ -731,7 +731,7 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
     }
   }
 
-  Widget _buildDailyOperationsTab(bool isDesktop, bool isTablet, double totalMilk, int collectionCount, String currentFirmaName) {
+  Widget _buildDailyOperationsTab(bool isDesktop, bool isTablet, List<QueryDocumentSnapshot> collections, double totalMilk, int collectionCount, String currentFirmaName) {
     return FutureBuilder<List<dynamic>>(
       future: Future.wait([
         _loadProducerTrends(currentFirmaName, false),
@@ -797,8 +797,8 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
             ? Row(children: cards.map((c) => Expanded(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 6), child: c))).toList())
             : StatsGrid(crossAxisCount: isTablet ? 4 : 2, spacing: isTablet ? 12 : 10, children: cards);
 
-        final donutChartWidget = _buildDonutChartWidget();
-        final barChartWidget = _buildBarChartWidget(totalMilk);
+        final donutChartWidget = _buildDonutChartWidget(collections);
+        final barChartWidget = _buildBarChartWidget(collections);
         final listProducersUp = _buildProducersTrendCard('Sütü En Çok Artanlar (Son 5 Gün)', trends['up'] ?? [], AppColors.success);
         final listProducersDown = _buildProducersTrendCard('Sütü En Çok Azalanlar (Son 5 Gün)', trends['down'] ?? [], AppColors.danger);
         final listNoMilkToday = _buildNoMilkTodayCard(noMilkToday);
@@ -846,7 +846,7 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
     );
   }
 
-  Widget _buildMonthlyOperationsTab(bool isDesktop, bool isTablet, double totalMilk, int collectionCount, String currentFirmaName) {
+  Widget _buildMonthlyOperationsTab(bool isDesktop, bool isTablet, List<QueryDocumentSnapshot> collections, double totalMilk, int collectionCount, String currentFirmaName) {
     final monthlyMilk = totalMilk * 4.2;
     return FutureBuilder<List<dynamic>>(
       future: Future.wait([
@@ -909,8 +909,8 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
             ? Row(children: cards.map((c) => Expanded(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 6), child: c))).toList())
             : StatsGrid(crossAxisCount: isTablet ? 4 : 2, spacing: isTablet ? 12 : 10, children: cards);
 
-        final donutChartWidget = _buildDonutChartWidget();
-        final barChartWidget = _buildMonthlyBarChartWidget(monthlyMilk);
+        final donutChartWidget = _buildDonutChartWidget(collections);
+        final barChartWidget = _buildMonthlyBarChartWidget(collections);
         final listProducersUp = _buildProducersTrendCard('Aylık Sütü En Çok Artanlar (Önceki Ayın Ort.)', trends['up'] ?? [], AppColors.success);
         final listProducersDown = _buildProducersTrendCard('Aylık Sütü En Çok Azalanlar (Önceki Ayın Ort.)', trends['down'] ?? [], AppColors.danger);
         final listStaffMonthlyPerformance = _buildStaffPerformanceCard('Personel Aylık Performans', staffPerf);
@@ -1475,43 +1475,55 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
 
     // 1. Calculate Monthly Milk Stats
     final monthCollections = collections.where((doc) => _isDocInSelectedMonth(doc, _maliOzetMonth)).toList();
-    double monthlyMilk = 0.0;
-    for (var doc in monthCollections) {
-      final m = doc['m'];
-      if (m is num) {
-        monthlyMilk += m.toDouble();
-      } else if (m is String) {
-        monthlyMilk += double.tryParse(m) ?? 0.0;
-      }
-    }
-    final double grossMilkPrice = monthlyMilk * 23.0;
-    final double milkRevenue = monthlyMilk * 25.2;
-
     // 2. Calculate Prior Milk Stats (Carryover)
     final prevCollections = collections.where((doc) => _isDocBeforeSelectedMonth(doc, _maliOzetMonth)).toList();
-    double prevMilk = 0.0;
-    for (var doc in prevCollections) {
-      final m = doc['m'];
-      if (m is num) {
-        prevMilk += m.toDouble();
-      } else if (m is String) {
-        prevMilk += double.tryParse(m) ?? 0.0;
-      }
-    }
-    final double prevAlacak = prevMilk * 23.0;
 
     // 3. Calculate Cumulative Milk Stats (Next Month Carryover)
     final upToCollections = collections.where((doc) => _isDocUpToSelectedMonth(doc, _maliOzetMonth)).toList();
-    double upToMilk = 0.0;
-    for (var doc in upToCollections) {
-      final m = doc['m'];
-      if (m is num) {
-        upToMilk += m.toDouble();
-      } else if (m is String) {
-        upToMilk += double.tryParse(m) ?? 0.0;
-      }
-    }
-    final double upToAlacak = upToMilk * 23.0;
+
+    // Gerçek süt fiyatlarını Firestore'dan çek — hardcode 23.0 TL yerine
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('sut_fiyatlari')
+          .where('firma', isEqualTo: currentFirmaName)
+          .snapshots(),
+      builder: (context, fiyatSnap) {
+        final priceList = (fiyatSnap.data?.docs ?? [])
+            .map((d) => d.data() as Map<String, dynamic>)
+            .toList();
+
+        // Bu aya ait gerçek süt geliri (süt tipine göre fiyatlandırılmış)
+        double grossMilkPrice = 0.0;
+        for (var doc in monthCollections) {
+          final m = (doc['m'] as num?)?.toDouble() ?? 0.0;
+          final tip = (doc.data() as Map<String, dynamic>)['tip'] as String? ?? 'So\u011fuk S\u00fct';
+          final priceKey = _firestoreService.mapMilkTypeToPriceKey(tip);
+          final price = _firestoreService.resolveMilkPrice(
+              prices: priceList, producerName: '', bolge: '', group: '', type: priceKey);
+          grossMilkPrice += m * price;
+        }
+
+        // Önceki ayların biriken süt alacağı (gerçek fiyatlarla)
+        double prevAlacak = 0.0;
+        for (var doc in prevCollections) {
+          final m = (doc['m'] as num?)?.toDouble() ?? 0.0;
+          final tip = (doc.data() as Map<String, dynamic>)['tip'] as String? ?? 'So\u011fuk S\u00fct';
+          final priceKey = _firestoreService.mapMilkTypeToPriceKey(tip);
+          final price = _firestoreService.resolveMilkPrice(
+              prices: priceList, producerName: '', bolge: '', group: '', type: priceKey);
+          prevAlacak += m * price;
+        }
+
+        // Bu ay dahil birikimli alacak (sonraki aya devredecek)
+        double upToAlacak = 0.0;
+        for (var doc in upToCollections) {
+          final m = (doc['m'] as num?)?.toDouble() ?? 0.0;
+          final tip = (doc.data() as Map<String, dynamic>)['tip'] as String? ?? 'So\u011fuk S\u00fct';
+          final priceKey = _firestoreService.mapMilkTypeToPriceKey(tip);
+          final price = _firestoreService.resolveMilkPrice(
+              prices: priceList, producerName: '', bolge: '', group: '', type: priceKey);
+          upToAlacak += m * price;
+        }
 
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
@@ -1908,14 +1920,18 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
                               if (name.isEmpty) continue;
 
                               // 1. PREVIOUS ( Önceki Aydan Devreden )
-                              double pPrevMilk = 0.0;
+                              final String pBolge = (producer['bolge'] as String? ?? '').trim();
+                              final String pGroup = (producer['group'] as String? ?? '').trim();
+                              double pPrevAlacak = 0.0;
                               for (var doc in prevCollections) {
-                                if ((doc['u'] as String? ?? '').trim() == name) {
-                                  final m = doc['m'];
-                                  pPrevMilk += m is num ? m.toDouble() : (double.tryParse(m.toString()) ?? 0.0);
-                                }
+                                if ((doc['u'] as String? ?? '').trim() != name) continue;
+                                final m = (doc['m'] as num?)?.toDouble() ?? 0.0;
+                                final tip = (doc.data() as Map<String, dynamic>)['tip'] as String? ?? 'So\u011fuk S\u00fct';
+                                final priceKey = _firestoreService.mapMilkTypeToPriceKey(tip);
+                                final price = _firestoreService.resolveMilkPrice(
+                                    prices: priceList, producerName: name, bolge: pBolge, group: pGroup, type: priceKey);
+                                pPrevAlacak += m * price;
                               }
-                              final double pPrevAlacak = pPrevMilk * 23.0;
 
                               double pPrevOdeme = 0.0;
                               double pPrevProducerTahsilat = 0.0;
@@ -1978,14 +1994,16 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
                               }
 
                               // 2. NEXT ( Diğer Aya Devreden )
-                              double pUpToMilk = 0.0;
+                              double pUpToAlacak = 0.0;
                               for (var doc in upToCollections) {
-                                if ((doc['u'] as String? ?? '').trim() == name) {
-                                  final m = doc['m'];
-                                  pUpToMilk += m is num ? m.toDouble() : (double.tryParse(m.toString()) ?? 0.0);
-                                }
+                                if ((doc['u'] as String? ?? '').trim() != name) continue;
+                                final m = (doc['m'] as num?)?.toDouble() ?? 0.0;
+                                final tip = (doc.data() as Map<String, dynamic>)['tip'] as String? ?? 'So\u011fuk S\u00fct';
+                                final priceKey = _firestoreService.mapMilkTypeToPriceKey(tip);
+                                final price = _firestoreService.resolveMilkPrice(
+                                    prices: priceList, producerName: name, bolge: pBolge, group: pGroup, type: priceKey);
+                                pUpToAlacak += m * price;
                               }
-                              final double pUpToAlacak = pUpToMilk * 23.0;
 
                               double pUpToOdeme = 0.0;
                               double pUpToProducerTahsilat = 0.0;
@@ -2298,7 +2316,9 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
 );
 },
 );
-}
+      }, // sut_fiyatlari StreamBuilder builder sonu
+    ); // sut_fiyatlari StreamBuilder sonu
+  }
 
   Widget _buildMockupCard(String label, String value, IconData icon, Color color, {Color? valueColor}) {
     return Container(
@@ -3107,7 +3127,57 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
     );
   }
 
-  Widget _buildDonutChartWidget() {
+  Widget _buildDonutChartWidget(List<QueryDocumentSnapshot> collections) {
+    double soguk = 0;
+    double sicak = 0;
+    double cQuality = 0;
+    double dQuality = 0;
+    double other = 0;
+
+    for (var doc in collections) {
+      final m = doc['m'];
+      double val = 0;
+      if (m is num) {
+        val = m.toDouble();
+      } else if (m is String) {
+        val = double.tryParse(m) ?? 0.0;
+      }
+
+      final tip = (doc.data() as Map<String, dynamic>)['tip'] as String? ?? '';
+      final normalized = tip.toLowerCase().trim();
+      if (normalized.contains('soğuk') || normalized.contains('soguk') || normalized.contains('so\u011fuk')) {
+        soguk += val;
+      } else if (normalized.contains('sıcak') || normalized.contains('sicak') || normalized.contains('s\u0131cak')) {
+        sicak += val;
+      } else if (normalized.contains('c kalite') || normalized == 'c') {
+        cQuality += val;
+      } else if (normalized.contains('d kalite') || normalized == 'd') {
+        dQuality += val;
+      } else {
+        other += val;
+      }
+    }
+
+    final double total = soguk + sicak + cQuality + dQuality + other;
+    final finalSoguk = soguk + other;
+
+    final pctSoguk = total > 0 ? (finalSoguk / total) * 100 : 0.0;
+    final pctSicak = total > 0 ? (sicak / total) * 100 : 0.0;
+    final pctC = total > 0 ? (cQuality / total) * 100 : 0.0;
+    final pctD = total > 0 ? (dQuality / total) * 100 : 0.0;
+
+    final formatNumber = NumberFormat('#,##0', 'tr_TR');
+
+    final List<PieChartSectionData> sections = [];
+    if (total == 0) {
+      sections.add(PieChartSectionData(color: AppColors.gray200, value: 100, showTitle: false, radius: 18));
+    } else {
+      if (pctSoguk > 0) sections.add(PieChartSectionData(color: AppColors.primary600, value: pctSoguk, showTitle: false, radius: 18));
+      if (pctSicak > 0) sections.add(PieChartSectionData(color: AppColors.success, value: pctSicak, showTitle: false, radius: 18));
+      if (pctC > 0) sections.add(PieChartSectionData(color: AppColors.warning, value: pctC, showTitle: false, radius: 18));
+      if (pctD > 0) sections.add(PieChartSectionData(color: AppColors.danger, value: pctD, showTitle: false, radius: 18));
+    }
+
     return AppCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -3127,12 +3197,7 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
                     sectionsSpace: 2,
                     centerSpaceRadius: 36,
                     startDegreeOffset: -90,
-                    sections: [
-                      PieChartSectionData(color: AppColors.primary600, value: 45, showTitle: false, radius: 18),
-                      PieChartSectionData(color: AppColors.success, value: 35, showTitle: false, radius: 18),
-                      PieChartSectionData(color: AppColors.warning, value: 15, showTitle: false, radius: 18),
-                      PieChartSectionData(color: AppColors.danger, value: 5, showTitle: false, radius: 18),
-                    ],
+                    sections: sections,
                   ),
                 ),
               ),
@@ -3140,10 +3205,10 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
               Expanded(
                 child: Column(
                   children: [
-                    _buildDonutLegend('Soğuk Süt', '%45', '5.600 L', AppColors.primary600),
-                    _buildDonutLegend('Sıcak Süt', '%35', '4.350 L', AppColors.success),
-                    _buildDonutLegend('C kalite', '%15', '1.850 L', AppColors.warning),
-                    _buildDonutLegend('D kalite', '%5', '650 L', AppColors.danger),
+                    _buildDonutLegend('So\u011fuk S\u00fct', '%${pctSoguk.toStringAsFixed(0)}', '${formatNumber.format(finalSoguk)} L', AppColors.primary600),
+                    _buildDonutLegend('Sıcak Süt', '%${pctSicak.toStringAsFixed(0)}', '${formatNumber.format(sicak)} L', AppColors.success),
+                    _buildDonutLegend('C kalite', '%${pctC.toStringAsFixed(0)}', '${formatNumber.format(cQuality)} L', AppColors.warning),
+                    _buildDonutLegend('D kalite', '%${pctD.toStringAsFixed(0)}', '${formatNumber.format(dQuality)} L', AppColors.danger),
                   ],
                 ),
               ),
@@ -3154,8 +3219,69 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
     );
   }
 
-  Widget _buildBarChartWidget(double totalMilk) {
+  Widget _buildBarChartWidget(List<QueryDocumentSnapshot> collections) {
     final formatNumber = NumberFormat('#,##0', 'tr_TR');
+    final now = DateTime.now();
+    final List<DateTime> last7Days = List.generate(7, (i) => DateTime(now.year, now.month, now.day).subtract(Duration(days: 6 - i)));
+
+    final Map<DateTime, double> dailyTotals = {for (var day in last7Days) day: 0.0};
+    
+    for (var doc in collections) {
+      final data = doc.data() as Map<String, dynamic>;
+      final DateTime docDate = getDocDate(data);
+      final DateTime docDay = DateTime(docDate.year, docDate.month, docDate.day);
+      if (dailyTotals.containsKey(docDay)) {
+        final m = data['m'];
+        double val = 0;
+        if (m is num) {
+          val = m.toDouble();
+        } else if (m is String) {
+          val = double.tryParse(m) ?? 0.0;
+        }
+        dailyTotals[docDay] = dailyTotals[docDay]! + val;
+      }
+    }
+
+    final double weeklyTotal = dailyTotals.values.fold(0.0, (sum, val) => sum + val);
+
+    final prev7DaysStart = last7Days.first.subtract(const Duration(days: 7));
+    final prev7DaysEnd = last7Days.first.subtract(const Duration(days: 1));
+    
+    double prevWeeklyTotal = 0.0;
+    for (var doc in collections) {
+      final data = doc.data() as Map<String, dynamic>;
+      final DateTime docDate = getDocDate(data);
+      final DateTime docDay = DateTime(docDate.year, docDate.month, docDate.day);
+      if (docDay.isAfter(prev7DaysStart.subtract(const Duration(microseconds: 1))) &&
+          docDay.isBefore(prev7DaysEnd.add(const Duration(days: 1)))) {
+        final m = data['m'];
+        double val = 0;
+        if (m is num) {
+          val = m.toDouble();
+        } else if (m is String) {
+          val = double.tryParse(m) ?? 0.0;
+        }
+        prevWeeklyTotal += val;
+      }
+    }
+    
+    double pctChange = 0.0;
+    if (prevWeeklyTotal > 0) {
+      pctChange = ((weeklyTotal - prevWeeklyTotal) / prevWeeklyTotal) * 100.0;
+    } else if (weeklyTotal > 0) {
+      pctChange = 100.0;
+    }
+
+    final String pctStr = (pctChange >= 0 ? '+' : '') + pctChange.toStringAsFixed(2).replaceAll('.', ',') + '%';
+    final Color pctColor = pctChange >= 0 ? AppColors.success : AppColors.danger;
+
+    final List<String> weekdays = last7Days.map((day) {
+      final format = DateFormat('E', 'tr_TR');
+      return format.format(day);
+    }).toList();
+
+    double maxVal = dailyTotals.values.fold(0.0, (max, val) => val > max ? val : max);
+
     return AppCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -3174,13 +3300,13 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
                   Row(
                     children: [
                       Text(
-                        'Toplam ${formatNumber.format(totalMilk)} Litre',
+                        'Toplam ${formatNumber.format(weeklyTotal)} Litre',
                         style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500, fontWeight: FontWeight.w500),
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        '+%18,42',
-                        style: GoogleFonts.inter(fontSize: 11, color: AppColors.success, fontWeight: FontWeight.bold),
+                        pctStr,
+                        style: GoogleFonts.inter(fontSize: 11, color: pctColor, fontWeight: FontWeight.bold),
                       ),
                     ],
                   ),
@@ -3203,11 +3329,11 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
                     sideTitles: SideTitles(
                       showTitles: true,
                       getTitlesWidget: (v, _) {
-                        const d = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
-                        if (v.toInt() >= 0 && v.toInt() < d.length) {
+                        final idx = v.toInt();
+                        if (idx >= 0 && idx < weekdays.length) {
                           return Padding(
                             padding: const EdgeInsets.only(top: 8),
-                            child: Text(d[v.toInt()], style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray400)),
+                            child: Text(weekdays[idx], style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray400)),
                           );
                         }
                         return const SizedBox();
@@ -3223,12 +3349,15 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
                     ),
                   ),
                 ),
-                barGroups: [totalMilk * 0.8, totalMilk * 0.9, totalMilk * 1.1, totalMilk * 0.95, totalMilk * 1.0, totalMilk * 0.85, totalMilk].asMap().entries.map((e) =>
-                  BarChartGroupData(
-                    x: e.key,
+                barGroups: last7Days.asMap().entries.map((e) {
+                  final idx = e.key;
+                  final day = e.value;
+                  final val = dailyTotals[day] ?? 0.0;
+                  return BarChartGroupData(
+                    x: idx,
                     barRods: [
                       BarChartRodData(
-                        toY: e.value.toDouble(),
+                        toY: val,
                         gradient: const LinearGradient(
                           colors: [AppColors.primary400, AppColors.primary600],
                           begin: Alignment.topCenter,
@@ -3238,13 +3367,13 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
                         borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
                         backDrawRodData: BackgroundBarChartRodData(
                           show: true,
-                          toY: totalMilk * 1.5,
+                          toY: maxVal > 0 ? maxVal * 1.2 : 100.0,
                           color: AppColors.gray50,
                         ),
                       ),
                     ],
-                  ),
-                ).toList(),
+                  );
+                }).toList(),
               ),
               duration: const Duration(milliseconds: 800),
               curve: Curves.easeOutCubic,
@@ -3255,8 +3384,75 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
     );
   }
 
-  Widget _buildMonthlyBarChartWidget(double monthlyMilk) {
+  Widget _buildMonthlyBarChartWidget(List<QueryDocumentSnapshot> collections) {
     final formatNumber = NumberFormat('#,##0', 'tr_TR');
+    final now = DateTime.now();
+    final List<DateTime> last7Months = List.generate(7, (i) {
+      return DateTime(now.year, now.month - (6 - i), 1);
+    });
+
+    final Map<String, double> monthlyTotals = {
+      for (var m in last7Months) '${m.year}-${m.month}': 0.0
+    };
+    
+    for (var doc in collections) {
+      final data = doc.data() as Map<String, dynamic>;
+      final DateTime docDate = getDocDate(data);
+      final key = '${docDate.year}-${docDate.month}';
+      if (monthlyTotals.containsKey(key)) {
+        final m = data['m'];
+        double val = 0;
+        if (m is num) {
+          val = m.toDouble();
+        } else if (m is String) {
+          val = double.tryParse(m) ?? 0.0;
+        }
+        monthlyTotals[key] = monthlyTotals[key]! + val;
+      }
+    }
+
+    final double monthlyTotalSum = monthlyTotals.values.fold(0.0, (sum, val) => sum + val);
+
+    final prev7Months = List.generate(7, (i) {
+      return DateTime(now.year, now.month - (13 - i), 1);
+    });
+    final Set<String> prevKeys = prev7Months.map((m) => '${m.year}-${m.month}').toSet();
+    
+    double prevMonthlyTotal = 0.0;
+    for (var doc in collections) {
+      final data = doc.data() as Map<String, dynamic>;
+      final DateTime docDate = getDocDate(data);
+      final key = '${docDate.year}-${docDate.month}';
+      if (prevKeys.contains(key)) {
+        final m = data['m'];
+        double val = 0;
+        if (m is num) {
+          val = m.toDouble();
+        } else if (m is String) {
+          val = double.tryParse(m) ?? 0.0;
+        }
+        prevMonthlyTotal += val;
+      }
+    }
+    
+    double monthlyPctChange = 0.0;
+    if (prevMonthlyTotal > 0) {
+      monthlyPctChange = ((monthlyTotalSum - prevMonthlyTotal) / prevMonthlyTotal) * 100.0;
+    } else if (monthlyTotalSum > 0) {
+      monthlyPctChange = 100.0;
+    }
+
+    final String monthlyPctStr = (monthlyPctChange >= 0 ? '+' : '') + monthlyPctChange.toStringAsFixed(2).replaceAll('.', ',') + '%';
+    final Color monthlyPctColor = monthlyPctChange >= 0 ? AppColors.success : AppColors.danger;
+
+    final List<String> monthNames = last7Months.map((m) {
+      final str = DateFormat('MMM', 'tr_TR').format(m);
+      if (str.isEmpty) return '';
+      return str[0].toUpperCase() + str.substring(1);
+    }).toList();
+
+    double maxMonthlyVal = monthlyTotals.values.fold(0.0, (max, val) => val > max ? val : max);
+
     return AppCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -3275,13 +3471,13 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
                   Row(
                     children: [
                       Text(
-                        'Aylık Toplam ${formatNumber.format(monthlyMilk)} Litre',
+                        'Aylık Toplam ${formatNumber.format(monthlyTotalSum)} Litre',
                         style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500, fontWeight: FontWeight.w500),
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        '+%12,18',
-                        style: GoogleFonts.inter(fontSize: 11, color: AppColors.success, fontWeight: FontWeight.bold),
+                        monthlyPctStr,
+                        style: GoogleFonts.inter(fontSize: 11, color: monthlyPctColor, fontWeight: FontWeight.bold),
                       ),
                     ],
                   ),
@@ -3304,11 +3500,11 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
                     sideTitles: SideTitles(
                       showTitles: true,
                       getTitlesWidget: (v, _) {
-                        const d = ['Kas', 'Ara', 'Oca', 'Şub', 'Mar', 'Nis', 'May'];
-                        if (v.toInt() >= 0 && v.toInt() < d.length) {
+                        final idx = v.toInt();
+                        if (idx >= 0 && idx < monthNames.length) {
                           return Padding(
                             padding: const EdgeInsets.only(top: 8),
-                            child: Text(d[v.toInt()], style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray400)),
+                            child: Text(monthNames[idx], style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray400)),
                           );
                         }
                         return const SizedBox();
@@ -3324,12 +3520,15 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
                     ),
                   ),
                 ),
-                barGroups: [monthlyMilk * 0.85, monthlyMilk * 0.9, monthlyMilk * 0.88, monthlyMilk * 0.92, monthlyMilk * 0.95, monthlyMilk * 0.98, monthlyMilk].asMap().entries.map((e) =>
-                  BarChartGroupData(
-                    x: e.key,
+                barGroups: last7Months.asMap().entries.map((e) {
+                  final idx = e.key;
+                  final m = e.value;
+                  final val = monthlyTotals['${m.year}-${m.month}'] ?? 0.0;
+                  return BarChartGroupData(
+                    x: idx,
                     barRods: [
                       BarChartRodData(
-                        toY: e.value.toDouble(),
+                        toY: val,
                         gradient: const LinearGradient(
                           colors: [Color(0xFF8B5CF6), Color(0xFF6D28D9)],
                           begin: Alignment.topCenter,
@@ -3339,13 +3538,13 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
                         borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
                         backDrawRodData: BackgroundBarChartRodData(
                           show: true,
-                          toY: monthlyMilk * 1.5,
+                          toY: maxMonthlyVal > 0 ? maxMonthlyVal * 1.2 : 100.0,
                           color: AppColors.gray50,
                         ),
                       ),
                     ],
-                  ),
-                ).toList(),
+                  );
+                }).toList(),
               ),
               duration: const Duration(milliseconds: 800),
               curve: Curves.easeOutCubic,

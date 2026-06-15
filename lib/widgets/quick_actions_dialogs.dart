@@ -278,7 +278,7 @@ class QuickActionsDialogs {
                           producerName: selectedUretici!,
                           tankName: selectedTank!,
                           miktar: miktar,
-                          sutTipi: selectedMilkType ?? 'Soğuk süt',
+                          sutTipi: selectedMilkType ?? 'Soğuk Süt',
                           customerType: selectedCustomerType ?? 'sut',
                         );
 

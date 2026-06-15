@@ -268,7 +268,7 @@ class _FirmaTankAtamaScreenState extends State<FirmaTankAtamaScreen> {
         ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.go('/firma'),
+          onPressed: () => context.pop(),
         ),
       ),
       body: SafeArea(

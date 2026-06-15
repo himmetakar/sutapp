@@ -203,7 +203,7 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
                       icon: Icons.shopping_bag_rounded,
                       iconColor: const Color(0xFF2196F3),
                       bgColor: const Color(0xFFE3F2FD),
-                      onTap: () => setState(() => _currentView = 'siparisler'),
+                      onTap: () => context.go('/firma/urunler/siparisler'),
                     ),
                     _buildHubGridItem(
                       label: 'Satış Yap',

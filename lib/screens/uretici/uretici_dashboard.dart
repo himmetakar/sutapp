@@ -419,7 +419,7 @@ class UreticiDashboard extends StatelessWidget {
                                                 const SizedBox(height: 20),
 
                                                 // Stat Cards Grid
-                                                _buildStatCards(isDesktop, isTablet, bugunTotal, ayTotal, gunlukOrtalama, bekleyenOdeme),
+                                                _buildStatCards(isDesktop, isTablet, bugunTotal, ayTotal, gunlukOrtalama, netAlacak),
                                                 const SizedBox(height: 24),
 
                                                 // Hızlı İşlemler Section Title
@@ -470,13 +470,6 @@ class UreticiDashboard extends StatelessWidget {
         'icon': Icons.description_rounded,
         'color': Colors.blue,
         'onTap': () => context.push('/uretici/hesap-ozeti'),
-      },
-      {
-        'title': 'Dijital Kart',
-        'subtitle': 'Teslimat barkodu',
-        'icon': Icons.qr_code_rounded,
-        'color': Colors.teal,
-        'onTap': () => context.push('/uretici/dijital-kart'),
       },
       {
         'title': 'Destek Hattı',
@@ -849,7 +842,7 @@ class UreticiDashboard extends StatelessWidget {
     );
   }
 
-  Widget _buildStatCards(bool isDesktop, bool isTablet, double bugun, double buAy, double gunlukOrtalama, double bekleyenOdeme) {
+  Widget _buildStatCards(bool isDesktop, bool isTablet, double bugun, double buAy, double gunlukOrtalama, double anlikBakiye) {
     final formatLitre = NumberFormat('#,##0', 'tr_TR');
     final formatCurrency = NumberFormat('#,##0.00', 'tr_TR');
     final cards = [
@@ -879,11 +872,11 @@ class UreticiDashboard extends StatelessWidget {
       ),
       StatCard(
         icon: Icons.account_balance_wallet_rounded,
-        value: '${formatCurrency.format(bekleyenOdeme.abs())} ₺',
-        label: bekleyenOdeme >= 0 ? 'Devreden Alacak' : 'Devreden Borç',
-        color: bekleyenOdeme >= 0 ? Colors.green : Colors.red,
-        subtext: 'Önceki aydan devir',
-        isUp: bekleyenOdeme >= 0,
+        value: '${formatCurrency.format(anlikBakiye.abs())} ₺',
+        label: anlikBakiye >= 0 ? 'Anlık Bakiye' : 'Anlık Borç',
+        color: anlikBakiye >= 0 ? Colors.green : Colors.red,
+        subtext: anlikBakiye >= 0 ? 'Toplam alacağınız' : 'Toplam borçlunuz',
+        isUp: anlikBakiye >= 0,
       ),
     ];
 

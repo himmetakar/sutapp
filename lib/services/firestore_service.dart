@@ -4,6 +4,16 @@ import 'package:intl/intl.dart';
 class FirestoreService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
+  /// Firestore'dan gelen herhangi bir değeri güvenle List'e çevirir.
+  /// Offline cache bazen Map döndürebilir — bu fonksiyon her iki durumu da ele alır.
+  static List<dynamic> _asList(dynamic value) {
+    if (value == null) return [];
+    if (value is List) return value;
+    if (value is Map) return value.values.toList(); // offline cache edge case
+    return [];
+  }
+
+
   // Collection References
   CollectionReference get _tanks => _db.collection('tanklar');
   CollectionReference get _drivers => _db.collection('suruculer');
@@ -15,10 +25,389 @@ class FirestoreService {
   CollectionReference get _tahsilatlar => _db.collection('tahsilatlar');
   CollectionReference get _users => _db.collection('users');
 
+  // Araç tank güncellemelerini seri hale getirmek için kuyruk.
+  // Aynı araca arka arkaya 2 offline süt kaydı geldiğinde race condition oluşmasını önler.
+  // Key: araç plakası, Value: son güncelleme future'ı
+  static final Map<String, Future<void>> _vehicleUpdateQueue = {};
+
+  /// Araç tankları içindeki stok kopyasını, tanklar koleksiyonundaki gerçek
+  /// stok ile senkronize eder. Uygulama açılışında bir kez çağrılır.
+  Future<void> syncVehicleTankStocks({String? firma}) async {
+    try {
+      // Tüm araç tankı tipindeki tankları al
+      Query tanksQuery = _tanks.where('tip', isEqualTo: 'arac');
+      if (firma != null && firma.isNotEmpty) {
+        tanksQuery = tanksQuery.where('firma', isEqualTo: firma);
+      }
+      final tankSnap = await tanksQuery.get(const GetOptions(source: Source.server));
+      
+      for (final tankDoc in tankSnap.docs) {
+        final tankData = tankDoc.data() as Map<String, dynamic>;
+        final String tankAd = tankData['ad'] ?? '';
+        final String plate = tankData['arac'] ?? '';
+        final double realStok = (tankData['stok'] as num?)?.toDouble() ?? 0.0;
+        
+        if (tankAd.isEmpty || plate.isEmpty) continue;
+        
+        // Araç belgesini bul
+        final vehicleSnap = await _vehicles
+            .where('plaka', isEqualTo: plate)
+            .limit(1)
+            .get(const GetOptions(source: Source.server));
+        
+        if (vehicleSnap.docs.isEmpty) continue;
+        
+        final vehicleDoc = vehicleSnap.docs.first;
+        final vehicleData = vehicleDoc.data() as Map<String, dynamic>;
+        final List<dynamic> rawTanks = _asList(vehicleData['tanklar']);
+        final List<Map<String, dynamic>> vehicleTanks =
+            rawTanks.map((t) => Map<String, dynamic>.from(t as Map)).toList();
+        
+        bool changed = false;
+        for (int i = 0; i < vehicleTanks.length; i++) {
+          if (vehicleTanks[i]['ad'] == tankAd) {
+            final double copyStok = (vehicleTanks[i]['stok'] as num?)?.toDouble() ?? 0.0;
+            if ((copyStok - realStok).abs() > 0.01) {
+              // Kopyalanmış değer gerçekten farklı — güncelle
+              vehicleTanks[i]['stok'] = realStok;
+              changed = true;
+              print('[syncVehicleTankStocks] Araç "$plate" tank "$tankAd": $copyStok → $realStok LT');
+            }
+            break;
+          }
+        }
+        
+        if (changed) {
+          await vehicleDoc.reference.update({'tanklar': vehicleTanks});
+        }
+      }
+      print('[syncVehicleTankStocks] Senkronizasyon tamamlandı.');
+    } catch (e) {
+      print('[syncVehicleTankStocks] Hata: $e');
+    }
+  }
+
+  /// Tüm tankları siler, araç-sürücü bağlantılarını temizler ve her sürücüye
+  /// yeni bir tank atar. Tek çağrıyla tam temiz kurulum sağlar.
+  /// [firma]: Hangi firma için yapılacak.
+  /// [kapasite]: Oluşturulacak her tank için LT kapasitesi (varsayılan 2000).
+  Future<String> resetAndAssignAllTanks(String firma, {double kapasite = 2000.0}) async {
+    final log = StringBuffer();
+    try {
+      // ── 1. Mevcut tanklar koleksiyonunu tamamen sil ───────────────────────
+      final existingTanks = await _tanks.where('firma', isEqualTo: firma).get();
+      for (final doc in existingTanks.docs) {
+        await doc.reference.delete();
+      }
+      log.writeln('✓ ${existingTanks.docs.length} tank silindi.');
+
+      // ── 2. Araçların tanklar + suruculer array'ini temizle ────────────────
+      final vehicles = await _vehicles.where('firma', isEqualTo: firma).get();
+      for (final doc in vehicles.docs) {
+        await doc.reference.update({'tanklar': [], 'suruculer': []});
+      }
+      log.writeln('✓ ${vehicles.docs.length} araç temizlendi.');
+
+      // ── 3. Sürücüleri çek ─────────────────────────────────────────────────
+      final driversSnap = await _drivers.where('firma', isEqualTo: firma).get();
+      final List<Map<String, dynamic>> drivers = driversSnap.docs
+          .map((d) => d.data() as Map<String, dynamic>)
+          .toList();
+      log.writeln('✓ ${drivers.length} sürücü bulundu.');
+
+      if (drivers.isEmpty) {
+        log.writeln('⚠ Firma için kayıtlı sürücü bulunamadı!');
+        return log.toString();
+      }
+
+      if (vehicles.docs.isEmpty) {
+        log.writeln('⚠ Firma için kayıtlı araç bulunamadı!');
+        return log.toString();
+      }
+
+      // ── 4. Her sürücüye sırayla bir araç ve tank ata ─────────────────────
+      int tankIndex = 1;
+      for (int i = 0; i < drivers.length; i++) {
+        final driver = drivers[i];
+        final String ad = driver['ad'] ?? '';
+        final String soyad = driver['soyad'] ?? '';
+        final String fullName = '$ad $soyad'.trim();
+
+        if (fullName.isEmpty) {
+          log.writeln('⚠ Sürücü #$i ismi boş, atlandı.');
+          continue;
+        }
+
+        // Araç ata: sürücü sayısından fazlaysa son aracı paylaş
+        final vehicleDoc = vehicles.docs[i < vehicles.docs.length ? i : vehicles.docs.length - 1];
+        final vehicleData = vehicleDoc.data() as Map<String, dynamic>;
+        final String plate = vehicleData['plaka'] ?? '';
+
+        if (plate.isEmpty) {
+          log.writeln('⚠ Araç plakası boş, $fullName atlandı.');
+          continue;
+        }
+
+        // Tank adı: "Sürücü Adı Tankı" formatı
+        final String tankAd = '$fullName Tankı';
+        final String tankKod = 'TANK-${tankIndex.toString().padLeft(3, '0')}';
+
+        // tanklar koleksiyonuna yeni belge ekle
+        final newTankRef = await _tanks.add({
+          'ad': tankAd,
+          'kod': tankKod,
+          'kap': kapasite,
+          'stok': 0.0,
+          'tip': 'arac',
+          'arac': plate,
+          'firma': firma,
+          'durum': 'aktif',
+          'suruculer': [fullName],
+        });
+        log.writeln('✓ Tank oluşturuldu: "$tankAd" → $plate (${newTankRef.id})');
+
+        // Araç belgesine tank ve sürücü ekle
+        final List<dynamic> existingVehicleTanks =
+            _asList((vehicleDoc.data() as Map<String, dynamic>)['tanklar']);
+        // Önceki iterasyonda eklenenler dahil, güncel veriyi çek
+        final freshVehicleSnap = await vehicleDoc.reference.get();
+        final freshData = freshVehicleSnap.data() as Map<String, dynamic>;
+        final List<dynamic> currentTanks = _asList(freshData['tanklar']);
+        final List<dynamic> currentDrivers = _asList(freshData['suruculer']);
+
+        final updatedTanks = [...currentTanks, {
+          'ad': tankAd,
+          'stok': 0.0,
+          'kap': kapasite,
+          'suruculer': [fullName],
+        }];
+        final updatedDrivers = [...currentDrivers];
+        if (!updatedDrivers.contains(fullName)) updatedDrivers.add(fullName);
+
+        await vehicleDoc.reference.update({
+          'tanklar': updatedTanks,
+          'suruculer': updatedDrivers,
+        });
+        log.writeln('✓ $plate aracına "$fullName" ve "$tankAd" eklendi.');
+
+        tankIndex++;
+      }
+
+      log.writeln('\n✅ Tüm işlemler tamamlandı. $tankIndex-1 tank oluşturuldu.');
+    } catch (e, st) {
+      log.writeln('\n❌ Hata: $e\n$st');
+    }
+    return log.toString();
+  }
+
   Future<void> _clearCollection(CollectionReference ref) async {
     final snap = await ref.get();
     for (var doc in snap.docs) {
       await doc.reference.delete();
+    }
+  }
+
+  /// Sadece süt toplama kayıtlarını (toplamalar) siler ve tüm tank stoklarını
+  /// 0'a sıfırlar. Yapısal veriler (sürücüler, araçlar, tanklar, müşteriler)
+  /// korunur. Temiz bir başlangıç için kullanılır.
+  Future<String> resetMilkCollectionsAndStocks(String firma) async {
+    final log = StringBuffer();
+    try {
+      // 1. Toplamalar (süt alım kayıtları) sil
+      final toplamalar = await _db.collection('toplamalar')
+          .where('firma', isEqualTo: firma).get();
+      for (final d in toplamalar.docs) { await d.reference.delete(); }
+      log.writeln('✓ ${toplamalar.docs.length} toplama kaydı silindi.');
+
+      // 2. tanklar koleksiyonundaki stok → 0
+      final tankDocs = await _tanks.where('firma', isEqualTo: firma).get();
+      for (final d in tankDocs.docs) {
+        await d.reference.update({'stok': 0.0});
+      }
+      log.writeln('✓ ${tankDocs.docs.length} tankın stoğu sıfırlandı.');
+
+      // 3. araclar.tanklar[] array içindeki stok kopyaları → 0
+      final vehicleDocs = await _vehicles.where('firma', isEqualTo: firma).get();
+      for (final vDoc in vehicleDocs.docs) {
+        final data = vDoc.data() as Map<String, dynamic>;
+        final List<dynamic> rawTanks = _asList(data['tanklar']);
+        if (rawTanks.isEmpty) continue;
+        final updated = rawTanks.map((t) {
+          final m = Map<String, dynamic>.from(t as Map);
+          m['stok'] = 0.0;
+          return m;
+        }).toList();
+        await vDoc.reference.update({'tanklar': updated});
+      }
+      log.writeln('✓ ${vehicleDocs.docs.length} araçtaki tank kopyaları sıfırlandı.');
+
+      log.writeln('\n✅ Tamamlandı. Artık yeni süt girişi yapabilirsiniz.');
+    } catch (e) {
+      log.writeln('\n❌ Hata: $e');
+    }
+    return log.toString();
+  }
+
+  /// Sütlere ait tüm rakamsal/işlemsel verileri temizler ve tank/araç stokları ile üretici süt toplamlarını sıfırlar.
+  /// Yapısal veriler (sürücüler, araçlar, tanklar, üreticiler ve atamalar) korunur.
+  Future<String> clearAllMilkData(String firma) async {
+    final log = StringBuffer();
+    try {
+      final db = FirebaseFirestore.instance;
+
+      // 1. Toplamalar (Süt toplamaları) sil
+      final toplamalar = await db.collection('toplamalar')
+          .where('firma', isEqualTo: firma).get();
+      for (final d in toplamalar.docs) { await d.reference.delete(); }
+      log.writeln('✓ ${toplamalar.docs.length} süt toplama kaydı silindi.');
+
+      // 2. Süt Kabul (Süt boşaltma talepleri ve kabulleri) sil
+      final sutKabul = await db.collection('sut_kabul')
+          .where('firma', isEqualTo: firma).get();
+      for (final d in sutKabul.docs) { await d.reference.delete(); }
+      log.writeln('✓ ${sutKabul.docs.length} süt kabul kaydı silindi.');
+
+      // 3. Fireler (Süt fireleri) sil
+      final fireler = await db.collection('fireler')
+          .where('firma', isEqualTo: firma).get();
+      for (final d in fireler.docs) { await d.reference.delete(); }
+      log.writeln('✓ ${fireler.docs.length} fire kaydı silindi.');
+
+      // 4. Teslimatlar (Süt teslimatları) sil
+      final teslimatlar = await db.collection('teslimatlar')
+          .where('firma', isEqualTo: firma).get();
+      for (final d in teslimatlar.docs) { await d.reference.delete(); }
+      log.writeln('✓ ${teslimatlar.docs.length} süt teslimat kaydı silindi.');
+
+      // 5. Süt Satışları (Süt satışları) sil
+      final sutSatislari = await db.collection('sut_satislari')
+          .where('firma', isEqualTo: firma).get();
+      for (final d in sutSatislari.docs) { await d.reference.delete(); }
+      log.writeln('✓ ${sutSatislari.docs.length} süt satış kaydı silindi.');
+
+      // 6. Tanklar koleksiyonundaki stok → 0
+      final tankDocs = await db.collection('tanklar').where('firma', isEqualTo: firma).get();
+      for (final d in tankDocs.docs) {
+        await d.reference.update({'stok': 0.0});
+      }
+      log.writeln('✓ ${tankDocs.docs.length} tankın stoğu sıfırlandı.');
+
+      // 7. Araçlar.tanklar[] array içindeki stok kopyaları → 0
+      final vehicleDocs = await db.collection('araclar').where('firma', isEqualTo: firma).get();
+      for (final vDoc in vehicleDocs.docs) {
+        final data = vDoc.data();
+        final List<dynamic> rawTanks = _asList(data['tanklar']);
+        if (rawTanks.isEmpty) continue;
+        final updated = rawTanks.map((t) {
+          final m = Map<String, dynamic>.from(t as Map);
+          m['stok'] = 0.0;
+          return m;
+        }).toList();
+        await vDoc.reference.update({'tanklar': updated});
+      }
+      log.writeln('✓ ${vehicleDocs.docs.length} araçtaki tank kopyaları sıfırlandı.');
+
+      // 8. Üreticilerin toplam süt miktarı → 0
+      final ureticiler = await db.collection('ureticiler')
+          .where('firmalar', arrayContains: firma).get();
+      for (final d in ureticiler.docs) {
+        await d.reference.update({'total': 0.0});
+      }
+      log.writeln('✓ ${ureticiler.docs.length} üreticinin toplam süt miktarı sıfırlandı.');
+
+      log.writeln('\n✅ Süt verileri başarıyla temizlendi.');
+    } catch (e) {
+      log.writeln('\n❌ Hata: $e');
+    }
+    return log.toString();
+  }
+
+
+  /// Sadece sayısal/işlem verilerini sıfırlar. Yapısal veriler (üreticiler,
+  /// tanklar, araçlar, sürücüler) korunur.
+  Future<void> resetNumericalData(String firma) async {
+    // 1. Toplama kayıtları (sürücü süt alımları)
+    final toplamalar = await _db.collection('toplamalar')
+        .where('firma', isEqualTo: firma).get();
+    for (var d in toplamalar.docs) { await d.reference.delete(); }
+
+    // 2. Teslimatlar
+    final teslimatlar = await _db.collection('teslimatlar')
+        .where('firma', isEqualTo: firma).get();
+    for (var d in teslimatlar.docs) { await d.reference.delete(); }
+
+    // 3. Satışlar
+    final satislar = await _db.collection('satislar')
+        .where('firma', isEqualTo: firma).get();
+    for (var d in satislar.docs) { await d.reference.delete(); }
+
+    // 4. Faturalar
+    final faturalar = await _db.collection('faturalar')
+        .where('firma', isEqualTo: firma).get();
+    for (var d in faturalar.docs) { await d.reference.delete(); }
+
+    // 5. Avanslar
+    final avanslar = await _db.collection('avanslar')
+        .where('firma', isEqualTo: firma).get();
+    for (var d in avanslar.docs) { await d.reference.delete(); }
+
+    // 6. Tahsilatlar
+    final tahsilatlar = await _tahsilatlar
+        .where('firma', isEqualTo: firma).get();
+    for (var d in tahsilatlar.docs) { await d.reference.delete(); }
+
+    // 7. Cezalar
+    final cezalar = await _db.collection('cezalar')
+        .where('firma', isEqualTo: firma).get();
+    for (var d in cezalar.docs) { await d.reference.delete(); }
+
+    // 8. Kesintiler
+    final kesintiler = await _db.collection('kesintiler')
+        .where('firma', isEqualTo: firma).get();
+    for (var d in kesintiler.docs) { await d.reference.delete(); }
+
+    // 9. Süt kabul
+    final sutKabul = await _db.collection('sut_kabul')
+        .where('firma', isEqualTo: firma).get();
+    for (var d in sutKabul.docs) { await d.reference.delete(); }
+
+    // 10. Süt analiz
+    final sutAnaliz = await _db.collection('sut_analiz')
+        .where('firma', isEqualTo: firma).get();
+    for (var d in sutAnaliz.docs) { await d.reference.delete(); }
+
+    // 11. Süt ödemeleri (ödeme_gecmisi)
+    final sutOdemeleri = await _db.collection('odeme_gecmisi')
+        .where('firma', isEqualTo: firma).get();
+    for (var d in sutOdemeleri.docs) { await d.reference.delete(); }
+
+    // 12. Devirler
+    final devirler = await _db.collection('devirler')
+        .where('firma', isEqualTo: firma).get();
+    for (var d in devirler.docs) { await d.reference.delete(); }
+
+    // 13. Tank stoklarını sıfırla (yapıyı koru, sadece stok = 0)
+    final tanklar = await _tanks.where('firma', isEqualTo: firma).get();
+    for (var d in tanklar.docs) {
+      await d.reference.update({'stok': 0.0});
+    }
+
+    // 14. Araç tankı stoklarını sıfırla
+    final araclar = await _vehicles.where('firma', isEqualTo: firma).get();
+    for (var d in araclar.docs) {
+      final data = d.data() as Map<String, dynamic>;
+      final tankList = _asList(data['tanklar'])
+          .map((t) => Map<String, dynamic>.from(t as Map))
+          .toList();
+      for (var t in tankList) { t['stok'] = 0.0; }
+      await d.reference.update({'tanklar': tankList});
+    }
+
+    // 15. Üretici toplamlarını sıfırla
+    final ureticiler = await _producers
+        .where('firmalar', arrayContains: firma).get();
+    for (var d in ureticiler.docs) {
+      await d.reference.update({'total': 0.0});
     }
   }
 
@@ -484,6 +873,11 @@ class FirestoreService {
     DateTime? customDate,
     bool notifyProducer = true,
   }) async {
+    // Guard: üretici adı boş olamaz — boş kayıt Firestore'a yazılmasın
+    if (producerName.trim().isEmpty) {
+      throw ArgumentError('[recordMilkCollection] producerName boş olamaz — kayıt iptal edildi.');
+    }
+
     // Resolve company name if not explicitly passed
     String resolvedFirma = firma ?? '';
     if (resolvedFirma.isEmpty) {
@@ -506,9 +900,10 @@ class FirestoreService {
       'km': vehiclePlate ?? '-',
       'b': region ?? 'Merkez',
       'tank': tankName,
+      'tarih': DateFormat('dd.MM.yyyy').format(targetDate), // tarih: offline'da da filtrelenebilsin
       'timestamp': customDate != null ? Timestamp.fromDate(customDate) : FieldValue.serverTimestamp(),
       'firma': resolvedFirma,
-      'tip': sutTipi ?? 'Soğuk süt',
+      'tip': sutTipi ?? 'So\u011fuk S\u00fct',
       'customerType': customerType ?? 'sut',
       'vakit': (vakit != null && vakit.isNotEmpty)
           ? vakit
@@ -519,62 +914,151 @@ class FirestoreService {
     // 2. Update tank stock in tanklar collection using increment() to prevent offline race conditions.
     // FieldValue.increment() is applied atomically on the server, so two offline writes both get
     // correctly accumulated when the device comes back online (no overwrite bug).
-    final tankQuery = await getQueryWithCachePriority(_tanks.where('ad', isEqualTo: tankName).limit(1));
-    if (tankQuery.docs.isNotEmpty) {
-      final tankDoc = tankQuery.docs.first;
-      // Use increment so offline queued writes stack correctly
-      await tankDoc.reference.update({'stok': FieldValue.increment(miktar)});
+    QuerySnapshot tankQuery = await getQueryWithCachePriority(_tanks.where('ad', isEqualTo: tankName).limit(1));
 
-      // 3. If it's a vehicle tank, also update the embedded tanklar array in the vehicle doc.
-      // For the vehicle doc we still need a read-then-write because Firestore doesn't support
-      // nested array-element field increments. We use increment() on the vehicle doc too by
-      // doing a transaction-style update — the offline cache will still hold the pessimistic
-      // local value, and the server reconciles.
-      if (tankDoc['tip'] == 'arac') {
-        final plate = tankDoc['arac'] as String? ?? '';
-        if (plate.isNotEmpty) {
-          final vehicleQuery = await getQueryWithCachePriority(_vehicles.where('plaka', isEqualTo: plate).limit(1));
-          if (vehicleQuery.docs.isNotEmpty) {
-            final vehicleDoc = vehicleQuery.docs.first;
-            final List<dynamic> vehicleTanks = (vehicleDoc['tanklar'] as List? ?? [])
-                .map((t) => Map<String, dynamic>.from(t as Map))
-                .toList();
-            for (int i = 0; i < vehicleTanks.length; i++) {
-              if (vehicleTanks[i]['ad'] == tankName) {
-                final double oldStok = (vehicleTanks[i]['stok'] as num?)?.toDouble() ?? 0.0;
-                vehicleTanks[i]['stok'] = oldStok + miktar;
-                break;
-              }
+    // Cache miss durumunda doğrudan server'dan dene (tank ID değişmiş olabilir)
+    if (tankQuery.docs.isEmpty) {
+      print('[recordMilkCollection] Tank "$tankName" cache\'de bulunamadı, server deneniyor...');
+      try {
+        tankQuery = await _tanks.where('ad', isEqualTo: tankName).limit(1).get();
+      } catch (e) {
+        print('[recordMilkCollection] Server sorgusu da başarısız: $e');
+      }
+    }
+
+    if (tankQuery.docs.isNotEmpty) {
+      var tankDoc = tankQuery.docs.first;
+      // Use increment so offline queued writes stack correctly
+      try {
+        await tankDoc.reference.update({'stok': FieldValue.increment(miktar)});
+        print('[recordMilkCollection] Tank "$tankName" stok +$miktar LT güncellendi');
+      } catch (e) {
+        print('[recordMilkCollection] Tank güncelleme hatası (ID: ${tankDoc.id}): $e');
+        if (e.toString().contains('not-found') || e.toString().contains('NOT_FOUND')) {
+          try {
+            print('[recordMilkCollection] Stale tank document ID detected in cache. Querying server directly...');
+            final freshTankQuery = await _tanks.where('ad', isEqualTo: tankName).limit(1).get(const GetOptions(source: Source.server));
+            if (freshTankQuery.docs.isNotEmpty) {
+              tankDoc = freshTankQuery.docs.first;
+              await tankDoc.reference.update({'stok': FieldValue.increment(miktar)});
+              print('[recordMilkCollection] Tank "$tankName" stok +$miktar LT güncellendi (Fresh ID: ${tankDoc.id})');
+              tankQuery = freshTankQuery; // Update query ref for downstream code
+            } else {
+              print('[recordMilkCollection] Tank "$tankName" sunucuda da bulunamadı.');
             }
-            await vehicleDoc.reference.update({'tanklar': vehicleTanks});
+          } catch (serverErr) {
+            print('[recordMilkCollection] Sunucu üzerinden tank güncelleme hatası: $serverErr');
           }
         }
       }
 
-      // 4. Log to 'toplamalar' for tank history view
-      await _db.collection('toplamalar').add({
-        'u': producerName,
-        'm': miktar,
-        's': DateFormat('HH:mm').format(targetDate),
-        'tank': tankName,
-        'sr': driverName ?? 'Yönetici',
-        'km': vehiclePlate ?? '-',
-        'tarih': DateFormat('dd.MM.yyyy').format(targetDate),
-        'timestamp': customDate != null ? Timestamp.fromDate(customDate) : FieldValue.serverTimestamp(),
-        'firma': resolvedFirma,
-      });
+      // 3. Araç tankının embedded array'ini güncelle — race condition'ı önlemek için seri kuyruk
+      final tipValue = tankDoc['tip'];
+      if (tipValue == 'arac') {
+        final plate = tankDoc['arac'] as String? ?? vehiclePlate ?? '';
+        if (plate.isNotEmpty) {
+          // Aynı araç için önceki güncelleme tamamlanmadan yeni okuma yapma
+          final qKey = 'vehicle_$plate';
+          _vehicleUpdateQueue[qKey] = (_vehicleUpdateQueue[qKey] ?? Future<void>.value())
+              .then((_) async {
+            try {
+              // Her zaman sunucudan taze veri oku — cache'deki stale index
+              // 'tanklar.$i.stok' dot-notation'ını yanlış tanka yazabilir.
+              QuerySnapshot vehicleQuery;
+              try {
+                vehicleQuery = await _vehicles
+                    .where('plaka', isEqualTo: plate)
+                    .limit(1)
+                    .get(const GetOptions(source: Source.server));
+              } catch (_) {
+                vehicleQuery = await _vehicles
+                    .where('plaka', isEqualTo: plate)
+                    .limit(1)
+                    .get();
+              }
+
+              if (vehicleQuery.docs.isNotEmpty) {
+                final vehicleDoc = vehicleQuery.docs.first;
+                // Tüm tank array'ini oku, eşleşeni güncelle, tamamını geri yaz
+                final List<dynamic> rawTanks =
+                    _asList((vehicleDoc.data() as Map<String, dynamic>)['tanklar']);
+                final List<Map<String, dynamic>> vehicleTanks = rawTanks
+                    .map((t) => Map<String, dynamic>.from(t as Map))
+                    .toList();
+
+                bool updated = false;
+                for (int i = 0; i < vehicleTanks.length; i++) {
+                  if (vehicleTanks[i]['ad'] == tankName) {
+                    final double curStok =
+                        (vehicleTanks[i]['stok'] as num?)?.toDouble() ?? 0.0;
+                    vehicleTanks[i]['stok'] =
+                        (curStok + miktar).clamp(0.0, double.infinity);
+                    updated = true;
+                    break;
+                  }
+                }
+
+                if (updated) {
+                  await vehicleDoc.reference.update({'tanklar': vehicleTanks});
+                  print('[recordMilkCollection] Araç tank $tankName stok +$miktar LT güncellendi (read-modify-write)');
+                } else {
+                  print('[recordMilkCollection] ⚠️ Araç "$plate" içinde tank "$tankName" bulunamadı!');
+                }
+              } else {
+                print('[recordMilkCollection] Araç "$plate" bulunamadı!');
+              }
+            } catch (e) {
+              print('[recordMilkCollection] Araç tank güncelleme hatası: $e');
+            }
+          }, onError: (e) {
+            print('[recordMilkCollection] Vehicle queue hata: $e');
+          });
+          await _vehicleUpdateQueue[qKey]!;
+        }
+      }
+
+      // Not: _collections zaten 'toplamalar' koleksiyonunu referans ediyor.
+      // Üsté çift yazıyı önlemek için burada ayrıca toplamalar.add() YAPILMIYOR.
+    } else {
+      print('[recordMilkCollection] ⚠️ Tank "$tankName" BULUNAMADI — stok güncellenemedi!');
     }
 
     // 4. Update producer total milk & last milk type preference
-    final prodQuery = await getQueryWithCachePriority(_producers.where('name', isEqualTo: producerName).limit(1));
+    // FieldValue.increment kullan — offline\'da stale cache okumasını önler
+    QuerySnapshot prodQuery = await getQueryWithCachePriority(_producers.where('name', isEqualTo: producerName).limit(1));
+    if (prodQuery.docs.isEmpty) {
+      try {
+        prodQuery = await _producers.where('name', isEqualTo: producerName).limit(1).get();
+      } catch (_) {}
+    }
     if (prodQuery.docs.isNotEmpty) {
-      final prodDoc = prodQuery.docs.first;
-      final currentTotal = (prodDoc['total'] as num).toDouble();
-      final newTotal = currentTotal + miktar;
-      await prodDoc.reference.update({
-        'total': newTotal,
-        'lastMilkType': sutTipi ?? 'Soğuk Süt',
-      });
+      var prodDoc = prodQuery.docs.first;
+      try {
+        await prodDoc.reference.update({
+          'total': FieldValue.increment(miktar),
+          'lastMilkType': sutTipi ?? 'So\u011fuk S\u00fct',
+        });
+      } catch (updateErr) {
+        print('[recordMilkCollection] Üretici güncelleme hatası: $updateErr');
+        if (updateErr.toString().contains('not-found') || updateErr.toString().contains('NOT_FOUND')) {
+          try {
+            print('[recordMilkCollection] Stale producer document ID detected. Querying server directly...');
+            final freshProdQuery = await _producers.where('name', isEqualTo: producerName).limit(1).get(const GetOptions(source: Source.server));
+            if (freshProdQuery.docs.isNotEmpty) {
+              prodDoc = freshProdQuery.docs.first;
+              await prodDoc.reference.update({
+                'total': FieldValue.increment(miktar),
+                'lastMilkType': sutTipi ?? 'So\u011fuk S\u00fct',
+              });
+              print('[recordMilkCollection] Üretici "$producerName" total güncellendi (Fresh ID: ${prodDoc.id})');
+            }
+          } catch (serverErr) {
+            print('[recordMilkCollection] Sunucu üzerinden üretici güncelleme hatası: $serverErr');
+          }
+        }
+      }
+    } else {
+      print('[recordMilkCollection] ⚠️ Üretici "$producerName" bulunamadı — total güncellenemedi!');
     }
 
     // 5. Send notification to the producer (fire-and-forget, never blocks the record)
@@ -621,7 +1105,7 @@ class FirestoreService {
           final vehicleQuery = await _vehicles.where('plaka', isEqualTo: vehiclePlate).limit(1).get();
           if (vehicleQuery.docs.isNotEmpty) {
             final vehicleDoc = vehicleQuery.docs.first;
-            final List<dynamic> vehicleTanks = (vehicleDoc['tanklar'] as List? ?? [])
+            final List<dynamic> vehicleTanks = _asList(vehicleDoc['tanklar'])
                 .map((t) => Map<String, dynamic>.from(t as Map))
                 .toList();
             for (int i = 0; i < vehicleTanks.length; i++) {
@@ -684,7 +1168,7 @@ class FirestoreService {
           final vehicleQuery = await _vehicles.where('plaka', isEqualTo: vehiclePlate).limit(1).get();
           if (vehicleQuery.docs.isNotEmpty) {
             final vehicleDoc = vehicleQuery.docs.first;
-            final List<dynamic> vehicleTanks = (vehicleDoc['tanklar'] as List? ?? [])
+            final List<dynamic> vehicleTanks = _asList(vehicleDoc['tanklar'])
                 .map((t) => Map<String, dynamic>.from(t as Map))
                 .toList();
             for (int i = 0; i < vehicleTanks.length; i++) {
@@ -729,7 +1213,7 @@ class FirestoreService {
       final vehicleQuery = await _vehicles.where('plaka', isEqualTo: vehiclePlate).limit(1).get();
       if (vehicleQuery.docs.isNotEmpty) {
         final vehicleDoc = vehicleQuery.docs.first;
-        final List<dynamic> vehicleTanks = (vehicleDoc['tanklar'] as List? ?? [])
+        final List<dynamic> vehicleTanks = _asList(vehicleDoc['tanklar'])
             .map((t) => Map<String, dynamic>.from(t as Map))
             .toList();
         for (int i = 0; i < vehicleTanks.length; i++) {
@@ -771,7 +1255,7 @@ class FirestoreService {
       final vehicleQuery = await _vehicles.where('plaka', isEqualTo: vehiclePlate).limit(1).get();
       if (vehicleQuery.docs.isNotEmpty) {
         final vehicleDoc = vehicleQuery.docs.first;
-        final List<dynamic> driversList = vehicleDoc['suruculer'] as List? ?? [];
+        final List<dynamic> driversList = _asList(vehicleDoc['suruculer']);
         for (var d in driversList) {
           if (d is String) {
             await sendNotification(
@@ -793,7 +1277,8 @@ class FirestoreService {
     required String sutKabulId,
     required String sourceTankName,
     required String targetTankName,
-    required double miktar,
+    required double miktar, // accepted amount
+    double? beyanEdilenMiktar, // declared amount
     required String vehiclePlate,
     required String driverName,
   }) async {
@@ -818,12 +1303,13 @@ class FirestoreService {
 
     final sourceDoc = sourceQuery.docs.first;
     final targetDoc = targetQuery.docs.first;
+    final double declared = beyanEdilenMiktar ?? miktar;
 
-    // 1. Update source tank stok
+    // 1. Update source tank stok (vehicle tank loses the ENTIRE declared/requested amount)
     final double sourceCurrent = (sourceDoc.data()['stok'] as num?)?.toDouble() ?? 0.0;
-    await sourceDoc.reference.update({'stok': (sourceCurrent - miktar).clamp(0.0, double.infinity)});
+    await sourceDoc.reference.update({'stok': (sourceCurrent - declared).clamp(0.0, double.infinity)});
 
-    // 2. Update target tank stok
+    // 2. Update target tank stok (center tank gets only the accepted amount)
     final double targetCurrent = (targetDoc.data()['stok'] as num?)?.toDouble() ?? 0.0;
     await targetDoc.reference.update({'stok': (targetCurrent + miktar).clamp(0.0, double.infinity)});
 
@@ -835,23 +1321,60 @@ class FirestoreService {
           .get();
       if (vehicleQuery.docs.isNotEmpty) {
         final vehicleDoc = vehicleQuery.docs.first;
-        final List<dynamic> vehicleTanks = (vehicleDoc['tanklar'] as List? ?? [])
+        final List<dynamic> vehicleTanks = _asList(vehicleDoc['tanklar'])
             .map((t) => Map<String, dynamic>.from(t as Map))
             .toList();
         for (int i = 0; i < vehicleTanks.length; i++) {
           if (vehicleTanks[i]['ad'] == sourceTankName) {
-            vehicleTanks[i]['stok'] = (sourceCurrent - miktar).clamp(0.0, double.infinity);
+            vehicleTanks[i]['stok'] = (sourceCurrent - declared).clamp(0.0, double.infinity);
             break;
           }
         }
         await vehicleDoc.reference.update({'tanklar': vehicleTanks});
       }
+
+      // Mark matching collections in 'toplamalar' as bosaltildi: true
+      final collectionsToUpdate = await db.collection('toplamalar')
+          .where('km', isEqualTo: vehiclePlate)
+          .where('tank', isEqualTo: sourceTankName)
+          .get();
+      final batch = db.batch();
+      for (final doc in collectionsToUpdate.docs) {
+        final d = doc.data();
+        if (d['bosaltildi'] != true) {
+          batch.update(doc.reference, {'bosaltildi': true});
+        }
+      }
+      await batch.commit();
     }
 
     // 4. Update sut_kabul document state
-    await kabulDocRef.update({'durum': 'Kabul Edildi'});
+    final double fire = (declared - miktar).clamp(0.0, double.infinity);
+    await kabulDocRef.update({
+      'durum': 'Kabul Edildi',
+      'kabulEdilenMiktar': miktar,
+      'fire': fire,
+    });
 
-    // 5. Also log a delivery record to 'teslimatlar' for audit
+    // Write a fire document if there is fire
+    final String resolvedFirma = targetDoc.data()['firma'] ?? '';
+    if (fire > 0) {
+      await db.collection('fireler').add({
+        'sutKabulId': sutKabulId,
+        'plaka': vehiclePlate,
+        'surucuName': driverName,
+        'kaynak': sourceTankName,
+        'hedef': targetTankName,
+        'beyan': declared,
+        'kabul': miktar,
+        'fire': fire,
+        'tarih': DateFormat('dd.MM.yyyy').format(DateTime.now()),
+        'timestamp': FieldValue.serverTimestamp(),
+        'firma': resolvedFirma,
+      });
+    }
+
+    // 5. Log a delivery record to 'teslimatlar' for audit
     final timeStr = DateFormat('HH:mm').format(DateTime.now());
     await db.collection('teslimatlar').add({
       'plaka': vehiclePlate,
@@ -861,16 +1384,22 @@ class FirestoreService {
       'saat': timeStr,
       'tarih': DateFormat('dd.MM.yyyy').format(DateTime.now()),
       'timestamp': FieldValue.serverTimestamp(),
-      'firma': targetDoc.data()['firma'] ?? '',
+      'firma': resolvedFirma,
     });
 
     // 6. Send success notification to the driver
     try {
+      String notificationBody = '';
+      if (fire > 0) {
+        notificationBody = '$sourceTankName tankından $targetTankName tankına boşaltma işleminiz $miktar LT olarak kabul edildi. (${fire.toStringAsFixed(1)} LT fire)';
+      } else {
+        notificationBody = '$sourceTankName tankından $targetTankName tankına $miktar LT boşaltma işleminiz onaylandı.';
+      }
       await sendNotification(
         recipientName: driverName,
         role: 'surucu',
         baslik: 'Boşaltma Talebi Onaylandı',
-        icerik: '$sourceTankName tankından $targetTankName tankına $miktar LT boşaltma işleminiz onaylandı.',
+        icerik: notificationBody,
         type: 'depo_aktarim',
       );
     } catch (_) {}
@@ -920,7 +1449,7 @@ class FirestoreService {
         final lat = yeniData['latitude'] as double?;
         final lng = yeniData['longitude'] as double?;
         final mapsLink = yeniData['mapsLink'] as String?;
-        final milkType = yeniData['lastMilkType'] as String? ?? 'Soğuk Süt';
+        final milkType = yeniData['lastMilkType'] as String? ?? 'So\u011fuk S\u00fct';
 
         // 1. Create producer
         await db.collection('ureticiler').add({
@@ -1108,7 +1637,9 @@ class FirestoreService {
   }
 
   Stream<QuerySnapshot> getDriverCollectionsStream(String driverName) {
-    return _collections.where('sr', isEqualTo: driverName).snapshots();
+    return _collections
+        .where('sr', isEqualTo: driverName)
+        .snapshots(includeMetadataChanges: true); // offline pending → spinner açılır/kapanır
   }
 
   // --- PRODUCER SPECIFIC STREAMS ---
@@ -1546,7 +2077,7 @@ class FirestoreService {
       case 'sıcak':
       case 'b kalite':
         return 'sicak';
-      case 'soğuk süt':
+      case 'So\u011fuk S\u00fct':
       case 'soğuk':
       case 'a kalite':
         return 'soguk';
@@ -1673,7 +2204,7 @@ class FirestoreService {
       final double m = mVal is num ? mVal.toDouble() : (double.tryParse(mVal.toString()) ?? 0.0);
       toplamLitre += m;
 
-      final String rawType = data['tip'] ?? 'Soğuk süt';
+      final String rawType = data['tip'] ?? 'So\u011fuk S\u00fct';
       final String priceKey = mapMilkTypeToPriceKey(rawType);
       final double price = resolveMilkPrice(
         prices: priceList,

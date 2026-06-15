@@ -39,7 +39,6 @@ import '../screens/firma/urun_siparisleri_screen.dart';
 import '../screens/surucu/surucu_dashboard.dart';
 import '../screens/surucu/surucu_profil.dart';
 import '../screens/surucu/surucu_teslimatlar.dart';
-import '../screens/surucu/surucu_ureticiler_screen.dart';
 import '../screens/surucu/surucu_sut_bosalt.dart';
 import '../screens/uretici/uretici_dashboard.dart';
 import '../screens/uretici/uretici_faturalar.dart';
@@ -49,7 +48,6 @@ import '../screens/firma/sut_odemeleri_screen.dart';
 import '../screens/firma/firma_gruplar.dart';
 import '../screens/firma/firma_birlikler.dart';
 import '../screens/firma/firma_atamalar.dart';
-import '../screens/firma/firma_satislar.dart';
 import '../screens/firma/firma_satis_ekle.dart';
 import '../screens/firma/firma_hesap_ozeti.dart';
 import '../screens/firma/firma_aylik_sut.dart';
@@ -58,6 +56,7 @@ import '../screens/firma/firma_tahsilat.dart';
 import '../screens/firma/tank_listesi_screen.dart';
 import '../screens/firma/tank_ekle_screen.dart';
 import '../screens/firma/tank_detay_screen.dart';
+import '../screens/firma/tank_sil_screen.dart';
 import '../screens/firma/sut_kabul_screen.dart';
 import '../screens/firma/sut_transfer_screen.dart';
 import '../screens/firma/sut_analiz_screen.dart';
@@ -108,7 +107,7 @@ GoRouter createRouter(AuthProvider auth) {
 
       // Admin
       ShellRoute(
-        builder: (_, state, child) => AppShell(role: UserRole.admin, child: child),
+        builder: (_, state, child) => AppShell(role: UserRole.admin, state: state, child: child),
         routes: [
           GoRoute(path: '/admin', builder: (_, __) => const AdminDashboard()),
           GoRoute(path: '/admin/duyuru-gonder', builder: (_, __) => const AdminDuyuruGonderScreen()),
@@ -128,7 +127,7 @@ GoRouter createRouter(AuthProvider auth) {
 
       // Firma
       ShellRoute(
-        builder: (_, state, child) => AppShell(role: UserRole.firma, child: child),
+        builder: (_, state, child) => AppShell(role: UserRole.firma, state: state, child: child),
         routes: [
           GoRoute(path: '/firma', builder: (_, __) => const FirmaHomeScreen()),
           GoRoute(path: '/firma/duyuru-gonder', builder: (_, __) => const FirmaDuyuruGonderScreen()),
@@ -190,6 +189,7 @@ GoRouter createRouter(AuthProvider auth) {
           GoRoute(path: '/firma/tanklar/ekle', builder: (_, __) => const TankEkleScreen()),
           GoRoute(path: '/firma/tanklar/detay', builder: (_, __) => const TankDetayScreen()),
           GoRoute(path: '/firma/tanklar/atama', builder: (_, __) => const FirmaTankAtamaScreen()),
+          GoRoute(path: '/firma/tanklar/sil', builder: (_, __) => const TankSilScreen()),
           GoRoute(path: '/firma/sut-kabul', builder: (_, __) => const SutKabulScreen()),
           GoRoute(
             path: '/firma/sut-transferleri',
@@ -235,7 +235,7 @@ GoRouter createRouter(AuthProvider auth) {
 
       // Toplayıcı
       ShellRoute(
-        builder: (_, state, child) => AppShell(role: UserRole.surucu, child: child),
+        builder: (_, state, child) => AppShell(role: UserRole.surucu, state: state, child: child),
         routes: [
           GoRoute(path: '/surucu', builder: (_, __) => const SurucuDashboard()),
           GoRoute(
@@ -249,8 +249,8 @@ GoRouter createRouter(AuthProvider auth) {
             },
           ),
           GoRoute(path: '/surucu/teslimatlar', builder: (_, __) => const SurucuTeslimatlarScreen()),
-          GoRoute(path: '/surucu/ureticiler', builder: (_, __) => const SurucuUreticilerScreen()),
-          GoRoute(path: '/surucu/ureticiler/ekle', builder: (_, __) => const SurucuUreticilerScreen(openAddDialog: true)),
+          GoRoute(path: '/surucu/ureticiler', builder: (_, __) => const SurucuDashboard(showSutAlDirectly: true)),
+          GoRoute(path: '/surucu/ureticiler/ekle', builder: (_, __) => const SurucuDashboard(showSutAlDirectly: true)),
           GoRoute(path: '/surucu/sut-bosalt', builder: (_, __) => const SurucuSutBosaltScreen()),
           GoRoute(path: '/surucu/profil', builder: (_, __) => const SurucuProfilScreen()),
         ],
@@ -258,7 +258,7 @@ GoRouter createRouter(AuthProvider auth) {
 
       // Üretici
       ShellRoute(
-        builder: (_, state, child) => AppShell(role: UserRole.uretici, child: child),
+        builder: (_, state, child) => AppShell(role: UserRole.uretici, state: state, child: child),
         routes: [
           GoRoute(path: '/uretici', builder: (_, __) => const UreticiDashboard()),
           GoRoute(path: '/uretici/gecmis', builder: (_, __) => const UreticiDashboard()),

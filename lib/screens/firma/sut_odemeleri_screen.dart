@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
@@ -446,7 +446,7 @@ class _SutOdemeleriScreenState extends State<SutOdemeleriScreen> {
       final data = doc.data() as Map<String, dynamic>;
       final dateStr = (data['timestamp'] != null && data['timestamp'] is Timestamp) ? DateFormat('dd.MM.yyyy').format((data['timestamp'] as Timestamp).toDate()) : '-';
       final double m = (data['m'] as num?)?.toDouble() ?? 0.0;
-      final String rawType = data['tip'] ?? 'Soğuk süt';
+      final String rawType = data['tip'] ?? 'So\u011fuk S\u00fct';
       final String priceKey = _firestoreService.mapMilkTypeToPriceKey(rawType);
       final double price = _firestoreService.resolveMilkPrice(
         prices: pricesList,

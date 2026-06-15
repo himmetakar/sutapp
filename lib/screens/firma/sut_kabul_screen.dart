@@ -54,29 +54,30 @@ class _SutKabulScreenState extends State<SutKabulScreen> {
     }
   }
 
-  Future<void> _handleAccept(QueryDocumentSnapshot doc) async {
-    final data = doc.data() as Map<String, dynamic>;
-    final double miktar = (data['miktar'] as num?)?.toDouble() ?? 0.0;
-    final String kaynak = data['kaynak'] ?? '';
-    final String hedef = data['hedef'] ?? '';
-    final String email = data['email'] ?? '';
-    final String plaka = data['plaka'] ?? '';
-    final String surucuName = data['surucuName'] ?? email;
-
+  Future<void> _handleAcceptWithAmount({
+    required QueryDocumentSnapshot doc,
+    required double originalAmount,
+    required double acceptedAmount,
+    required String kaynak,
+    required String hedef,
+    required String plaka,
+    required String surucuName,
+  }) async {
     try {
       final fs = FirestoreService();
       await fs.transferTankStock(
         sutKabulId: doc.id,
         sourceTankName: kaynak,
         targetTankName: hedef,
-        miktar: miktar,
+        miktar: acceptedAmount,
+        beyanEdilenMiktar: originalAmount,
         vehiclePlate: plaka,
         driverName: surucuName,
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('$surucuName tarafından gönderilen $miktar LT süt kabul edildi!'),
+            content: Text('$surucuName tarafından gönderilen $originalAmount LT süt $acceptedAmount LT olarak kabul edildi!'),
             backgroundColor: AppColors.success,
           ),
         );
@@ -91,6 +92,99 @@ class _SutKabulScreenState extends State<SutKabulScreen> {
         );
       }
     }
+  }
+
+  Future<void> _showAcceptDialog(QueryDocumentSnapshot doc) async {
+    final data = doc.data() as Map<String, dynamic>;
+    final double miktar = (data['miktar'] as num?)?.toDouble() ?? 0.0;
+    final String kaynak = data['kaynak'] ?? '';
+    final String hedef = data['hedef'] ?? '';
+    final String email = data['email'] ?? '';
+    final String plaka = data['plaka'] ?? '';
+    final String surucuName = data['surucuName'] ?? email;
+
+    final controller = TextEditingController();
+
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text(
+            'Süt Kabul Miktarını Girin',
+            style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Toplayıcı Beyanı: ${miktar.toStringAsFixed(1)} L',
+                style: GoogleFonts.inter(fontSize: 13, color: AppColors.gray600, fontWeight: FontWeight.w500),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                  labelText: 'Kabul Edilen Miktar (Litre) *',
+                  hintText: miktar.toStringAsFixed(1),
+                  labelStyle: GoogleFonts.inter(fontSize: 13),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                  suffixText: 'L',
+                ),
+                style: GoogleFonts.inter(fontSize: 14),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(
+                'İptal',
+                style: GoogleFonts.inter(color: AppColors.gray500, fontWeight: FontWeight.bold),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                if (controller.text.trim().isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Lütfen kabul edilen litre miktarını giriniz. (Zorunlu)')),
+                  );
+                  return;
+                }
+                final double? acceptedAmount = double.tryParse(controller.text.replaceAll(',', '.'));
+                if (acceptedAmount == null || acceptedAmount < 0) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Lütfen geçerli bir miktar giriniz.')),
+                  );
+                  return;
+                }
+                Navigator.pop(context);
+                
+                await _handleAcceptWithAmount(
+                  doc: doc,
+                  originalAmount: miktar,
+                  acceptedAmount: acceptedAmount,
+                  kaynak: kaynak,
+                  hedef: hedef,
+                  plaka: plaka,
+                  surucuName: surucuName,
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF10B981),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              child: Text(
+                'Kabul Et',
+                style: GoogleFonts.inter(fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -462,7 +556,7 @@ class _SutKabulScreenState extends State<SutKabulScreen> {
                                       const SizedBox(width: 12),
                                       Expanded(
                                         child: ElevatedButton(
-                                          onPressed: () => _handleAccept(doc),
+                                          onPressed: () => _showAcceptDialog(doc),
                                           style: ElevatedButton.styleFrom(
                                             backgroundColor: const Color(0xFF10B981),
                                             foregroundColor: Colors.white,

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
@@ -327,7 +328,8 @@ class _FirmaFirmalarScreenState extends State<FirmaFirmalarScreen> {
     final aciklamaCtrl = TextEditingController();
     String? selectedFirma;
     String selectedYontem = 'Nakit';
-
+    DateTime secilenTarih = DateTime.now();
+ 
     showDialog(
       context: context,
       builder: (ctx) {
@@ -353,7 +355,7 @@ class _FirmaFirmalarScreenState extends State<FirmaFirmalarScreen> {
                     if (companies.isEmpty) {
                       return const Center(child: Text('Lütfen önce bir tedarikçi firma ekleyin.'));
                     }
-
+ 
                     return Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -398,6 +400,29 @@ class _FirmaFirmalarScreenState extends State<FirmaFirmalarScreen> {
                           },
                         ),
                         const SizedBox(height: 12),
+                        GestureDetector(
+                          onTap: () async {
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: secilenTarih,
+                              firstDate: DateTime(2020),
+                              lastDate: DateTime(2030),
+                            );
+                            if (picked != null) {
+                              setDialogState(() => secilenTarih = picked);
+                            }
+                          },
+                          child: AbsorbPointer(
+                            child: TextFormField(
+                              decoration: InputDecoration(
+                                labelText: 'Tarih',
+                                suffixIcon: const Icon(Icons.calendar_month_rounded),
+                                hintText: DateFormat('dd.MM.yyyy').format(secilenTarih),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
                         TextFormField(
                           controller: aciklamaCtrl,
                           decoration: const InputDecoration(labelText: 'Açıklama'),
@@ -423,9 +448,9 @@ class _FirmaFirmalarScreenState extends State<FirmaFirmalarScreen> {
                         'tip': txnType == 'Tahsilat' ? 'tahsilat' : 'odeme',
                         'odemeYontemi': selectedYontem,
                         'aciklama': aciklamaCtrl.text.trim(),
-                        'tarih': DateFormat('dd.MM.yyyy').format(DateTime.now()),
+                        'tarih': DateFormat('dd.MM.yyyy').format(secilenTarih),
                         'firma': tenantFirma,
-                        'timestamp': FieldValue.serverTimestamp(),
+                        'timestamp': Timestamp.fromDate(secilenTarih),
                       });
                       Navigator.pop(ctx);
                     }
@@ -471,6 +496,26 @@ class _FirmaFirmalarScreenState extends State<FirmaFirmalarScreen> {
     List<Map<String, dynamic>> sortedTransactions,
     String tenantFirmaName,
   ) async {
+    // Türkçe karakter için yerel Roboto fontlarını yükle
+    final fontData = await rootBundle.load('assets/fonts/Roboto-Regular.ttf');
+    final boldFontData = await rootBundle.load('assets/fonts/Roboto-Bold.ttf');
+    final font = pw.Font.ttf(fontData);
+    final boldFont = pw.Font.ttf(boldFontData);
+
+    pw.TextStyle ts({
+      double fontSize = 10,
+      pw.FontWeight fontWeight = pw.FontWeight.normal,
+      PdfColor? color,
+      pw.FontStyle fontStyle = pw.FontStyle.normal,
+    }) =>
+        pw.TextStyle(
+          font: fontWeight == pw.FontWeight.bold ? boldFont : font,
+          fontSize: fontSize,
+          fontWeight: fontWeight,
+          color: color,
+          fontStyle: fontStyle,
+        );
+
     final doc = pw.Document();
     final formatNumber = NumberFormat('#,##0.00', 'tr_TR');
 
@@ -486,14 +531,14 @@ class _FirmaFirmalarScreenState extends State<FirmaFirmalarScreen> {
                 pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    pw.Text(tenantFirmaName.toUpperCase(), style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900)),
-                    pw.Text('Cari Hesap Ekstresi', style: pw.TextStyle(fontSize: 10, color: PdfColors.grey600, fontStyle: pw.FontStyle.italic)),
+                    pw.Text(tenantFirmaName.toUpperCase(), style: ts(fontSize: 16, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900)),
+                    pw.Text('Cari Hesap Ekstresi', style: ts(fontSize: 10, color: PdfColors.grey600, fontStyle: pw.FontStyle.italic)),
                   ],
                 ),
                 pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.end,
                   children: [
-                    pw.Text('Rapor Tarihi: ${DateFormat('dd.MM.yyyy HH:mm').format(DateTime.now())}', style: const pw.TextStyle(fontSize: 8)),
+                    pw.Text('Rapor Tarihi: ${DateFormat('dd.MM.yyyy HH:mm').format(DateTime.now())}', style: ts(fontSize: 8)),
                   ],
                 ),
               ],
@@ -515,19 +560,19 @@ class _FirmaFirmalarScreenState extends State<FirmaFirmalarScreen> {
                   pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.start,
                     children: [
-                      pw.Text('Müşteri/Tedarikçi: $partnerName', style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
+                      pw.Text('Müşteri/Tedarikçi: $partnerName', style: ts(fontSize: 11, fontWeight: pw.FontWeight.bold)),
                       pw.SizedBox(height: 2),
-                      pw.Text('Kart Tipi: ${partnerTip == 'alici' ? 'Alıcı (Süt Sattığımız)' : 'Tedarikçi (Yem vb. Aldığımız)'}', style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
+                      pw.Text('Kart Tipi: ${partnerTip == 'alici' ? 'Alıcı (Süt Sattığımız)' : 'Tedarikçi (Yem vb. Aldığımız)'}', style: ts(fontSize: 9, color: PdfColors.grey700)),
                     ],
                   ),
                   pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.end,
                     children: [
-                      pw.Text('Net Bakiye', style: pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
+                      pw.Text('Net Bakiye', style: ts(fontSize: 8, color: PdfColors.grey600)),
                       pw.SizedBox(height: 2),
                       pw.Text(
                         '${formatNumber.format(finalBalance.abs())} TL',
-                        style: pw.TextStyle(
+                        style: ts(
                           fontSize: 13,
                           fontWeight: pw.FontWeight.bold,
                           color: finalBalance > 0 ? PdfColors.green900 : finalBalance < 0 ? PdfColors.red900 : PdfColors.black,
@@ -535,7 +580,7 @@ class _FirmaFirmalarScreenState extends State<FirmaFirmalarScreen> {
                       ),
                       pw.Text(
                         finalBalance > 0 ? 'Bize Borçlu' : finalBalance < 0 ? 'Bizden Alacaklı' : 'Dengede',
-                        style: pw.TextStyle(
+                        style: ts(
                           fontSize: 8,
                           fontWeight: pw.FontWeight.bold,
                           color: finalBalance > 0 ? PdfColors.green800 : finalBalance < 0 ? PdfColors.red800 : PdfColors.grey600,
@@ -563,9 +608,9 @@ class _FirmaFirmalarScreenState extends State<FirmaFirmalarScreen> {
                   formatNumber.format(running),
                 ];
               }).toList(),
-              headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8.5, color: PdfColors.white),
+              headerStyle: ts(fontWeight: pw.FontWeight.bold, fontSize: 8.5, color: PdfColors.white),
               headerDecoration: const pw.BoxDecoration(color: PdfColors.blue800),
-              cellStyle: const pw.TextStyle(fontSize: 7.5),
+              cellStyle: ts(fontSize: 7.5),
               cellAlignment: pw.Alignment.centerLeft,
               cellAlignments: {
                 3: pw.Alignment.centerRight,

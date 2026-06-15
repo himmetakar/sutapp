@@ -18,7 +18,8 @@ import '../../widgets/subscription_gate.dart';
 class AppShell extends StatefulWidget {
   final UserRole role;
   final Widget child;
-  const AppShell({super.key, required this.role, required this.child});
+  final GoRouterState state;
+  const AppShell({super.key, required this.role, required this.child, required this.state});
 
   @override
   State<AppShell> createState() => _AppShellState();
@@ -63,9 +64,9 @@ class _AppShellState extends State<AppShell> {
         ];
       case UserRole.surucu:
         return [
-          _TabItem('/surucu', Icons.dashboard_rounded, 'Ana Sayfa'),
-          _TabItem('/surucu/toplama', Icons.water_drop_rounded, 'Süt Al'),
-          _TabItem('/surucu/teslimatlar', Icons.local_shipping_rounded, 'Teslimatlar'),
+          _TabItem('/surucu', Icons.home_rounded, 'Ana Sayfa'),
+          _TabItem('/surucu/ureticiler', Icons.people_alt_rounded, 'Müşteriler'),
+          _TabItem('/surucu/teslimatlar', Icons.shopping_bag_rounded, 'Siparişler'),
           _TabItem('/surucu/profil', Icons.person_rounded, 'Profil'),
         ];
       case UserRole.uretici:
@@ -119,11 +120,11 @@ class _AppShellState extends State<AppShell> {
   }
 
   String get _title {
-    final loc = GoRouterState.of(context).matchedLocation;
+    final loc = widget.state.matchedLocation;
     if (widget.role == UserRole.firma && loc == '/firma') {
       final menu = FirmaHomeScreen.currentMenuNotifier.value;
       if (menu == 'sut_tank') {
-        return 'Süt Yönetimi';
+        return 'Süt ve Tank Yönetimi';
       } else if (menu == 'personel') {
         return 'Personel & Araç';
       }
@@ -146,6 +147,7 @@ class _AppShellState extends State<AppShell> {
       '/firma/tanklar/ekle': 'Yeni Tank Ekle',
       '/firma/tanklar/detay': 'Tank İçerik Detayı',
       '/firma/tanklar/atama': 'Tank Atama',
+      '/firma/tanklar/sil': 'Tank Sil',
       '/firma/sut-kabul': 'Süt Kabul',
       '/firma/sut-transferleri': 'Süt Transferleri',
       '/firma/sut-analiz': 'Analiz Raporları',
@@ -179,8 +181,8 @@ class _AppShellState extends State<AppShell> {
       '/surucu': 'Ana Sayfa',
       '/surucu/toplama': 'Süt Toplama',
       '/surucu/teslimatlar': 'Sipariş Teslimatları',
-      '/surucu/ureticiler': 'Üreticilerim',
-      '/surucu/ureticiler/ekle': 'Üretici Ekle',
+      '/surucu/ureticiler': 'Müşteri Listesi',
+      '/surucu/ureticiler/ekle': 'Üretici Ekle Talebi',
       '/surucu/sut-bosalt': 'Süt Boşalt',
       '/surucu/profil': 'Profil',
       '/uretici': 'Ana Sayfa',
@@ -206,7 +208,7 @@ class _AppShellState extends State<AppShell> {
   @override
   Widget build(BuildContext context) {
     final auth = context.read<AuthProvider>();
-    final loc = GoRouterState.of(context).matchedLocation;
+    final loc = widget.state.matchedLocation;
     final idx = _tabs.indexWhere((t) => t.path == loc);
     if (idx != -1 && idx != _currentIndex) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -246,37 +248,81 @@ class _AppShellState extends State<AppShell> {
         loc == '/firma' &&
         FirmaHomeScreen.currentMenuNotifier.value != 'main';
 
-    return Scaffold(
-      backgroundColor: AppColors.gray50,
-      appBar: AppBar(
-        title: Text(_title),
-        leading: showSubmenuBack
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back_ios_new_rounded),
-                onPressed: () {
-                  FirmaHomeScreen.currentMenuNotifier.value = 'main';
-                },
+    final showParentAppBar = const {
+      '/firma',
+      '/firma/dashboard',
+      '/firma/profil',
+      '/surucu',
+      '/surucu/ureticiler',
+      '/surucu/profil',
+      '/uretici',
+      '/uretici/profil',
+      '/admin',
+      '/admin/istatistikler',
+    }.contains(loc);
+
+    final String homeRoute;
+    switch (widget.role) {
+      case UserRole.admin:
+        homeRoute = '/admin';
+        break;
+      case UserRole.firma:
+        homeRoute = '/firma';
+        break;
+      case UserRole.surucu:
+        homeRoute = '/surucu';
+        break;
+      case UserRole.uretici:
+        homeRoute = '/uretici';
+        break;
+    }
+
+    final bool isAtHome = loc == homeRoute;
+    final bool canGoRouterPop = GoRouter.of(context).canPop();
+    final bool shouldIntercept = !isAtHome && !canGoRouterPop;
+
+    return PopScope(
+      canPop: !shouldIntercept,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (shouldIntercept) {
+          context.go(homeRoute);
+        }
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.gray50,
+        appBar: showParentAppBar
+            ? AppBar(
+                title: Text(_title),
+                leading: showSubmenuBack
+                    ? IconButton(
+                        icon: const Icon(Icons.arrow_back_ios_new_rounded),
+                        onPressed: () {
+                          FirmaHomeScreen.currentMenuNotifier.value = 'main';
+                        },
+                      )
+                    : null,
+                actions: [
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: Image.asset(
+                      'assets/images/sutapp-logo.png',
+                      height: 26,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                  _buildNotificationsBellButton(auth, context),
+                  _buildUserMenuButton(auth),
+                  const SizedBox(width: 8),
+                ],
               )
             : null,
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: Image.asset(
-              'assets/images/phone+bottle.png',
-              height: 26,
-              fit: BoxFit.contain,
-            ),
-          ),
-          _buildNotificationsBellButton(auth, context),
-          _buildUserMenuButton(auth),
-          const SizedBox(width: 8),
-        ],
+        drawer: _drawerItems.isNotEmpty ? _buildDrawer(auth, loc) : null,
+        body: (widget.role == UserRole.firma || widget.role == UserRole.surucu)
+            ? SubscriptionGate(child: widget.child)
+            : widget.child,
+        bottomNavigationBar: _buildBottomNav(),
       ),
-      drawer: _drawerItems.isNotEmpty ? _buildDrawer(auth, loc) : null,
-      body: (widget.role == UserRole.firma || widget.role == UserRole.surucu)
-          ? SubscriptionGate(child: widget.child)
-          : widget.child,
-      bottomNavigationBar: _buildBottomNav(),
     );
   }
 
@@ -313,7 +359,7 @@ class _AppShellState extends State<AppShell> {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Image.asset(
-                    'assets/images/phone+bottle.png',
+                    'assets/images/sutapp-logo.png',
                     width: 34,
                     height: 34,
                     fit: BoxFit.contain,

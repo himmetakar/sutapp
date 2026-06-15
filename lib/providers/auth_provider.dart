@@ -207,11 +207,23 @@ class AuthProvider extends ChangeNotifier {
           _verifiedPhone = firebaseUser.phoneNumber;
         }
       } else {
-        if (_user == null || !_user!.uid.startsWith('demo_')) {
-          _user = null;
-          await _persistUser(null);
+        // Firebase Auth returned null.
+        // Bu, uygulamanın yeniden başlatılması veya geçici bir bağlantı
+        // kesintisi sırasında olabilir.
+        // Eğer SharedPreferences'tan yüklenen bir oturum varsa (_user != null),
+        // onu silme — kullanıcı zaten giriş yapmış sayılır.
+        // Sadece demo kullanıcılar veya gerçekten oturum yoksa temizle.
+        if (_user == null) {
+          // Hiç oturum yok (ne Firebase'den ne cache'den) → login'e gönder
           _needsRegistration = false;
           _verifiedPhone = null;
+        } else if (_user!.uid.startsWith('demo_')) {
+          // Demo kullanıcı — olduğu gibi bırak
+        } else {
+          // Gerçek kullanıcı, SharedPreferences'tan yüklenmiş.
+          // Firebase Auth null dönse de oturumu koru.
+          // (Çıkış yapılırken logout() zaten _user=null yapar)
+          debugPrint('[AuthProvider] Firebase Auth null — saved session korunuyor: ${_user!.displayName}');
         }
       }
       _loading = false;

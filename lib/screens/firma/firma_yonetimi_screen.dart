@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
+import 'package:flutter/services.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import '../../providers/auth_provider.dart';
@@ -828,10 +829,10 @@ class _FirmaCariEkstreScreenState extends State<FirmaCariEkstreScreen> {
     final doc = pw.Document();
     final formatNumber = NumberFormat('#,##0.00', 'tr_TR');
 
-    // Türkçe karakter desteği için Unicode fontları yükle
-    final fontRegular = await PdfGoogleFonts.robotoRegular();
-    final fontBold = await PdfGoogleFonts.robotoBold();
-    final fontItalic = await PdfGoogleFonts.robotoItalic();
+    // Türkçe karakter desteği: fontları asset'ten yükle (internet bağlantısı gerekmez)
+    final fontRegular = pw.Font.ttf(await rootBundle.load('assets/fonts/Roboto-Regular.ttf'));
+    final fontBold = pw.Font.ttf(await rootBundle.load('assets/fonts/Roboto-Bold.ttf'));
+    final fontItalic = pw.Font.ttf(await rootBundle.load('assets/fonts/Roboto-Italic.ttf'));
 
     pw.TextStyle baseStyle({
       double fontSize = 10,

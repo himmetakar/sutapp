@@ -1,7 +1,10 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 import '../../config/theme.dart';
+import '../../models/user_model.dart';
+import '../../providers/auth_provider.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -68,8 +71,24 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     }
 
     _particleController.forward().then((_) {
-      // Navigate to login after animation completes
-      if (mounted) {
+      if (!mounted) return;
+      final auth = Provider.of<AuthProvider>(context, listen: false);
+      if (auth.isLoggedIn) {
+        switch (auth.user!.role) {
+          case UserRole.admin:
+            context.go('/admin');
+            break;
+          case UserRole.firma:
+            context.go('/firma');
+            break;
+          case UserRole.surucu:
+            context.go('/surucu');
+            break;
+          case UserRole.uretici:
+            context.go('/uretici');
+            break;
+        }
+      } else {
         context.go('/login');
       }
     });

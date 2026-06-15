@@ -18,9 +18,10 @@ class _TankEkleScreenState extends State<TankEkleScreen> {
   final _adCtrl = TextEditingController();
   final _hacimCtrl = TextEditingController();
   
-  String _tankTip = 'arac'; // 'arac' (Normal Tank) or 'merkez' (Merkez Tankı)
-  String? _selectedPlaka; // Selected vehicle plate
-  String? _selectedSurucu; // Selected driver name
+  String _tankTip = 'arac';
+  String? _selectedPlaka;
+  String? _selectedSurucu;
+  bool _saving = false; // çift tıklamayı önler
 
   @override
   void dispose() {
@@ -464,74 +465,88 @@ class _TankEkleScreenState extends State<TankEkleScreen> {
                         ),
                         const SizedBox(height: 32),
 
-                        // Save Button
+                        // Kaydet butonu
                         ElevatedButton(
-                          onPressed: () async {
-                            if (_formKey.currentState!.validate()) {
-                              final double cap = double.parse(_hacimCtrl.text.replaceAll(',', '.'));
-                              final String plateValue = _selectedPlaka ?? '';
+                          onPressed: _saving
+                              ? null
+                              : () async {
+                                  if (!_formKey.currentState!.validate()) return;
+                                  setState(() => _saving = true);
+                                  try {
+                                    final double cap = double.parse(_hacimCtrl.text.replaceAll(',', '.'));
+                                    final String plateValue = _selectedPlaka ?? '';
 
-                              // Build suruculer list for the tank
-                              final List<String> tankSuruculer = [];
-                              if (_selectedSurucu != null && _selectedSurucu!.isNotEmpty) {
-                                tankSuruculer.add(_selectedSurucu!);
-                              }
-                              
-                              final newTank = {
-                                'ad': _adCtrl.text.trim(),
-                                'kod': autoCode,
-                                'kap': cap,
-                                'stok': 0.0,
-                                'tip': _tankTip,
-                                'arac': _tankTip == 'arac' ? plateValue : '',
-                                'firma': currentFirmaName,
-                                'durum': 'aktif',
-                                if (tankSuruculer.isNotEmpty) 'suruculer': tankSuruculer,
-                              };
-
-                              await FirebaseFirestore.instance.collection('tanklar').add(newTank);
-
-                              // If vehicle plate is provided, link tank inside the vehicle's array
-                              if (_tankTip == 'arac' && plateValue.isNotEmpty) {
-                                final vehicleQuery = await FirebaseFirestore.instance
-                                    .collection('araclar')
-                                    .where('plaka', isEqualTo: plateValue)
-                                    .limit(1)
-                                    .get();
-                                    
-                                if (vehicleQuery.docs.isNotEmpty) {
-                                  final vehicleDoc = vehicleQuery.docs.first;
-                                  final List<dynamic> vehicleTanks = List.from(vehicleDoc['tanklar'] as List? ?? []);
-                                  vehicleTanks.add({
-                                    'ad': _adCtrl.text.trim(),
-                                    'stok': 0.0,
-                                    'kap': cap,
-                                    if (tankSuruculer.isNotEmpty) 'suruculer': tankSuruculer,
-                                  });
-                                  await vehicleDoc.reference.update({'tanklar': vehicleTanks});
-
-                                  // Also add the driver to the vehicle's suruculer list if not already there
-                                  if (_selectedSurucu != null && _selectedSurucu!.isNotEmpty) {
-                                    final List<dynamic> vehicleDrivers = List.from(vehicleDoc['suruculer'] as List? ?? []);
-                                    if (!vehicleDrivers.contains(_selectedSurucu)) {
-                                      vehicleDrivers.add(_selectedSurucu!);
-                                      await vehicleDoc.reference.update({'suruculer': vehicleDrivers});
+                                    final List<String> tankSuruculer = [];
+                                    if (_selectedSurucu != null && _selectedSurucu!.isNotEmpty) {
+                                      tankSuruculer.add(_selectedSurucu!);
                                     }
-                                  }
-                                }
-                              }
 
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Tank başarıyla kaydedildi!'),
-                                    backgroundColor: AppColors.success,
-                                  ),
-                                );
-                                context.pop();
-                              }
-                            }
-                          },
+                                    final newTank = {
+                                      'ad': _adCtrl.text.trim(),
+                                      'kod': autoCode,
+                                      'kap': cap,
+                                      'stok': 0.0,
+                                      'tip': _tankTip,
+                                      'arac': _tankTip == 'arac' ? plateValue : '',
+                                      'firma': currentFirmaName,
+                                      'durum': 'aktif',
+                                      if (tankSuruculer.isNotEmpty) 'suruculer': tankSuruculer,
+                                    };
+
+                                    await FirebaseFirestore.instance.collection('tanklar').add(newTank);
+
+                                    if (_tankTip == 'arac' && plateValue.isNotEmpty) {
+                                      final vehicleQuery = await FirebaseFirestore.instance
+                                          .collection('araclar')
+                                          .where('plaka', isEqualTo: plateValue)
+                                          .limit(1)
+                                          .get();
+
+                                      if (vehicleQuery.docs.isNotEmpty) {
+                                        final vehicleDoc = vehicleQuery.docs.first;
+                                        final List<dynamic> vehicleTanks =
+                                            List.from(vehicleDoc['tanklar'] as List? ?? []);
+                                        vehicleTanks.add({
+                                          'ad': _adCtrl.text.trim(),
+                                          'stok': 0.0,
+                                          'kap': cap,
+                                          if (tankSuruculer.isNotEmpty) 'suruculer': tankSuruculer,
+                                        });
+                                        await vehicleDoc.reference.update({'tanklar': vehicleTanks});
+
+                                        if (_selectedSurucu != null && _selectedSurucu!.isNotEmpty) {
+                                          final List<dynamic> vehicleDrivers =
+                                              List.from(vehicleDoc['suruculer'] as List? ?? []);
+                                          if (!vehicleDrivers.contains(_selectedSurucu)) {
+                                            vehicleDrivers.add(_selectedSurucu!);
+                                            await vehicleDoc.reference.update({'suruculer': vehicleDrivers});
+                                          }
+                                        }
+                                      }
+                                    }
+
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('✅ Tank başarıyla kaydedildi!'),
+                                          backgroundColor: AppColors.success,
+                                          duration: Duration(seconds: 2),
+                                        ),
+                                      );
+                                      context.pop();
+                                    }
+                                  } catch (e) {
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text('Hata: $e'),
+                                          backgroundColor: AppColors.danger,
+                                        ),
+                                      );
+                                    }
+                                    setState(() => _saving = false);
+                                  }
+                                },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF3B82F6),
                             foregroundColor: Colors.white,
@@ -540,10 +555,17 @@ class _TankEkleScreenState extends State<TankEkleScreen> {
                             shadowColor: Colors.transparent,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                           ),
-                          child: Text(
-                            'Tankı Kaydet',
-                            style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 14),
-                          ),
+                          child: _saving
+                              ? const SizedBox(
+                                  width: 20, height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Colors.white,
+                                  ),
+                                )
+                              : Text(
+                                  'Tankı Kaydet',
+                                  style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 14),
+                                ),
                         ),
                       ],
                     ),

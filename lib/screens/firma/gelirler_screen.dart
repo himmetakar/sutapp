@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -266,7 +266,7 @@ class _GelirlerScreenState extends State<GelirlerScreen> {
         if (_isWithinFilter(date)) {
           final double m = (data['m'] as num?)?.toDouble() ?? 0.0;
           final String ureticiName = data['u'] ?? '';
-          final String rawType = data['tip'] ?? 'Soğuk süt';
+          final String rawType = data['tip'] ?? 'So\u011fuk S\u00fct';
 
           final pData = producersMap[ureticiName] ?? {};
           final bolge = pData['bolge'] ?? '';

@@ -129,7 +129,7 @@ class _TankDetayScreenState extends State<TankDetayScreen> {
                 return StreamBuilder<QuerySnapshot>(
                   stream: FirebaseFirestore.instance
                       .collection('toplamalar')
-                      .where('firma', isEqualTo: currentFirmaName)
+                      .where('tarih', isEqualTo: formattedDateStr)
                       .snapshots(),
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {

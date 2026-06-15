@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:go_router/go_router.dart';
 import '../../providers/auth_provider.dart';
 import '../../models/user_model.dart';
 import '../../config/theme.dart';
@@ -57,7 +58,7 @@ class _UrunSiparisleriScreenState extends State<UrunSiparisleriScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showCreateOrderDialog(context, currentFirmaName),
+        onPressed: () => context.go('/firma/satislar/ekle'),
         backgroundColor: AppColors.primary600,
         foregroundColor: Colors.white,
         icon: const Icon(Icons.add_rounded, size: 22),
@@ -133,43 +134,23 @@ class _UrunSiparisleriScreenState extends State<UrunSiparisleriScreen> {
                   color: Colors.white,
                   border: Border(bottom: BorderSide(color: AppColors.gray200)),
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Sipariş Yönetimi',
-                          style: GoogleFonts.inter(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.gray900,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Üretici ürün siparişlerini oluşturun ve yönetin',
-                          style: GoogleFonts.inter(
-                            fontSize: 11,
-                            color: AppColors.gray400,
-                          ),
-                        ),
-                      ],
-                    ),
-                    ElevatedButton.icon(
-                      onPressed: () => _showCreateOrderDialog(context, currentFirmaName),
-                      icon: const Icon(Icons.add_rounded, size: 18),
-                      label: Text(
-                        'Yeni Sipariş',
-                        style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 12),
+                    Text(
+                      'Sipariş Yönetimi',
+                      style: GoogleFonts.inter(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.gray900,
                       ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primary600,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        elevation: 0,
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Üretici ürün siparişlerini oluşturun ve yönetin',
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        color: AppColors.gray400,
                       ),
                     ),
                   ],
@@ -465,14 +446,25 @@ class _UrunSiparisleriScreenState extends State<UrunSiparisleriScreen> {
                                                   }
                                                 }
 
-                                                // Record payment deduction
+                                                // Record payment deduction — siparişin kendi tarihini kullan
+                                                DateTime kesintiTarih = DateTime.now();
+                                                final rawTs = data['timestamp'];
+                                                if (rawTs is Timestamp) {
+                                                  kesintiTarih = rawTs.toDate();
+                                                } else if (data['tarih'] != null) {
+                                                  try {
+                                                    kesintiTarih = DateFormat('dd MMMM yyyy', 'tr_TR').parse(data['tarih'].toString());
+                                                  } catch (_) {
+                                                    try { kesintiTarih = DateFormat('dd.MM.yyyy').parse(data['tarih'].toString()); } catch (_) {}
+                                                  }
+                                                }
                                                 await FirebaseFirestore.instance.collection('kesintiler').add({
                                                   'uretici': uretici,
                                                   'tutar': totalItem,
                                                   'kesintiTuru': '$uName Alımı',
                                                   'durum': 'aktif',
-                                                  'tarih': DateFormat('dd.MM.yyyy').format(DateTime.now()),
-                                                  'timestamp': FieldValue.serverTimestamp(),
+                                                  'tarih': DateFormat('dd.MM.yyyy').format(kesintiTarih),
+                                                  'timestamp': Timestamp.fromDate(kesintiTarih),
                                                   'firma': currentFirmaName,
                                                   'miktar': qty,
                                                   'birimFiyat': item['birimFiyat'] ?? (item['fiyat'] ?? (qty > 0 ? totalItem / qty : totalItem)),

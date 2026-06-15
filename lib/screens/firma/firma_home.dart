@@ -409,10 +409,10 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
                     onTap: () => context.push('/firma/personel'),
                   ),
 
-                   // Süt Yönetimi
+                   // Süt ve Tank Yönetimi
                   _buildMenuCard(
                     icon: Icons.water_drop_rounded,
-                    title: 'Süt Yönetimi',
+                    title: 'Süt ve Tank Yönetimi',
                     subtitle: 'Süt toplama ve tanklar',
                     iconColor: Colors.white,
                     bgColor: const Color(0xFF008AAE),
@@ -484,10 +484,12 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
               ),
             ] else if (_currentMenu == 'sut_tank') ...[
               // Centered Submenu Header with Water Drop Icon
-              _buildCenteredSubmenuHeader('Süt Yönetimi'),
+              _buildCenteredSubmenuHeader('Süt ve Tank Yönetimi'),
               const SizedBox(height: 24),
 
-              // Submenu Grid
+              // ── SÜT İŞLEMLERİ Başlığı ──
+              _buildMiniSectionHeader('🥛 Süt İşlemleri'),
+              const SizedBox(height: 10),
               GridView.count(
                 crossAxisCount: 2,
                 crossAxisSpacing: 14,
@@ -497,36 +499,12 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
                 childAspectRatio: 1.22,
                 children: [
                   _buildMenuCard(
-                    icon: Icons.calendar_month_rounded,
-                    title: 'Aylık Süt Kayıtları',
-                    subtitle: 'Aylık teslimat listesi',
-                    iconColor: Colors.white,
-                    bgColor: const Color(0xFF2563EB),
-                    onTap: () => context.push('/firma/aylik-sut'),
-                  ),
-                  _buildMenuCard(
                     icon: Icons.water_drop_rounded,
                     title: 'Süt Toplamalar',
                     subtitle: 'Günlük süt alımları',
                     iconColor: Colors.white,
                     bgColor: const Color(0xFF10B981),
                     onTap: () => context.push('/firma/toplamalar'),
-                  ),
-                  _buildMenuCard(
-                    icon: Icons.speed_rounded,
-                    title: 'Tank Durumu',
-                    subtitle: 'Depo stok durumları',
-                    iconColor: Colors.white,
-                    bgColor: const Color(0xFF0284C7),
-                    onTap: () => context.push('/firma/tanklar'),
-                  ),
-                  _buildMenuCard(
-                    icon: Icons.water_drop_rounded,
-                    title: 'Tank İçerik Detay',
-                    subtitle: 'Süt kalitesi ve detaylar',
-                    iconColor: Colors.white,
-                    bgColor: const Color(0xFF0369A1),
-                    onTap: () => context.push('/firma/tanklar/detay'),
                   ),
                   _buildMenuCard(
                     icon: Icons.input_rounded,
@@ -537,28 +515,20 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
                     onTap: () => context.push('/firma/sut-kabul'),
                   ),
                   _buildMenuCard(
+                    icon: Icons.calendar_month_rounded,
+                    title: 'Aylık Süt Kayıtları',
+                    subtitle: 'Aylık teslimat listesi',
+                    iconColor: Colors.white,
+                    bgColor: const Color(0xFF2563EB),
+                    onTap: () => context.push('/firma/aylik-sut'),
+                  ),
+                  _buildMenuCard(
                     icon: Icons.bar_chart_rounded,
                     title: 'Süt Toplama Raporu',
                     subtitle: 'Detaylı toplama raporu',
                     iconColor: Colors.white,
                     bgColor: const Color(0xFF0F766E),
                     onTap: () => context.push('/firma/raporlar'),
-                  ),
-                  _buildMenuCard(
-                    icon: Icons.add_circle_outline_rounded,
-                    title: 'Tank Ekle',
-                    subtitle: 'Yeni süt tankı tanımla',
-                    iconColor: Colors.white,
-                    bgColor: const Color(0xFF2563EB),
-                    onTap: () => context.push('/firma/tanklar/ekle'),
-                  ),
-                  _buildMenuCard(
-                    icon: Icons.assignment_ind_rounded,
-                    title: 'Tank Atama',
-                    subtitle: 'Sürücü-tank eşleştirme',
-                    iconColor: Colors.white,
-                    bgColor: const Color(0xFF4F46E5),
-                    onTap: () => context.push('/firma/tanklar/atama'),
                   ),
                   _buildMenuCard(
                     icon: Icons.analytics_rounded,
@@ -583,6 +553,70 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
                     iconColor: Colors.white,
                     bgColor: const Color(0xFFD97706),
                     onTap: () => context.push('/firma/sut-analiz'),
+                  ),
+                  _buildMenuCard(
+                    icon: Icons.warning_amber_rounded,
+                    title: 'Fire Takibi',
+                    subtitle: 'Fire ve kayıp izleme',
+                    iconColor: Colors.white,
+                    bgColor: const Color(0xFFEF4444),
+                    onTap: () => context.push('/firma/fire-takip'),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 24),
+
+              // ── TANK İŞLEMLERİ Başlığı ──
+              _buildMiniSectionHeader('🛢 Tank İşlemleri'),
+              const SizedBox(height: 10),
+              GridView.count(
+                crossAxisCount: 2,
+                crossAxisSpacing: 14,
+                mainAxisSpacing: 14,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                childAspectRatio: 1.22,
+                children: [
+                  _buildMenuCard(
+                    icon: Icons.speed_rounded,
+                    title: 'Tank Durumu',
+                    subtitle: 'Depo stok durumları',
+                    iconColor: Colors.white,
+                    bgColor: const Color(0xFF0284C7),
+                    onTap: () => context.push('/firma/tanklar'),
+                  ),
+                  _buildMenuCard(
+                    icon: Icons.water_drop_rounded,
+                    title: 'Tank İçerik Detay',
+                    subtitle: 'Süt kalitesi ve detaylar',
+                    iconColor: Colors.white,
+                    bgColor: const Color(0xFF0369A1),
+                    onTap: () => context.push('/firma/tanklar/detay'),
+                  ),
+                  _buildMenuCard(
+                    icon: Icons.add_circle_outline_rounded,
+                    title: 'Tank Ekle',
+                    subtitle: 'Yeni süt tankı tanımla',
+                    iconColor: Colors.white,
+                    bgColor: const Color(0xFF2563EB),
+                    onTap: () => context.push('/firma/tanklar/ekle'),
+                  ),
+                  _buildMenuCard(
+                    icon: Icons.delete_outline_rounded,
+                    title: 'Tank Sil',
+                    subtitle: 'Tankı sistemden kaldır',
+                    iconColor: Colors.white,
+                    bgColor: const Color(0xFFDC2626),
+                    onTap: () => context.push('/firma/tanklar/sil'),
+                  ),
+                  _buildMenuCard(
+                    icon: Icons.assignment_ind_rounded,
+                    title: 'Tank Atama',
+                    subtitle: 'Sürücü-tank eşleştirme',
+                    iconColor: Colors.white,
+                    bgColor: const Color(0xFF4F46E5),
+                    onTap: () => context.push('/firma/tanklar/atama'),
                   ),
                 ],
               ),
@@ -650,6 +684,25 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildMiniSectionHeader(String title) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.gray100,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        title,
+        style: GoogleFonts.inter(
+          fontSize: 13,
+          fontWeight: FontWeight.w700,
+          color: AppColors.gray700,
+          letterSpacing: 0.3,
+        ),
+      ),
     );
   }
 

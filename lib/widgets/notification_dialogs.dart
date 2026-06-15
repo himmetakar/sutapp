@@ -210,7 +210,7 @@ class NotificationDrawerDialog extends StatelessWidget {
                           iconData = Icons.admin_panel_settings_rounded;
                           iconColor = const Color(0xFF7C3AED);
                           iconBgColor = const Color(0xFFF3E5F5);
-                        } else if (type == 'tank_bosaltma_talebi') {
+                        } else if (type == 'sut_kabul') {
                           iconData = Icons.outbox_rounded;
                           iconColor = Colors.blue;
                           iconBgColor = const Color(0xFFEFF6FF);
@@ -234,6 +234,11 @@ class NotificationDrawerDialog extends StatelessWidget {
                                 parentContext.push('/surucu/teslimatlar');
                               } else if (role == UserRole.firma) {
                                 parentContext.push('/firma/urunler/siparisler');
+                              }
+                            } else if (type == 'sut_kabul') {
+                              Navigator.pop(context);
+                              if (role == UserRole.firma) {
+                                parentContext.push('/firma/sut-kabul');
                               }
                             }
                           },
@@ -305,7 +310,7 @@ class NotificationDrawerDialog extends StatelessWidget {
                                           ),
                                         ),
                                       ],
-                                      if (type == 'tank_bosaltma_talebi' && data['sutKabulId'] != null) ...[
+                                      if (type == 'sut_kabul' && data['sutKabulId'] != null) ...[
                                         const SizedBox(height: 10),
                                         StreamBuilder<DocumentSnapshot>(
                                           stream: FirebaseFirestore.instance
@@ -360,23 +365,17 @@ class NotificationDrawerDialog extends StatelessWidget {
                                                   Expanded(
                                                     child: ElevatedButton(
                                                       onPressed: () async {
-                                                        try {
-                                                          await firestoreService.transferTankStock(
-                                                            sutKabulId: data['sutKabulId'],
-                                                            sourceTankName: data['sourceTankName'] ?? '',
-                                                            targetTankName: data['targetTankName'] ?? '',
-                                                            miktar: (data['miktar'] as num).toDouble(),
-                                                            vehiclePlate: data['vehiclePlate'] ?? '',
-                                                            driverName: data['driverName'] ?? '',
-                                                          );
-                                                          await firestoreService.markNotificationRead(doc.id);
-                                                        } catch (e) {
-                                                          if (context.mounted) {
-                                                            ScaffoldMessenger.of(context).showSnackBar(
-                                                              SnackBar(content: Text('Hata: $e')),
-                                                            );
-                                                          }
-                                                        }
+                                                        final double amountVal = (data['miktar'] as num).toDouble();
+                                                        _showAcceptDialogInNotifications(
+                                                          context: context,
+                                                          sutKabulId: data['sutKabulId'],
+                                                          sourceTankName: data['sourceTankName'] ?? '',
+                                                          targetTankName: data['targetTankName'] ?? '',
+                                                          originalAmount: amountVal,
+                                                          vehiclePlate: data['vehiclePlate'] ?? '',
+                                                          driverName: data['driverName'] ?? '',
+                                                          notificationDocId: doc.id,
+                                                        );
                                                       },
                                                       style: ElevatedButton.styleFrom(
                                                         padding: const EdgeInsets.symmetric(vertical: 4),
@@ -569,6 +568,110 @@ class NotificationDrawerDialog extends StatelessWidget {
       ),
     );
   }
+
+  Future<void> _showAcceptDialogInNotifications({
+    required BuildContext context,
+    required String sutKabulId,
+    required String sourceTankName,
+    required String targetTankName,
+    required double originalAmount,
+    required String vehiclePlate,
+    required String driverName,
+    required String notificationDocId,
+  }) async {
+    final controller = TextEditingController();
+    final firestoreService = FirestoreService();
+
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text(
+            'Süt Kabul Miktarını Girin',
+            style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Toplayıcı Beyanı: ${originalAmount.toStringAsFixed(1)} L',
+                style: GoogleFonts.inter(fontSize: 13, color: AppColors.gray600, fontWeight: FontWeight.w500),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                  labelText: 'Kabul Edilen Miktar (Litre) *',
+                  hintText: originalAmount.toStringAsFixed(1),
+                  labelStyle: GoogleFonts.inter(fontSize: 13),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                  suffixText: 'L',
+                ),
+                style: GoogleFonts.inter(fontSize: 14),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(
+                'İptal',
+                style: GoogleFonts.inter(color: AppColors.gray500, fontWeight: FontWeight.bold),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                if (controller.text.trim().isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Lütfen kabul edilen litre miktarını giriniz. (Zorunlu)')),
+                  );
+                  return;
+                }
+                final double? acceptedAmount = double.tryParse(controller.text.replaceAll(',', '.'));
+                if (acceptedAmount == null || acceptedAmount < 0) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Lütfen geçerli bir miktar giriniz.')),
+                  );
+                  return;
+                }
+                Navigator.pop(context);
+                
+                try {
+                  await firestoreService.transferTankStock(
+                    sutKabulId: sutKabulId,
+                    sourceTankName: sourceTankName,
+                    targetTankName: targetTankName,
+                    miktar: acceptedAmount,
+                    beyanEdilenMiktar: originalAmount,
+                    vehiclePlate: vehiclePlate,
+                    driverName: driverName,
+                  );
+                  await firestoreService.markNotificationRead(notificationDocId);
+                } catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Hata: $e')),
+                    );
+                  }
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF10B981),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              child: Text(
+                'Kabul Et',
+                style: GoogleFonts.inter(fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
 }
 
 class NotificationSettingsDialog extends StatefulWidget {
@@ -644,7 +747,7 @@ class _NotificationSettingsDialogState extends State<NotificationSettingsDialog>
       case UserRole.surucu:
         return ['depo_aktarim', 'firma_bildirim', 'admin_bildirim'];
       case UserRole.firma:
-        return ['sut_alim', 'depo_aktarim', 'admin_bildirim'];
+        return ['sut_alim', 'depo_aktarim', 'sut_kabul', 'admin_bildirim'];
       case UserRole.admin:
         return ['admin_bildirim'];
     }
@@ -656,6 +759,8 @@ class _NotificationSettingsDialogState extends State<NotificationSettingsDialog>
         return 'Süt Alım Bildirimleri';
       case 'depo_aktarim':
         return 'Depo Teslimat Bildirimleri';
+      case 'sut_kabul':
+        return 'Süt Boşaltma Talepleri';
       case 'firma_bildirim':
         return 'Firma Duyuruları';
       case 'admin_bildirim':
@@ -671,6 +776,8 @@ class _NotificationSettingsDialogState extends State<NotificationSettingsDialog>
         return 'Süt araçları süt topladığında gelecek bildirimler.';
       case 'depo_aktarim':
         return 'Araçtaki süt depoya aktarıldığında toplayıcıya giden bildirimler.';
+      case 'sut_kabul':
+        return 'Toplayıcılar süt boşaltma talebi gönderdiğinde gelecek bildirimler.';
       case 'firma_bildirim':
         return 'Üyesi olduğunuz süt toplama firmasından gelen duyurular.';
       case 'admin_bildirim':

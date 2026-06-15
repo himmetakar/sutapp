@@ -1,10 +1,11 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
+import 'package:flutter/services.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import '../../providers/auth_provider.dart';
@@ -135,7 +136,7 @@ class _FirmaAylikSutScreenState extends State<FirmaAylikSutScreen> {
           vakit = vakit.toLowerCase().contains('sabah') ? 'S' : 'A';
         }
 
-        final tip = data['tip'] as String? ?? 'Soğuk süt';
+        final tip = data['tip'] as String? ?? 'So\u011fuk S\u00fct';
         producerType[producer] = tip;
 
         if (!producerData[producer]!.containsKey(day)) {
@@ -175,29 +176,8 @@ class _FirmaAylikSutScreenState extends State<FirmaAylikSutScreen> {
     String currentFirmaName,
   ) async {
     final pdf = pw.Document();
-    pw.Font fontRegular = pw.Font.helvetica();
-    pw.Font fontBold = pw.Font.helveticaBold();
-    bool useSanitized = false;
-
-    try {
-      fontRegular = await PdfGoogleFonts.robotoRegular();
-      fontBold = await PdfGoogleFonts.robotoBold();
-    } catch (e) {
-      useSanitized = true;
-    }
-
-    String sanitize(String text) {
-      if (!useSanitized) return text;
-      final Map<String, String> translation = {
-        'ı': 'i', 'İ': 'I', 'ğ': 'g', 'Ğ': 'G', 'ü': 'u', 'Ü': 'U',
-        'ş': 's', 'Ş': 'S', 'ö': 'o', 'Ö': 'O', 'ç': 'c', 'Ç': 'C',
-      };
-      String result = text;
-      translation.forEach((tr, eng) {
-        result = result.replaceAll(tr, eng);
-      });
-      return result;
-    }
+    final fontRegular = pw.Font.ttf(await rootBundle.load('assets/fonts/Roboto-Regular.ttf'));
+    final fontBold = pw.Font.ttf(await rootBundle.load('assets/fonts/Roboto-Bold.ttf'));
 
     final monthStr = DateFormat('MMMM yyyy', 'tr_TR').format(_selectedMonth);
 
@@ -218,7 +198,7 @@ class _FirmaAylikSutScreenState extends State<FirmaAylikSutScreen> {
     // Let's create table headers
     final List<String> headers = [
       'No',
-      sanitize('Müşteri Adı'),
+      'Müşteri Adı',
       'S/A',
       ...List.generate(daysCount, (i) => '${i + 1}'),
       'Top.',
@@ -263,7 +243,7 @@ class _FirmaAylikSutScreenState extends State<FirmaAylikSutScreen> {
     for (int idx = 0; idx < producers.length; idx++) {
       final producer = producers[idx];
       final data = producerData[producer]!;
-      final type = producerType[producer] ?? 'Soğuk süt';
+      final type = producerType[producer] ?? 'So\u011fuk S\u00fct';
       final isHot = type.toLowerCase().contains('sıcak');
       final rowBgColor = idx % 2 == 0 ? PdfColors.white : cGrey50;
 
@@ -287,7 +267,7 @@ class _FirmaAylikSutScreenState extends State<FirmaAylikSutScreen> {
           height: 14,
           alignment: pw.Alignment.centerLeft,
           padding: const pw.EdgeInsets.only(left: 4),
-          child: pw.Text(sanitize(producer), style: pw.TextStyle(font: fontBold, fontSize: 6, color: cBlue900)),
+          child: pw.Text(producer, style: pw.TextStyle(font: fontBold, fontSize: 6, color: cBlue900)),
         ),
         // S
         pw.Container(
@@ -468,11 +448,11 @@ class _FirmaAylikSutScreenState extends State<FirmaAylikSutScreen> {
               mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
               children: [
                 pw.Text(
-                  sanitize('$currentFirmaName - $monthStr AYLIK SUT KAYITLARI').toUpperCase(),
+                  '$currentFirmaName - $monthStr AYLIK SÜT KAYITLARI'.toUpperCase(),
                   style: pw.TextStyle(font: fontBold, fontSize: 11, color: cBlue800),
                 ),
                 pw.Text(
-                  sanitize('Rapor Tarihi: ${DateFormat('dd.MM.yyyy HH:mm').format(DateTime.now())}'),
+                  'Rapor Tarihi: ${DateFormat('dd.MM.yyyy HH:mm').format(DateTime.now())}',
                   style: pw.TextStyle(font: fontRegular, fontSize: 7, color: cGrey600),
                 ),
               ],
@@ -507,8 +487,8 @@ class _FirmaAylikSutScreenState extends State<FirmaAylikSutScreen> {
       text: currentMiktar > 0 ? currentMiktar.toStringAsFixed(1) : '',
     );
     String selectedTank = 'Tank seçimi (zorunlu değil)';
-    String selectedMilkType = 'Soğuk Süt';
-    const List<String> milkTypes = ['Soğuk Süt', 'Sıcak Süt', 'C kalite', 'D kalite'];
+    String selectedMilkType = 'So\u011fuk S\u00fct';
+    const List<String> milkTypes = ['So\u011fuk S\u00fct', 'Sıcak Süt', 'C kalite', 'D kalite'];
 
     showDialog(
       context: context,
@@ -829,7 +809,7 @@ class _FirmaAylikSutScreenState extends State<FirmaAylikSutScreen> {
                         vakit = vakit.toLowerCase().contains('sabah') ? 'S' : 'A';
                       }
 
-                      final tip = data['tip'] as String? ?? 'Soğuk süt';
+                      final tip = data['tip'] as String? ?? 'So\u011fuk S\u00fct';
                       producerType[producer] = tip;
 
                       if (!producerData[producer]!.containsKey(day)) {
@@ -978,7 +958,7 @@ class _FirmaAylikSutScreenState extends State<FirmaAylikSutScreen> {
               final idx = entry.key;
               final producer = entry.value;
               final data = producerData[producer]!;
-              final type = producerType[producer] ?? 'Soğuk süt';
+              final type = producerType[producer] ?? 'So\u011fuk S\u00fct';
               final isHot = type.toLowerCase().contains('sıcak');
               final bgColor = idx % 2 == 0 ? Colors.white : AppColors.gray50;
               final total = producerTotals[producer] ?? 0.0;

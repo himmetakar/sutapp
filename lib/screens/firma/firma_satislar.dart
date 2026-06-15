@@ -174,6 +174,7 @@ class _FirmaSatislarScreenState extends State<FirmaSatislarScreen> {
                       'uretici': selectedProducer,
                       'urun': product,
                       'miktar': amount,
+                      'fiyat': amount > 0 ? price / amount : 0.0, // birim fiyat
                       'tutar': price,
                       'tarih': DateFormat('dd.MM.yyyy').format(DateTime.now()),
                       'firma': currentFirmaName,

@@ -5,6 +5,7 @@ import '../../providers/auth_provider.dart';
 import '../../models/user_model.dart';
 import '../../config/theme.dart';
 import '../../config/constants.dart';
+import '../../services/firestore_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -427,6 +428,58 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ],
                       ),
+
+                      // ── GEÇİCİ: Stok sıfırlama butonu ──────────────────
+                      const SizedBox(height: 16),
+                      GestureDetector(
+                        onTap: () async {
+                          final messenger = ScaffoldMessenger.of(context);
+                          messenger.showSnackBar(const SnackBar(
+                            content: Text('Stoklar sıfırlanıyor...'),
+                            duration: Duration(seconds: 3),
+                          ));
+                          try {
+                            final result = await FirestoreService()
+                                .resetMilkCollectionsAndStocks('Fidanım Süt');
+                            messenger.hideCurrentSnackBar();
+                            messenger.showSnackBar(SnackBar(
+                              content: Text(result),
+                              backgroundColor: Colors.green,
+                              duration: const Duration(seconds: 6),
+                            ));
+                          } catch (e) {
+                            messenger.hideCurrentSnackBar();
+                            messenger.showSnackBar(SnackBar(
+                              content: Text('Hata: $e'),
+                              backgroundColor: Colors.red,
+                            ));
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          decoration: BoxDecoration(
+                            color: Colors.red[50],
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: Colors.red[200]!),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.cleaning_services_rounded, color: Colors.red[700], size: 16),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Süt Stoklarını Sıfırla (0 LT)',
+                                style: GoogleFonts.inter(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.red[700],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      // ───────────────────────────────────────────────────
                     ],
                   ],
                 ),

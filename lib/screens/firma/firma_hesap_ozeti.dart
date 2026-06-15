@@ -1,5 +1,6 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
@@ -273,6 +274,22 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
     return _getDocDate(doc);
   }
 
+  /// priceKey ('soguk', 'sicak', 'c_kalite', 'd_kalite') → standart Türkçe label
+  String _milkTypeLabel(String priceKey) {
+    switch (priceKey) {
+      case 'soguk':
+        return 'So\u011fuk S\u00fct';
+      case 'sicak':
+        return 'Sıcak Süt';
+      case 'c_kalite':
+        return 'C Kalite';
+      case 'd_kalite':
+        return 'D Kalite';
+      default:
+        return 'So\u011fuk S\u00fct';
+    }
+  }
+
   Widget _buildLedgerDetails(String firmaName, String ureticiName) {
     final formatCurrency = NumberFormat.currency(locale: 'tr_TR', symbol: '₺');
     final formatNumber = NumberFormat('#,##0.00', 'tr_TR');
@@ -355,7 +372,7 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
           final date = _getDocDate(doc);
           if (date.isBefore(startOfMonth)) {
             final double m = (doc['m'] as num?)?.toDouble() ?? 0.0;
-            final String rawType = doc['tip'] ?? 'Soğuk süt';
+            final String rawType = doc['tip'] ?? 'So\u011fuk S\u00fct';
             final String priceKey = FirestoreService().mapMilkTypeToPriceKey(rawType);
             final double price = FirestoreService().resolveMilkPrice(
               prices: priceList,
@@ -410,7 +427,7 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
           final date = _getDocDate(doc);
           if (date.isBefore(startOfMonth)) {
             final double m = (doc['m'] as num?)?.toDouble() ?? 0.0;
-            final String rawType = doc['tip'] ?? 'Soğuk süt';
+            final String rawType = doc['tip'] ?? 'So\u011fuk S\u00fct';
             final String priceKey = FirestoreService().mapMilkTypeToPriceKey(rawType);
             final double price = FirestoreService().resolveMilkPrice(
               prices: priceList,
@@ -493,7 +510,7 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
                 final colDate = _getDocDate(col);
                 if (colDate.year == date.year && colDate.month == date.month) {
                   final double m = (col['m'] as num?)?.toDouble() ?? 0.0;
-                  final String rawType = col['tip'] ?? 'Soğuk süt';
+                  final String rawType = col['tip'] ?? 'So\u011fuk S\u00fct';
                   final String priceKey = FirestoreService().mapMilkTypeToPriceKey(rawType);
                   final double price = FirestoreService().resolveMilkPrice(
                     prices: priceList,
@@ -546,7 +563,7 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
           final double m = (data['m'] as num?)?.toDouble() ?? 0.0;
           toplamLitre += m;
 
-          final String rawType = data['tip'] ?? 'Soğuk süt';
+          final String rawType = data['tip'] ?? 'So\u011fuk S\u00fct';
           final String priceKey = FirestoreService().mapMilkTypeToPriceKey(rawType);
           final double price = FirestoreService().resolveMilkPrice(
             prices: priceList,
@@ -557,11 +574,13 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
           );
           milkVal += m * price;
 
-          if (milkGrouped.containsKey(rawType)) {
-            milkGrouped[rawType]!['m'] = (milkGrouped[rawType]!['m'] as double) + m;
+          // priceKey ile grupla → 'So\u011fuk S\u00fct' / 'So\u011fuk S\u00fct' farkı ortadan kalkar
+          final String canonicalLabel = _milkTypeLabel(priceKey);
+          if (milkGrouped.containsKey(priceKey)) {
+            milkGrouped[priceKey]!['m'] = (milkGrouped[priceKey]!['m'] as double) + m;
           } else {
-            milkGrouped[rawType] = {
-              'tip': rawType,
+            milkGrouped[priceKey] = {
+              'tip': canonicalLabel,
               'price': price,
               'm': m,
             };
@@ -624,7 +643,7 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
           final mVal = colData['m'];
           final double m = mVal is num ? mVal.toDouble() : (double.tryParse(mVal.toString()) ?? 0.0);
           
-          final String rawType = colData['tip'] ?? 'Soğuk süt';
+          final String rawType = colData['tip'] ?? 'So\u011fuk S\u00fct';
           final String priceKey = FirestoreService().mapMilkTypeToPriceKey(rawType);
           final double price = FirestoreService().resolveMilkPrice(
             prices: priceList,
@@ -794,10 +813,14 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
           for (var doc in currentSat) {
             final data = doc.data() as Map<String, dynamic>;
             final tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
+            final miktarVal = (data['miktar'] as num?)?.toDouble() ?? 1.0;
+            // fiyat alanı yoksa tutar/miktar ile hesapla (eski kayıtlar için)
+            final storedFiyat = (data['fiyat'] as num?)?.toDouble() ?? 0.0;
+            final birimFiyat = storedFiyat > 0 ? storedFiyat : (miktarVal > 0 ? tutar / miktarVal : 0.0);
             final tarihStr = data['tarih'] ?? '';
             rows.add(_buildSectionRow(
               leftText: '${data['urun'] ?? 'Yem'}',
-              leftSubtitle: '${data['miktar'] ?? 1} adet x ${formatNumber.format((data['fiyat'] as num?)?.toDouble() ?? 0.0)} ₺',
+              leftSubtitle: '${miktarVal % 1 == 0 ? miktarVal.toStringAsFixed(0) : miktarVal.toStringAsFixed(1)} adet x ${formatNumber.format(birimFiyat)} ₺',
               rightText: '${formatCurrency.format(tutar)}',
               rightColor: Colors.red[850],
               rightSubtitle: tarihStr,
@@ -1353,7 +1376,7 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
     for (var doc in collections) {
       final data = doc.data() as Map<String, dynamic>;
       final double m = (data['m'] as num?)?.toDouble() ?? 0.0;
-      final String rawType = data['tip'] ?? 'Soğuk süt';
+      final String rawType = data['tip'] ?? 'So\u011fuk S\u00fct';
       final String priceKey = FirestoreService().mapMilkTypeToPriceKey(rawType);
       final double price = FirestoreService().resolveMilkPrice(
         prices: priceList,
@@ -1396,11 +1419,14 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
     for (var doc in satislar) {
       final data = doc.data() as Map<String, dynamic>;
       final tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
+      final miktarVal2 = (data['miktar'] as num?)?.toDouble() ?? 1.0;
+      final storedFiyat2 = (data['fiyat'] as num?)?.toDouble() ?? 0.0;
+      final birimFiyat2 = storedFiyat2 > 0 ? storedFiyat2 : (miktarVal2 > 0 ? tutar / miktarVal2 : 0.0);
       final date = _getDocDate(doc);
       allTx.add({
         'ts': date,
         'title': 'Ürün Alımı (${data['urun']})',
-        'subtitle': '${data['miktar']} adet x ${(data['fiyat'] as num?)?.toDouble() ?? 0.0} ₺',
+        'subtitle': '${miktarVal2 % 1 == 0 ? miktarVal2.toStringAsFixed(0) : miktarVal2.toStringAsFixed(1)} adet x ${NumberFormat('#,##0.00', 'tr_TR').format(birimFiyat2)} ₺',
         'amount': tutar,
         'isPositive': false,
         'icon': Icons.shopping_basket_rounded,
@@ -1546,31 +1572,12 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
   }) async {
     try {
       final pdf = pw.Document();
-      pw.Font fontRegular;
-      pw.Font fontBold;
-      bool useSanitized = false;
 
-      try {
-        fontRegular = await PdfGoogleFonts.robotoRegular();
-        fontBold = await PdfGoogleFonts.robotoBold();
-      } catch (e) {
-        fontRegular = pw.Font.helvetica();
-        fontBold = pw.Font.helveticaBold();
-        useSanitized = true;
-      }
-
-      String sanitize(String text) {
-        if (!useSanitized) return text;
-        final translation = {
-          'ı': 'i', 'İ': 'I', 'ğ': 'g', 'Ğ': 'G',
-          'ü': 'u', 'Ü': 'U', 'ş': 's', 'Ş': 'S',
-          'ö': 'o', 'Ö': 'O', 'ç': 'c', 'Ç': 'C',
-        };
-        String res = text;
-        translation.forEach((k, v) => res = res.replaceAll(k, v));
-        return res;
-      }
-
+      // Fontu asset'ten yükle — internet gerektirmez, Türkçe tam destekli
+      final fontData = await rootBundle.load('assets/fonts/Roboto-Regular.ttf');
+      final fontBoldData = await rootBundle.load('assets/fonts/Roboto-Bold.ttf');
+      final fontRegular = pw.Font.ttf(fontData);
+      final fontBold = pw.Font.ttf(fontBoldData);
 
 
       final double donemSonuBakiye = milkVal + totalCollections - totalSales - totalAvans - totalCeza - totalKesinti;
@@ -1595,16 +1602,16 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
                   pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.start,
                     children: [
-                      pw.Text(sanitize(currentFirmaName.toUpperCase()), style: pw.TextStyle(font: fontBold, fontSize: 16, color: PdfColors.teal)),
-                      pw.Text(sanitize('HESAP ONDENI RAPORU'), style: pw.TextStyle(font: fontBold, fontSize: 11, color: PdfColors.grey700)),
-                      pw.Text(sanitize('Uretici: $ureticiName'), style: pw.TextStyle(font: fontRegular, fontSize: 11)),
+                      pw.Text(currentFirmaName.toUpperCase(), style: pw.TextStyle(font: fontBold, fontSize: 16, color: PdfColors.teal)),
+                      pw.Text('HESAP ÖZETİ RAPORU', style: pw.TextStyle(font: fontBold, fontSize: 11, color: PdfColors.grey700)),
+                      pw.Text('Üretici: $ureticiName', style: pw.TextStyle(font: fontRegular, fontSize: 11)),
                     ],
                   ),
                   pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.end,
                     children: [
-                      pw.Text(sanitize('Donem: $monthName'), style: pw.TextStyle(font: fontBold, fontSize: 11)),
-                      pw.Text(sanitize('Tarih: ${DateFormat('dd.MM.yyyy').format(DateTime.now())}'), style: pw.TextStyle(font: fontRegular, fontSize: 9)),
+                      pw.Text('Dönem: $monthName', style: pw.TextStyle(font: fontBold, fontSize: 11)),
+                      pw.Text('Tarih: ${DateFormat('dd.MM.yyyy').format(DateTime.now())}', style: pw.TextStyle(font: fontRegular, fontSize: 9)),
                     ],
                   ),
                 ],
@@ -1615,15 +1622,15 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
 
               // Süt Üretimi Table
               if (totalLitre > 0) ...[
-                pw.Text(sanitize('SUT URETIMI'), style: pw.TextStyle(font: fontBold, fontSize: 12, color: PdfColors.teal800)),
+                pw.Text('SÜT ÜRETİMİ', style: pw.TextStyle(font: fontBold, fontSize: 12, color: PdfColors.teal800)),
                 pw.SizedBox(height: 5),
                 pw.TableHelper.fromTextArray(
-                  headers: [sanitize('Sut Turu'), sanitize('Fiyat'), sanitize('Miktar'), sanitize('Toplam Gelir')],
+                  headers: ['Süt Türü', 'Fiyat', 'Miktar', 'Toplam Gelir'],
                   data: milkGrouped.values.map((v) {
                     final double m = v['m'];
                     final double p = v['price'];
                     return [
-                      sanitize(v['tip']),
+                      v['tip'],
                       '${formatNumber.format(p)} TL',
                       '${formatNumber.format(m)} L',
                       formatCurrency.format(m * p)
@@ -1639,17 +1646,20 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
 
               // Alınan Ürünler Table
               if (sales.isNotEmpty) ...[
-                pw.Text(sanitize('ALINAN URUNLER'), style: pw.TextStyle(font: fontBold, fontSize: 12, color: PdfColors.teal800)),
+                pw.Text('ALINAN ÜRÜNLER', style: pw.TextStyle(font: fontBold, fontSize: 12, color: PdfColors.teal800)),
                 pw.SizedBox(height: 5),
                 pw.TableHelper.fromTextArray(
-                  headers: [sanitize('Urun Adi'), sanitize('Tarih'), sanitize('Miktar x Fiyat'), sanitize('Tutar')],
+                  headers: ['Ürün Adı', 'Tarih', 'Miktar x Fiyat', 'Tutar'],
                   data: sales.map((doc) {
                     final data = doc.data() as Map<String, dynamic>;
                     final tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
+                    final miktarPdf = (data['miktar'] as num?)?.toDouble() ?? 1.0;
+                    final storedFiyatPdf = (data['fiyat'] as num?)?.toDouble() ?? 0.0;
+                    final birimFiyatPdf = storedFiyatPdf > 0 ? storedFiyatPdf : (miktarPdf > 0 ? tutar / miktarPdf : 0.0);
                     return [
-                      sanitize(data['urun'] ?? 'Yem'),
-                      sanitize(data['tarih'] ?? ''),
-                      '${data['miktar']} adet x ${formatNumber.format((data['fiyat'] as num?)?.toDouble() ?? 0.0)} TL',
+                      data['urun'] ?? 'Yem',
+                      data['tarih'] ?? '',
+                      '${miktarPdf % 1 == 0 ? miktarPdf.toStringAsFixed(0) : miktarPdf.toStringAsFixed(1)} adet x ${formatNumber.format(birimFiyatPdf)} TL',
                       formatCurrency.format(tutar)
                     ];
                   }).toList(),
@@ -1663,10 +1673,10 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
 
               // Cezalar Table
               if (cezalar.isNotEmpty) ...[
-                pw.Text(sanitize('CEZALAR'), style: pw.TextStyle(font: fontBold, fontSize: 12, color: PdfColors.red800)),
+                pw.Text('CEZALAR', style: pw.TextStyle(font: fontBold, fontSize: 12, color: PdfColors.red800)),
                 pw.SizedBox(height: 5),
                 pw.TableHelper.fromTextArray(
-                  headers: [sanitize('Aciklama'), sanitize('Tarih'), sanitize('Detay'), sanitize('Tutar')],
+                  headers: ['Açıklama', 'Tarih', 'Detay', 'Tutar'],
                   data: cezalar.map((doc) {
                     final data = doc.data() as Map<String, dynamic>;
                     double tutar = 0.0;
@@ -1679,9 +1689,9 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
                       tutar = (data['tutar'] as num?)?.toDouble() ?? 0.0;
                     }
                     return [
-                      sanitize(data['aciklama'] ?? 'Ceza'),
-                      sanitize(data['tarih'] ?? ''),
-                      sanitize(detailStr),
+                      data['aciklama'] ?? 'Ceza',
+                      data['tarih'] ?? '',
+                      detailStr,
                       '- ${formatCurrency.format(tutar)}'
                     ];
                   }).toList(),
@@ -1695,17 +1705,17 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
 
               // Kesintiler Table
               if (milkVal > 0) ...[
-                pw.Text(sanitize('KESINTILER'), style: pw.TextStyle(font: fontBold, fontSize: 12, color: PdfColors.red800)),
+                pw.Text('KESİNTİLER', style: pw.TextStyle(font: fontBold, fontSize: 12, color: PdfColors.red800)),
                 pw.SizedBox(height: 5),
                 pw.TableHelper.fromTextArray(
-                  headers: [sanitize('Kesinti Turu'), sanitize('Aciklama / Oran / Detay'), sanitize('Tutar')],
+                  headers: ['Kesinti Türü', 'Açıklama / Oran / Detay', 'Tutar'],
                   data: [
                     ...dynamicColumns.map((type) {
                       final val = computedDynamicDeductions[type] ?? 0.0;
                       final rate = computedRates[type] ?? 0.0;
                       if (val > 0) {
                         return [
-                          sanitize(type),
+                          type,
                           '%${rate.toStringAsFixed(2)} oraninda',
                           '- ${formatCurrency.format(val)}'
                         ];
@@ -1732,21 +1742,21 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
                 child: pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    pw.Text(sanitize('NET ODEME HESAP TABLOSU'), style: pw.TextStyle(font: fontBold, fontSize: 11, color: PdfColors.teal800)),
+                    pw.Text('NET ÖDEME HESAP TABLOSU', style: pw.TextStyle(font: fontBold, fontSize: 11, color: PdfColors.teal800)),
                     pw.SizedBox(height: 6),
-                    _buildPdfNetRow('Sut Geliri Toplami:', '+ ${formatCurrency.format(milkVal)}', fontRegular),
-                    _buildPdfNetRow('Alinan Urunler:', '- ${formatCurrency.format(totalSales)}', fontRegular),
-                    _buildPdfNetRow('Alinan Avanslar:', '- ${formatCurrency.format(totalAvans)}', fontRegular),
+                    _buildPdfNetRow('Süt Geliri Toplamı:', '+ ${formatCurrency.format(milkVal)}', fontRegular),
+                    _buildPdfNetRow('Alınan Ürünler:', '- ${formatCurrency.format(totalSales)}', fontRegular),
+                    _buildPdfNetRow('Alınan Avanslar:', '- ${formatCurrency.format(totalAvans)}', fontRegular),
                     _buildPdfNetRow('Tahsilat:', '+ ${formatCurrency.format(totalCollections)}', fontRegular),
-                    _buildPdfNetRow('Kesintiler Toplami:', '- ${formatCurrency.format(totalKesinti + totalCeza)}', fontRegular),
+                    _buildPdfNetRow('Kesintiler Toplamı:', '- ${formatCurrency.format(totalKesinti + totalCeza)}', fontRegular),
                     pw.Divider(thickness: 1, color: PdfColors.grey400),
 
-                    _buildPdfNetRow('Donem Sonu Bakiye:', '${donemSonuBakiye >= 0 ? '+' : ''} ${formatCurrency.format(donemSonuBakiye)}', fontBold),
-                    _buildPdfNetRow('Onceki Aydan Devir:', '${devir >= 0 ? '+' : ''} ${formatCurrency.format(devir)}', fontRegular),
+                    _buildPdfNetRow('Dönem Sonu Bakiye:', '${donemSonuBakiye >= 0 ? '+' : ''} ${formatCurrency.format(donemSonuBakiye)}', fontBold),
+                    _buildPdfNetRow('Önceki Aydan Devir:', '${devir >= 0 ? '+' : ''} ${formatCurrency.format(devir)}', fontRegular),
                     _buildPdfNetRow('Mevcut Bakiye:', '${mevcutBakiye >= 0 ? '+' : ''} ${formatCurrency.format(mevcutBakiye)}', fontBold),
-                    _buildPdfNetRow('Net Odenecek:', '${netOdenecek >= 0 ? '+' : ''} ${formatCurrency.format(netOdenecek)}', fontBold),
-                    _buildPdfNetRow('Odenen:', '${odenen >= 0 ? '+' : ''} ${formatCurrency.format(odenen)}', fontBold),
-                    _buildPdfNetRow('Diger Aya Devir:', '${digerAyaDevir >= 0 ? '+' : ''} ${formatCurrency.format(digerAyaDevir)}', fontBold),
+                    _buildPdfNetRow('Net Ödenecek:', '${netOdenecek >= 0 ? '+' : ''} ${formatCurrency.format(netOdenecek)}', fontBold),
+                    _buildPdfNetRow('Ödenen:', '${odenen >= 0 ? '+' : ''} ${formatCurrency.format(odenen)}', fontBold),
+                    _buildPdfNetRow('Diğer Aya Devir:', '${digerAyaDevir >= 0 ? '+' : ''} ${formatCurrency.format(digerAyaDevir)}', fontBold),
                   ],
                 ),
               ),
@@ -1757,7 +1767,7 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
 
       await Printing.layoutPdf(
         onLayout: (PdfPageFormat format) async => pdf.save(),
-        name: 'hesap_ozeti_${sanitize(ureticiName)}_${DateFormat('yyyyMM').format(selectedMonth)}.pdf',
+        name: 'hesap_ozeti_${ureticiName}_${DateFormat('yyyyMM').format(selectedMonth)}.pdf',
       );
     } catch (e, stackTrace) {
       debugPrint('PDF layout error: $e\n$stackTrace');

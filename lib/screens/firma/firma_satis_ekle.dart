@@ -106,6 +106,7 @@ class _FirmaSatisEkleScreenState extends State<FirmaSatisEkleScreen> {
           'uretici': _selectedUretici,
           'urun': product,
           'miktar': amount,
+          'fiyat': item['birimFiyat'], // birim fiyat
           'tutar': totalVal,
           'tarih': formattedDate,
           'firma': currentFirmaName,

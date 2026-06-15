@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -9,6 +9,7 @@ import '../../providers/auth_provider.dart';
 import '../../config/theme.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import '../../services/firestore_service.dart';
 
 class FirmaProfilScreen extends StatefulWidget {
   const FirmaProfilScreen({super.key});
@@ -774,6 +775,9 @@ class _FirmaProfilScreenState extends State<FirmaProfilScreen> {
             const SizedBox(height: 16),
             _buildSubscriptionCard(firmSnap),
 
+            const SizedBox(height: 16),
+            _buildSystemManagementCard(currentFirma),
+
             const SizedBox(height: 80),
             ],
           ),
@@ -841,6 +845,173 @@ class _FirmaProfilScreenState extends State<FirmaProfilScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildSystemManagementCard(String currentFirma) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.gray200, width: 1.2),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.02),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.settings_outlined, color: AppColors.primary600, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'Sistem Yönetimi',
+                style: GoogleFonts.inter(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.gray800,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Bu alandan süt verilerini temizleyebilirsiniz. Sürücü, araç ve tank atamaları korunacaktır.',
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              color: AppColors.gray500,
+            ),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            height: 40,
+            child: OutlinedButton.icon(
+              onPressed: () => _confirmResetMilkData(currentFirma),
+              icon: const Icon(Icons.delete_sweep_rounded, size: 18, color: AppColors.danger),
+              label: Text(
+                'Süt Verilerini Sıfırla',
+                style: GoogleFonts.inter(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.danger,
+                ),
+              ),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: AppColors.danger, width: 1.2),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmResetMilkData(String currentFirma) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text(
+            'Verileri Sıfırla',
+            style: GoogleFonts.inter(fontWeight: FontWeight.bold),
+          ),
+          content: Text(
+            'Sütlere ait tüm rakamsal veriler (toplamalar, kabuller, fireler, teslimatlar, satışlar) silinecek, tank stokları sıfırlanacaktır. Bu işlem geri alınamaz. Devam etmek istiyor musunuz?',
+            style: GoogleFonts.inter(fontSize: 14),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(
+                'Vazgeç',
+                style: GoogleFonts.inter(color: AppColors.gray600, fontWeight: FontWeight.w600),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _performResetMilkData(currentFirma);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.danger,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: Text(
+                'Sıfırla',
+                style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _performResetMilkData(String currentFirma) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return const PopScope(
+          canPop: false,
+          child: AlertDialog(
+            content: Row(
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(width: 20),
+                Expanded(
+                  child: Text(
+                    'Veriler sıfırlanıyor, lütfen bekleyin...',
+                    style: TextStyle(fontSize: 14),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    try {
+      final FirestoreService fs = FirestoreService();
+      await fs.clearAllMilkData(currentFirma);
+      if (mounted) {
+        // Pop loading dialog
+        Navigator.of(context).pop();
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Süt verileri başarıyla sıfırlandı.'),
+            backgroundColor: AppColors.success,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        // Pop loading dialog
+        Navigator.of(context).pop();
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Hata oluştu: $e'),
+            backgroundColor: AppColors.danger,
+          ),
+        );
+      }
+    }
   }
 }
 

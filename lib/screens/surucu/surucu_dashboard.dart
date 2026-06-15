@@ -34,7 +34,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
   String? _selectedUreticiForm;
   String? _selectedMilkTypeForm;
   String? _selectedCustomerTypeForm;
-  final List<String> _milkTypes = const ['Soğuk süt', 'Sıcak süt', 'C kalite', 'D kalite'];
+  final List<String> _milkTypes = const ['Soğuk Süt', 'Sıcak Süt', 'C kalite', 'D kalite'];
   String? _selectedUreticiForSutAl;
   String? _selectedQualityForm;
   String? _selectedTankForm;
@@ -47,6 +47,9 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
   Stream<QuerySnapshot>? _collectionsStream;
   Stream<QuerySnapshot>? _producersStream;
   Stream<DocumentSnapshot>? _savedRotaStream;
+  // Gauge icin sabit toplamalar stream - her rebuild'de sifirlanmasin
+  Stream<QuerySnapshot>? _toplamaGaugeStream;
+  String? _toplamaGaugePlate;
   String? _cachedDriverName;
   String? _cachedEmail;
   String? _cachedFirma;
@@ -204,7 +207,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
         Map<String, dynamic>? selectedProvince;
         Map<String, dynamic>? selectedDistrict;
         Map<String, dynamic>? selectedNeighborhood;
-        String selectedMilkType = 'Soğuk süt';
+        String selectedMilkType = 'Soğuk Süt';
         bool isYem = false;
         bool loading = false;
 
@@ -649,7 +652,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                         const SizedBox(height: 16),
                       ],
                       _buildMilkTypeSelector(
-                        selectedType: localSelectedMilkType ?? 'Soğuk süt',
+                        selectedType: localSelectedMilkType ?? 'Soğuk Süt',
                         onChanged: (val) => setDialogState(() => localSelectedMilkType = val),
                         enabled: localSelectedCustomerType != 'yem',
                       ),
@@ -735,7 +738,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                         driverName: driverName,
                         vehiclePlate: plate,
                         region: region,
-                        sutTipi: localSelectedMilkType ?? 'Soğuk süt',
+                        sutTipi: localSelectedMilkType ?? 'Soğuk Süt',
                         customerType: localSelectedCustomerType ?? 'sut',
                       );
 
@@ -1335,10 +1338,15 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
 
         return Scaffold(
           backgroundColor: AppColors.gray50,
-          floatingActionButton: widget.showSutAlDirectly
-              ? null
-              : FloatingActionButton.extended(
-                  onPressed: () => context.go('/surucu/toplama'),
+          floatingActionButton: (widget.showSutAlDirectly && _selectedUreticiForSutAl == null)
+              ? FloatingActionButton.extended(
+                  onPressed: () {
+                    setState(() {
+                      _selectedUreticiForSutAl = "";
+                      _selectedUreticiForm = null;
+                      _miktarFormCtrl.clear();
+                    });
+                  },
                   heroTag: 'sut_al_fab',
                   backgroundColor: AppColors.primary600,
                   icon: const Icon(Icons.add_rounded, color: Colors.white, size: 20),
@@ -1346,7 +1354,8 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                     'Süt Al',
                     style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white),
                   ),
-                ),
+                )
+              : null,
           body: LayoutBuilder(
             builder: (context, constraints) {
               final isDesktop = constraints.maxWidth >= 1024;
@@ -1614,10 +1623,28 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                   Column(
                     children: [
                       if (!widget.showSutAlDirectly) ...[
+                        _buildQuickActionsGrid(
+                          context,
+                          plate,
+                          tankList.isNotEmpty ? (tankList.first['ad'] as String? ?? '') : '',
+                        ),
+                        const SizedBox(height: 24),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Tank Durumu',
+                            style: GoogleFonts.inter(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.gray800,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
                         _buildResponsiveLayout(isDesktop, isTablet, plate, resolvedDriverName, tankList, currentFirmaName),
-                        const SizedBox(height: 16),
+                      ] else ...[
+                        _buildSutAlFormView(isDesktop, plate, tankName, currentStock, capacity, resolvedDriverName, currentFirmaName, canAddCustomer, tankList),
                       ],
-                      _buildSutAlFormView(isDesktop, plate, tankName, currentStock, capacity, resolvedDriverName, currentFirmaName, canAddCustomer, tankList),
                     ],
                   ),
                   const SizedBox(height: 80),
@@ -1919,9 +1946,17 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                 final visitedProducersToday = collectionsDocs.where((doc) {
                   final data = doc.data() as Map<String, dynamic>;
                   final ts = data['timestamp'] as Timestamp?;
-                  if (ts == null) return false;
-                  final date = ts.toDate();
-                  final isToday = date.year == today.year && date.month == today.month && date.day == today.day;
+                  bool isToday = false;
+                  if (ts != null) {
+                    final date = ts.toDate();
+                    isToday = date.year == today.year && date.month == today.month && date.day == today.day;
+                  } else {
+                    final tarihStr = data['tarih'] as String?;
+                    if (tarihStr != null) {
+                      final todayStr = DateFormat('dd.MM.yyyy').format(today);
+                      isToday = tarihStr == todayStr;
+                    }
+                  }
                   if (isToday) {
                     final String name = data['u'] ?? '';
                     final double mVal = (data['m'] as num?)?.toDouble() ?? 0.0;
@@ -2088,7 +2123,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                               final name = data['name'] ?? '';
                               final group = data['group'] ?? 'Bilinmeyen Bölge';
                               final double bugunVerilenSut = todayMilkMap[name] ?? 0.0;
-                              final lastMilkType = data['lastMilkType'] ?? 'Soğuk süt';
+                              final lastMilkType = data['lastMilkType'] ?? 'Soğuk Süt';
                               final hasBeenVisited = visitedProducersToday.contains(name);
                               final bool hasPendingWrite = pendingWriteProducers.contains(name);
 
@@ -2356,7 +2391,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                   ),
                   Expanded(
                     child: Text(
-                      _selectedUreticiForSutAl!,
+                      _selectedUreticiForSutAl == "" ? 'Genel Süt Alımı' : _selectedUreticiForSutAl!,
                       textAlign: TextAlign.center,
                       overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.gray900),
@@ -2385,6 +2420,96 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                 ],
               ),
               const Divider(height: 24, thickness: 1, color: AppColors.gray200),
+
+              if (_selectedUreticiForSutAl == "") ...[
+                StreamBuilder<QuerySnapshot>(
+                  stream: _firestoreService.getProducersStream(firma: firma),
+                  builder: (context, prodSnapshot) {
+                    if (!prodSnapshot.hasData) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    final producers = prodSnapshot.data!.docs
+                        .map((doc) => doc['name'] as String)
+                        .toSet()
+                        .toList();
+                    if (producers.isEmpty) {
+                      return const Text('Sistemde kayıtlı üretici bulunamadı!');
+                    }
+
+                    if (_selectedUreticiForm == null || !producers.contains(_selectedUreticiForm)) {
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (mounted) {
+                          setState(() {
+                            _selectedUreticiForm = producers.first;
+                            try {
+                              final prodDoc = prodSnapshot.data!.docs.firstWhere((doc) => doc['name'] == _selectedUreticiForm);
+                              final docData = prodDoc.data() as Map<String, dynamic>;
+                              final rawMilkType = docData['lastMilkType'] ?? 'Soğuk Süt';
+                              final norm = rawMilkType.trim().toLowerCase();
+                              if (norm.contains('soğuk') || norm.contains('a kalite')) {
+                                _selectedQualityForm = 'Soğuk Süt';
+                              } else if (norm.contains('sıcak') || norm.contains('b kalite')) {
+                                _selectedQualityForm = 'Sıcak Süt';
+                              } else if (norm.contains('c kalite')) {
+                                _selectedQualityForm = 'C kalite';
+                              } else if (norm.contains('d kalite')) {
+                                _selectedQualityForm = 'D kalite';
+                              } else {
+                                _selectedQualityForm = 'Soğuk Süt';
+                              }
+                              _selectedCustomerTypeForm = docData['customerType'] ?? 'sut';
+                            } catch (_) {
+                              _selectedQualityForm = 'Soğuk Süt';
+                              _selectedCustomerTypeForm = 'sut';
+                            }
+                          });
+                        }
+                      });
+                      return const SizedBox(height: 50, child: Center(child: CircularProgressIndicator()));
+                    }
+
+                    return DropdownButtonFormField<String>(
+                      value: _selectedUreticiForm,
+                      decoration: const InputDecoration(
+                        labelText: 'Üretici Seçin *',
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      ),
+                      items: producers
+                          .map((u) => DropdownMenuItem(value: u, child: Text(u)))
+                          .toList(),
+                      onChanged: (val) {
+                        if (val != null) {
+                          setState(() {
+                            _selectedUreticiForm = val;
+                            try {
+                              final prodDoc = prodSnapshot.data!.docs.firstWhere((doc) => doc['name'] == _selectedUreticiForm);
+                              final docData = prodDoc.data() as Map<String, dynamic>;
+                              final rawMilkType = docData['lastMilkType'] ?? 'Soğuk Süt';
+                              final norm = rawMilkType.trim().toLowerCase();
+                              if (norm.contains('soğuk') || norm.contains('a kalite')) {
+                                _selectedQualityForm = 'Soğuk Süt';
+                              } else if (norm.contains('sıcak') || norm.contains('b kalite')) {
+                                _selectedQualityForm = 'Sıcak Süt';
+                              } else if (norm.contains('c kalite')) {
+                                _selectedQualityForm = 'C kalite';
+                              } else if (norm.contains('d kalite')) {
+                                _selectedQualityForm = 'D kalite';
+                              } else {
+                                _selectedQualityForm = 'Soğuk Süt';
+                              }
+                              _selectedCustomerTypeForm = docData['customerType'] ?? 'sut';
+                            } catch (_) {
+                              _selectedQualityForm = 'Soğuk Süt';
+                              _selectedCustomerTypeForm = 'sut';
+                            }
+                          });
+                        }
+                      },
+                    );
+                  },
+                ),
+                const SizedBox(height: 16),
+              ],
 
               // Date read-only container
               Container(
@@ -2525,11 +2650,14 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                 width: double.infinity,
                 child: OutlinedButton.icon(
                   onPressed: () {
-                    SutAnalizDialog.show(
-                      context,
-                      targetName: _selectedUreticiForSutAl!,
-                      tip: 'Üretici',
-                    );
+                    final targetName = _selectedUreticiForSutAl == "" ? _selectedUreticiForm : _selectedUreticiForSutAl;
+                    if (targetName != null && targetName.isNotEmpty) {
+                      SutAnalizDialog.show(
+                        context,
+                        targetName: targetName,
+                        tip: 'Üretici',
+                      );
+                    }
                   },
                   icon: const Icon(Icons.science_rounded, size: 16),
                   label: Text(
@@ -2555,12 +2683,21 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                     final data = doc.data() as Map<String, dynamic>;
                     final name = data['u'] ?? '';
                     final ts = data['timestamp'] as Timestamp?;
-                    if (ts == null) return false;
-                    final date = ts.toDate();
-                    return name == _selectedUreticiForSutAl &&
-                        date.year == today.year &&
-                        date.month == today.month &&
-                        date.day == today.day;
+                    
+                    bool isToday = false;
+                    if (ts != null) {
+                      final date = ts.toDate();
+                      isToday = date.year == today.year && date.month == today.month && date.day == today.day;
+                    } else {
+                      final tarihStr = data['tarih'] as String?;
+                      if (tarihStr != null) {
+                        final todayStr = DateFormat('dd.MM.yyyy').format(today);
+                        isToday = tarihStr == todayStr;
+                      }
+                    }
+
+                    final currentTarget = _selectedUreticiForSutAl == "" ? _selectedUreticiForm : _selectedUreticiForSutAl;
+                    return name == currentTarget && isToday;
                   }).toList();
 
                   if (records.isEmpty) return const SizedBox();
@@ -2697,11 +2834,14 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
     }
 
     final targetTank = _selectedTankForm ?? defaultTankName;
-    final ureticiName = _selectedUreticiForSutAl;
+    String? ureticiName = _selectedUreticiForSutAl;
+    if (ureticiName == "") {
+      ureticiName = _selectedUreticiForm;
+    }
     final qualityForm = _selectedQualityForm ?? 'Soğuk Süt';
     final customerTypeForm = _selectedCustomerTypeForm ?? 'sut';
 
-    if (ureticiName == null) return;
+    if (ureticiName == null || ureticiName.isEmpty) return;
 
     // Find capacity and stock of the selected tank
     double tCapacity = defaultCapacity;
@@ -2785,6 +2925,136 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
     });
   }
 
+  Widget _buildQuickActionsGrid(BuildContext context, String plate, String tankName) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Hızlı İşlemler',
+          style: GoogleFonts.inter(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: AppColors.gray800,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _buildQuickActionCard(
+                title: 'Süt Girişi',
+                icon: Icons.add_rounded,
+                iconColor: const Color(0xFF10B981), // Emerald
+                bgColor: const Color(0xFFECFDF5),
+                onTap: () {
+                  context.go('/surucu/toplama');
+                },
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: _buildQuickActionCard(
+                title: 'Siparişler',
+                icon: Icons.bar_chart_rounded,
+                iconColor: const Color(0xFF8B5CF6), // Purple
+                bgColor: const Color(0xFFF5F3FF),
+                onTap: () {
+                  context.go('/surucu/teslimatlar');
+                },
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              child: _buildQuickActionCard(
+                title: 'Süt Boşaltma',
+                icon: Icons.local_shipping_rounded,
+                iconColor: const Color(0xFF3B82F6), // Blue
+                bgColor: const Color(0xFFEFF6FF),
+                onTap: () {
+                  context.go('/surucu/sut-bosalt');
+                },
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: _buildQuickActionCard(
+                title: 'Süt Geçmişi',
+                icon: Icons.history_rounded,
+                iconColor: const Color(0xFFF59E0B), // Amber
+                bgColor: const Color(0xFFFFFBEB),
+                onTap: () {
+                  if (tankName.isNotEmpty) {
+                    _showDriverTankIcerik(context, tankName, plate: plate);
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Atanmış tank bulunamadı.')),
+                    );
+                  }
+                },
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildQuickActionCard({
+    required String title,
+    required IconData icon,
+    required Color iconColor,
+    required Color bgColor,
+    required VoidCallback onTap,
+  }) {
+    return Container(
+      height: 105,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.gray200, width: 1),
+        boxShadow: AppShadows.sm,
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: bgColor,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  icon,
+                  color: iconColor,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                title,
+                style: GoogleFonts.inter(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.gray700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildResponsiveLayout(
     bool isDesktop,
     bool isTablet,
@@ -2798,189 +3068,233 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
   }
 
   Widget _buildVerticalDriverTankList(List<dynamic> tanks, String plate, String currentFirmaName) {
-    final double cardHeight = 112.0;
-    final double spacing = 8.0;
-    final double totalItemHeight = cardHeight + spacing;
-    final double containerHeight = tanks.length <= 3 
-        ? (tanks.length * totalItemHeight) 
-        : (3 * totalItemHeight);
+    final tankNames = tanks
+        .map((t) => (t as Map)['ad'] as String? ?? '')
+        .where((n) => n.isNotEmpty)
+        .toList();
 
-    return SizedBox(
-      height: containerHeight,
-      child: ListView.builder(
-        scrollDirection: Axis.vertical,
-        padding: EdgeInsets.zero,
-        physics: const AlwaysScrollableScrollPhysics(),
-        itemCount: tanks.length,
-        itemBuilder: (context, index) {
-          final tank = tanks[index] as Map;
-          final String ad = tank['ad'] ?? '';
-          final double stok = (tank['stok'] as num?)?.toDouble() ?? 0.0;
-          final double kap = (tank['kap'] as num?)?.toDouble() ?? 2000.0;
-          final double fillPercent = kap > 0 ? (stok / kap) : 0.0;
+    if (tankNames.isEmpty) return const SizedBox.shrink();
 
-          Color gaugeColor = const Color(0xFF3B82F6);
-          final bool isOverflow = stok > kap;
-          if (isOverflow || fillPercent >= 0.8) {
-            gaugeColor = const Color(0xFFEF4444);
-          } else if (fillPercent >= 0.5) {
-            gaugeColor = const Color(0xFFF59E0B);
+    // toplamalar stream'ini State'de sakla - her rebuild'de sifirlanmasin
+    // (tanklar stream tetiklenince widget rebuild olur; yeni stream nesnesi
+    //  olusturmak Firestore'un pending->confirmed gecisini kaybettirir)
+    if (plate.isNotEmpty && _toplamaGaugePlate != plate) {
+      _toplamaGaugePlate = plate;
+      _toplamaGaugeStream = FirebaseFirestore.instance
+          .collection('toplamalar')
+          .where('km', isEqualTo: plate)
+          .snapshots(includeMetadataChanges: true);
+    } else if (plate.isEmpty && _toplamaGaugeStream == null) {
+      _toplamaGaugeStream = FirebaseFirestore.instance
+          .collection('toplamalar')
+          .where('tank', whereIn: tankNames)
+          .snapshots(includeMetadataChanges: true);
+    }
+
+    // tanklar koleksiyonundan kapasite bilgisi
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('tanklar')
+          .where('ad', whereIn: tankNames)
+          .snapshots(includeMetadataChanges: true),
+      builder: (context, tankSnapshot) {
+        final Map<String, Map<String, dynamic>> tankDataMap = {};
+        if (tankSnapshot.hasData) {
+          for (final doc in tankSnapshot.data!.docs) {
+            final d = doc.data() as Map<String, dynamic>;
+            final name = d['ad'] as String? ?? '';
+            if (name.isNotEmpty) tankDataMap[name] = d;
           }
+        }
 
-          return Container(
-            height: cardHeight,
-            margin: EdgeInsets.only(bottom: spacing),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: isOverflow ? Colors.red : AppColors.gray200, width: isOverflow ? 1.5 : 1.0),
-              boxShadow: AppShadows.sm,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    // Left: Shipping Icon
-                    Container(
-                      width: 36,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFEFF6FF),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Center(
-                        child: Icon(
-                          Icons.local_shipping_rounded,
-                          color: Color(0xFF3B82F6),
-                          size: 20,
-                        ),
-                      ),
+        return StreamBuilder<QuerySnapshot>(
+          stream: _toplamaGaugeStream,
+          builder: (context, toplamaSnapshot) {
+            // Her tank icin toplamalar toplamini hesapla (pending + confirmed)
+            final resolvedTanks = tanks.map((t) {
+              final Map tMap = t as Map;
+              final String ad = tMap['ad'] as String? ?? '';
+              final realData = tankDataMap[ad];
+              final double kap = (realData?['kap'] as num?)?.toDouble()
+                  ?? (tMap['kap'] as num?)?.toDouble()
+                  ?? 2000.0;
+
+              // toplamalar toplamini kullan - her durumda guvenilir
+              // (pending + confirmed kayitlarin hepsi dahil)
+              final double computedTotal = toplamaSnapshot.hasData
+                  ? toplamaSnapshot.data!.docs
+                      .where((doc) {
+                        final d = doc.data() as Map<String, dynamic>;
+                        return d['tank'] == ad && d['bosaltildi'] != true;
+                      })
+                      .fold(0.0, (double acc, doc) {
+                        final d = doc.data() as Map<String, dynamic>;
+                        return acc + ((d['m'] as num?)?.toDouble() ?? 0.0);
+                      })
+                  : 0.0;
+
+              // Fallback: toplamalar bossa (bosaltma sonrasi) tanklar.stok kullan
+              final double tankStok = (realData?['stok'] as num?)?.toDouble()
+                  ?? (tMap['stok'] as num?)?.toDouble()
+                  ?? 0.0;
+              final double stok = computedTotal > 0 ? computedTotal : tankStok;
+
+              return {'ad': ad, 'stok': stok, 'kap': kap};
+            }).toList();
+
+            final double cardHeight = 112.0;
+            final double spacing = 8.0;
+            final double totalItemHeight = cardHeight + spacing;
+            final double containerHeight = resolvedTanks.length <= 3
+                ? (resolvedTanks.length * totalItemHeight)
+                : (3 * totalItemHeight);
+
+            return SizedBox(
+              height: containerHeight,
+              child: ListView.builder(
+                scrollDirection: Axis.vertical,
+                padding: EdgeInsets.zero,
+                physics: const AlwaysScrollableScrollPhysics(),
+                itemCount: resolvedTanks.length,
+                itemBuilder: (context, index) {
+                  final tank = resolvedTanks[index];
+                  final String ad = tank['ad'] as String? ?? '';
+                  final double stok = (tank['stok'] as num?)?.toDouble() ?? 0.0;
+                  final double kap = (tank['kap'] as num?)?.toDouble() ?? 2000.0;
+                  final double fillPercent = kap > 0 ? (stok / kap) : 0.0;
+
+                  Color gaugeColor = const Color(0xFF3B82F6);
+                  final bool isOverflow = stok > kap;
+                  if (isOverflow || fillPercent >= 0.8) {
+                    gaugeColor = const Color(0xFFEF4444);
+                  } else if (fillPercent >= 0.5) {
+                    gaugeColor = const Color(0xFFF59E0B);
+                  }
+
+                  return Container(
+                    height: cardHeight,
+                    margin: EdgeInsets.only(bottom: spacing),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: isOverflow ? Colors.red : AppColors.gray200, width: isOverflow ? 1.5 : 1.0),
+                      boxShadow: AppShadows.sm,
                     ),
-                    const SizedBox(width: 12),
-
-                    // Middle: Name & Vehicle Info
-                    Expanded(
-                      flex: 3,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            ad,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.inter(
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.gray800,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            plate.isNotEmpty ? plate : 'Araç Tankı',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.inter(
-                              fontSize: 10,
-                              color: AppColors.gray400,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-
-                    // Right: Horizontal Progress Bar & Details
-                    Expanded(
-                      flex: 4,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                '${stok.toStringAsFixed(0)} / ${kap.toStringAsFixed(0)} LT',
-                                style: GoogleFonts.inter(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                  color: isOverflow ? Colors.red : AppColors.gray600,
-                                ),
-                              ),
-                              Text(
-                                '%${(fillPercent * 100).toStringAsFixed(0)}',
-                                style: GoogleFonts.inter(
-                                  fontSize: 10.5,
-                                  fontWeight: FontWeight.bold,
-                                  color: isOverflow ? Colors.red : AppColors.gray800,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 5),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(4),
-                            child: LinearProgressIndicator(
-                              value: fillPercent.clamp(0.0, 1.0),
-                              minHeight: 6,
-                              backgroundColor: AppColors.gray100,
-                              valueColor: AlwaysStoppedAnimation<Color>(gaugeColor),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    // Action Button: Detay
-                    GestureDetector(
-                      onTap: () => _showDriverTankIcerik(context, ad),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: AppColors.gray50,
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: AppColors.gray200),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
                           children: [
-                            Icon(Icons.visibility_rounded, size: 12, color: AppColors.gray600),
-                            const SizedBox(width: 4),
-                            Text(
-                              'Detay',
-                              style: GoogleFonts.inter(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.gray600,
+                            Container(
+                              width: 36,
+                              height: 36,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFEFF6FF),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Center(
+                                child: Icon(Icons.local_shipping_rounded, color: Color(0xFF3B82F6), size: 20),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              flex: 3,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    ad,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.gray800),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    plate.isNotEmpty ? plate : 'Ara\u00e7 Tank\u0131',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray400, fontWeight: FontWeight.w500),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              flex: 4,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        '${stok.toStringAsFixed(0)} / ${kap.toStringAsFixed(0)} LT',
+                                        style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.bold, color: isOverflow ? Colors.red : AppColors.gray600),
+                                      ),
+                                      Text(
+                                        '%${(fillPercent * 100).toStringAsFixed(0)}',
+                                        style: GoogleFonts.inter(fontSize: 10.5, fontWeight: FontWeight.bold, color: isOverflow ? Colors.red : AppColors.gray800),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 5),
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(4),
+                                    child: LinearProgressIndicator(
+                                      value: fillPercent.clamp(0.0, 1.0),
+                                      minHeight: 6,
+                                      backgroundColor: AppColors.gray100,
+                                      valueColor: AlwaysStoppedAnimation<Color>(gaugeColor),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ],
                         ),
-                      ),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            GestureDetector(
+                              onTap: () => _showDriverTankIcerik(context, ad, plate: plate),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: AppColors.gray50,
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(color: AppColors.gray200),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.visibility_rounded, size: 12, color: AppColors.gray600),
+                                    const SizedBox(width: 4),
+                                    Text('Detay', style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.gray600)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
-
-                  ],
-                ),
-              ],
-            ),
-          );
-        },
-      ),
+                  );
+                },
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
 
-  void _showDriverTankIcerik(BuildContext context, String tankAdi) {
+
+  void _showDriverTankIcerik(BuildContext context, String tankAdi, {String plate = ''}) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -3040,16 +3354,31 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
               ),
             ),
             Expanded(
-              child: FutureBuilder<QuerySnapshot>(
-                future: FirebaseFirestore.instance
-                    .collection('toplamalar')
-                    .where('tank', isEqualTo: tankAdi)
-                    .get(),
+              child: StreamBuilder<QuerySnapshot>(
+                stream: plate.isNotEmpty
+                    ? FirebaseFirestore.instance
+                        .collection('toplamalar')
+                        .where('km', isEqualTo: plate)
+                        .snapshots(includeMetadataChanges: true)
+                    : FirebaseFirestore.instance
+                        .collection('toplamalar')
+                        .where('tank', isEqualTo: tankAdi)
+                        .snapshots(includeMetadataChanges: true),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
                   }
-                  final rawDocs = snapshot.data?.docs ?? [];
+                  // plate varsa client-side tank filtresi uygula
+                  final allDocs = snapshot.data?.docs ?? [];
+                  final rawDocs = plate.isNotEmpty
+                      ? allDocs.where((doc) {
+                          final d = doc.data() as Map<String, dynamic>;
+                          return d['tank'] == tankAdi && d['bosaltildi'] != true;
+                        }).toList()
+                      : allDocs.where((doc) {
+                          final d = doc.data() as Map<String, dynamic>;
+                          return d['bosaltildi'] != true;
+                        }).toList();
                   if (rawDocs.isEmpty) {
                     return Center(
                       child: Text(
@@ -3098,6 +3427,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                       final u = data['u'] ?? 'Bilinmeyen Üretici';
                       final double m = (data['m'] as num?)?.toDouble() ?? 0.0;
                       final s = data['s'] ?? '';
+                      final bool isPending = doc.metadata.hasPendingWrites;
                       
                       final ts = data['timestamp'];
                       String t = '';
@@ -3123,9 +3453,29 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                             '$t $s',
                             style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray400),
                           ),
-                          trailing: Text(
-                            '${m.toStringAsFixed(1)} LT',
-                            style: GoogleFonts.inter(fontWeight: FontWeight.bold, color: const Color(0xFF3B82F6), fontSize: 14),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (isPending) ...[
+                                Text(
+                                  'Yükleniyor...',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w500,
+                                    color: Colors.orange[600],
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                              ],
+                              Text(
+                                '${m.toStringAsFixed(1)} LT',
+                                style: GoogleFonts.inter(
+                                  fontWeight: FontWeight.bold,
+                                  color: isPending ? Colors.grey[500] : const Color(0xFF3B82F6),
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       );

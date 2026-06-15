@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../providers/auth_provider.dart';
 import '../../config/theme.dart';
+import '../../services/firestore_service.dart';
 
 class FirmaTanklar extends StatefulWidget {
   const FirmaTanklar({super.key});
@@ -16,6 +17,103 @@ class FirmaTanklar extends StatefulWidget {
 
 class _FirmaTanklarState extends State<FirmaTanklar> {
   bool _isRefreshing = false;
+  bool _isResetting = false;
+
+  /// Tüm tankları silip her sürücüye yeni tank ata
+  Future<void> _resetAndAssignTanks(String firma) async {
+    // Onay dialogu
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('Sıfırla & Yeniden Ata', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 15)),
+        content: Text(
+          'Tüm mevcut tanklar silinecek ve her sürücüye araçlarına bağlı yeni birer tank atanacak.\n\nBu işlem geri alınamaz. Devam etmek istiyor musunuz?',
+          style: GoogleFonts.inter(fontSize: 13),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('İptal')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+            child: const Text('Evet, Sıfırla'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _isResetting = true);
+    final result = await FirestoreService().resetAndAssignAllTanks(firma);
+    if (!mounted) return;
+    setState(() => _isResetting = false);
+
+    // Sonuç log dialogu
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('İşlem Tamamlandı', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 15)),
+        content: SingleChildScrollView(
+          child: Text(result, style: GoogleFonts.robotoMono(fontSize: 11, color: AppColors.gray700)),
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary600, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+            child: const Text('Tamam'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Sadece süt kayıtlarını ve tank stoklarını sıfırla (araçlar/tanklar korunur)
+  Future<void> _resetMilkOnly(String firma) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('Süt Kayıtlarını Sil', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 15)),
+        content: Text(
+          'Tüm süt toplama kayıtları silinecek ve tank stokları 0\'a sıfırlanacak.\n\nAraçlar, tanklar ve müşteriler korunur.\n\nBu işlem geri alınamaz!',
+          style: GoogleFonts.inter(fontSize: 13),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('İptal')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+            child: const Text('Evet, Sıfırla'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _isResetting = true);
+    final result = await FirestoreService().resetMilkCollectionsAndStocks(firma);
+    if (!mounted) return;
+    setState(() => _isResetting = false);
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('İşlem Tamamlandı', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 15)),
+        content: SingleChildScrollView(
+          child: Text(result, style: GoogleFonts.robotoMono(fontSize: 11, color: AppColors.gray700)),
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary600, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+            child: const Text('Tamam'),
+          ),
+        ],
+      ),
+    );
+  }
 
   void _showTankIcerik(BuildContext context, String tankAdi, String tip) {
     showModalBottomSheet(
@@ -401,6 +499,28 @@ class _FirmaTanklarState extends State<FirmaTanklar> {
               setState(() => _isRefreshing = false);
             },
           ),
+          // Süt kayıtlarını sıfırla butonu (kırmızı)
+          Builder(builder: (ctx) {
+            final firma = Provider.of<AuthProvider>(ctx, listen: false).user?.displayName ?? '';
+            return _isResetting
+                ? const Padding(padding: EdgeInsets.all(14), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)))
+                : IconButton(
+                    tooltip: 'Süt Kayıtlarını Sıfırla',
+                    icon: const Icon(Icons.cleaning_services_rounded, color: Colors.red),
+                    onPressed: () => _resetMilkOnly(firma),
+                  );
+          }),
+          // Sıfırla & Ata butonu (turuncu)
+          Builder(builder: (ctx) {
+            final firma = Provider.of<AuthProvider>(ctx, listen: false).user?.displayName ?? '';
+            return _isResetting
+                ? const SizedBox.shrink()
+                : IconButton(
+                    tooltip: 'Tankları Sıfırla & Sürücülere Ata',
+                    icon: const Icon(Icons.auto_fix_high_rounded, color: Colors.orange),
+                    onPressed: () => _resetAndAssignTanks(firma),
+                  );
+          }),
           IconButton(
             icon: Container(
               width: 32,

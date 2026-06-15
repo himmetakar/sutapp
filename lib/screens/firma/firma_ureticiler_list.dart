@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'dart:ui' as ui;
 import 'dart:io' show File;
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
+import 'package:flutter/services.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:excel/excel.dart' hide Border, TextSpan;
@@ -430,7 +431,7 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
         final double m = (cData['m'] as num?)?.toDouble() ?? 0.0;
         totalLitres += m;
 
-        final String rawType = cData['tip'] ?? 'Soğuk süt';
+        final String rawType = cData['tip'] ?? 'So\u011fuk S\u00fct';
         final String priceKey = FirestoreService().mapMilkTypeToPriceKey(rawType);
         final double price = FirestoreService().resolveMilkPrice(
           prices: priceList,
@@ -492,29 +493,8 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
     // Generate PDF document
     try {
       final pdf = pw.Document();
-      pw.Font fontRegular = pw.Font.helvetica();
-      pw.Font fontBold = pw.Font.helveticaBold();
-      bool useSanitized = false;
-
-      try {
-        fontRegular = await PdfGoogleFonts.robotoRegular();
-        fontBold = await PdfGoogleFonts.robotoBold();
-      } catch (e) {
-        useSanitized = true;
-      }
-
-      String sanitize(String text) {
-        if (!useSanitized) return text;
-        final Map<String, String> translation = {
-          'ı': 'i', 'İ': 'I', 'ğ': 'g', 'Ğ': 'G', 'ü': 'u', 'Ü': 'U',
-          'ş': 's', 'Ş': 'S', 'ö': 'o', 'Ö': 'O', 'ç': 'c', 'Ç': 'C',
-        };
-        String result = text;
-        translation.forEach((tr, eng) {
-          result = result.replaceAll(tr, eng);
-        });
-        return result;
-      }
+      final fontRegular = pw.Font.ttf(await rootBundle.load('assets/fonts/Roboto-Regular.ttf'));
+      final fontBold = pw.Font.ttf(await rootBundle.load('assets/fonts/Roboto-Bold.ttf'));
 
       final monthStr = DateFormat('MMMM yyyy', 'tr_TR').format(selectedMonth);
 
@@ -530,12 +510,12 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
                   pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.start,
                     children: [
-                      pw.Text(sanitize(currentFirmaName.toUpperCase()), style: pw.TextStyle(font: fontBold, fontSize: 16, color: PdfColors.blue800)),
+                      pw.Text(currentFirmaName.toUpperCase(), style: pw.TextStyle(font: fontBold, fontSize: 16, color: PdfColors.blue800)),
                       pw.SizedBox(height: 4),
-                      pw.Text(sanitize('${_birlikFilterState!.toUpperCase()} - $monthStr RAPORU'), style: pw.TextStyle(font: fontBold, fontSize: 11, color: PdfColors.grey700)),
+                      pw.Text('${_birlikFilterState!.toUpperCase()} - $monthStr RAPORU', style: pw.TextStyle(font: fontBold, fontSize: 11, color: PdfColors.grey700)),
                     ],
                   ),
-                  pw.Text(sanitize('Tarih: ${DateFormat('dd.MM.yyyy').format(DateTime.now())}'), style: pw.TextStyle(font: fontRegular, fontSize: 9)),
+                  pw.Text('Tarih: ${DateFormat('dd.MM.yyyy').format(DateTime.now())}', style: pw.TextStyle(font: fontRegular, fontSize: 9)),
                 ],
               ),
               pw.SizedBox(height: 8),
@@ -544,19 +524,19 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
 
               pw.TableHelper.fromTextArray(
                 headers: [
-                  sanitize('Üye Adı Soyadı'),
-                  sanitize('TC / Vergi No'),
-                  sanitize('Süt (LT)'),
-                  sanitize('Brüt (₺)'),
-                  sanitize('Bağkur (₺)'),
-                  sanitize('Stopaj (₺)'),
-                  sanitize('Borsa (₺)'),
-                  sanitize('Net Tutar (₺)'),
-                  sanitize('İmza'),
+                  'Üye Adı Soyadı',
+                  'TC / Vergi No',
+                  'Süt (LT)',
+                  'Brüt (₺)',
+                  'Bağkur (₺)',
+                  'Stopaj (₺)',
+                  'Borsa (₺)',
+                  'Net Tutar (₺)',
+                  'İmza',
                 ],
                 data: pdfRows.map((row) => [
-                  sanitize(row['name']),
-                  sanitize(row['tc'].toString().isEmpty ? '-' : row['tc']),
+                  row['name'],
+                  row['tc'].toString().isEmpty ? '-' : row['tc'],
                   row['litres'].toStringAsFixed(1),
                   row['gross'].toStringAsFixed(2),
                   row['bagkur'].toStringAsFixed(2),
@@ -632,7 +612,7 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
         String? selectedGroup;
         String? selectedBirlik;
 
-        String selectedMilkType = 'Soğuk Süt';
+        String selectedMilkType = 'So\u011fuk S\u00fct';
         bool isYem = false;
 
         return StatefulBuilder(
@@ -959,7 +939,7 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
       TextCellValue('Genel'),
       TextCellValue('Yok'),
       TextCellValue('sut'),
-      TextCellValue('Soğuk Süt')
+      TextCellValue('So\u011fuk S\u00fct')
     ]);
 
     return excelObj.save();
@@ -1087,7 +1067,7 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
   }
 
   /// Converts ASCII-only Turkish text to proper Turkish characters.
-  /// e.g. "soguk sut" → "soğuk süt", "Bolge" → "Bölge"
+  /// e.g. "soguk sut" → "So\u011fuk S\u00fct", "Bolge" → "Bölge"
   String _normalizeTurkish(String input) {
     // Common ASCII → Turkish replacements (case-insensitive mapping applied after lowercasing)
     final lower = input.toLowerCase();
@@ -1126,18 +1106,18 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
   }
 
   /// Normalizes milk type with Turkish character correction.
-  /// Handles: "soguk sut", "Soğuk Süt", "A kalite", "sicak", "B kalite", etc.
+  /// Handles: "soguk sut", "So\u011fuk S\u00fct", "A kalite", "sicak", "B kalite", etc.
   String _normalizeMilkType(String raw) {
-    if (raw.trim().isEmpty) return 'Soğuk Süt';
+    if (raw.trim().isEmpty) return 'So\u011fuk S\u00fct';
     final lower = raw.trim().toLowerCase();
 
-    // Soğuk Süt variants
+    // So\u011fuk S\u00fct variants
     if (lower.contains('so') && lower.contains('s') ||
         lower.contains('soğuk') ||
         lower.contains('soguk') ||
         lower == 'a kalite' ||
         lower == 'a') {
-      return 'Soğuk Süt';
+      return 'So\u011fuk S\u00fct';
     }
     // Sıcak Süt variants
     if (lower.contains('sıcak') ||
@@ -1343,11 +1323,11 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
         String? selectedGroup = data['group'];
         String? selectedBirlik = data['birlik'];
 
-        String rawMilkType = data['lastMilkType'] ?? 'Soğuk Süt';
-        String selectedMilkType = 'Soğuk Süt';
+        String rawMilkType = data['lastMilkType'] ?? 'So\u011fuk S\u00fct';
+        String selectedMilkType = 'So\u011fuk S\u00fct';
         final normType = rawMilkType.trim().toLowerCase();
         if (normType.contains('soğuk') || normType.contains('a kalite')) {
-          selectedMilkType = 'Soğuk Süt';
+          selectedMilkType = 'So\u011fuk S\u00fct';
         } else if (normType.contains('sıcak') || normType.contains('b kalite')) {
           selectedMilkType = 'Sıcak Süt';
         } else if (normType.contains('c kalite')) {
@@ -1355,7 +1335,7 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
         } else if (normType.contains('d kalite')) {
           selectedMilkType = 'D kalite';
         } else {
-          selectedMilkType = 'Soğuk Süt';
+          selectedMilkType = 'So\u011fuk S\u00fct';
         }
         bool isYem = data['customerType'] == 'yem';
 
@@ -1567,11 +1547,11 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
     final tcNo = data['tcNo'] ?? '';
     final avg = (data['avg'] as num?)?.toDouble() ?? 0.0;
     final total = (data['total'] as num?)?.toDouble() ?? 0.0;
-    String rawMilkType = data['lastMilkType'] ?? 'Soğuk Süt';
-    String lastMilkType = 'Soğuk Süt';
+    String rawMilkType = data['lastMilkType'] ?? 'So\u011fuk S\u00fct';
+    String lastMilkType = 'So\u011fuk S\u00fct';
     final normType = rawMilkType.trim().toLowerCase();
     if (normType.contains('soğuk') || normType.contains('a kalite')) {
-      lastMilkType = 'Soğuk Süt';
+      lastMilkType = 'So\u011fuk S\u00fct';
     } else if (normType.contains('sıcak') || normType.contains('b kalite')) {
       lastMilkType = 'Sıcak Süt';
     } else if (normType.contains('c kalite')) {
@@ -1579,11 +1559,11 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
     } else if (normType.contains('d kalite')) {
       lastMilkType = 'D kalite';
     } else {
-      lastMilkType = 'Soğuk Süt';
+      lastMilkType = 'So\u011fuk S\u00fct';
     }
     String customerType = data['customerType'] ?? 'sut';
 
-    const List<String> milkTypes = ['Soğuk Süt', 'Sıcak Süt', 'C kalite', 'D kalite'];
+    const List<String> milkTypes = ['So\u011fuk S\u00fct', 'Sıcak Süt', 'C kalite', 'D kalite'];
 
     showDialog(
       context: context,
@@ -1780,7 +1760,7 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
                                 ),
                                 const SizedBox(width: 4),
                                 Text(
-                                  isSicak ? 'Sıcak Süt' : 'Soğuk Süt',
+                                  isSicak ? 'Sıcak Süt' : 'So\u011fuk S\u00fct',
                                   style: GoogleFonts.inter(
                                     color: Colors.white,
                                     fontWeight: FontWeight.bold,
@@ -1815,11 +1795,11 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
                     ),
                     Expanded(
                       child: GestureDetector(
-                        onTap: enabled ? () => onChanged('Soğuk Süt') : null,
+                        onTap: enabled ? () => onChanged('So\u011fuk S\u00fct') : null,
                         behavior: HitTestBehavior.opaque,
                         child: Center(
                           child: Text(
-                            'Soğuk Süt',
+                            'So\u011fuk S\u00fct',
                             style: GoogleFonts.inter(
                               color: isSoguk ? Colors.transparent : Colors.grey[600],
                               fontWeight: FontWeight.w600,
@@ -1842,7 +1822,7 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
               child: Opacity(
                 opacity: enabled ? 1.0 : 0.5,
                 child: InkWell(
-                  onTap: enabled ? () => onChanged(isC ? 'Soğuk Süt' : 'C kalite') : null,
+                  onTap: enabled ? () => onChanged(isC ? 'So\u011fuk S\u00fct' : 'C kalite') : null,
                   borderRadius: BorderRadius.circular(12),
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
@@ -1881,7 +1861,7 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
               child: Opacity(
                 opacity: enabled ? 1.0 : 0.5,
                 child: InkWell(
-                  onTap: enabled ? () => onChanged(isD ? 'Soğuk Süt' : 'D kalite') : null,
+                  onTap: enabled ? () => onChanged(isD ? 'So\u011fuk S\u00fct' : 'D kalite') : null,
                   borderRadius: BorderRadius.circular(12),
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
