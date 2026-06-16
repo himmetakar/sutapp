@@ -156,7 +156,6 @@ class _AppShellState extends State<AppShell> {
       '/firma/dijital-kart': 'Dijital Süt Kartı',
       '/firma/teslimatlar': 'Merkez Teslimat',
       '/firma/raporlar': 'Raporlar',
-      '/firma/fire-takip': 'Fire Takibi',
       '/firma/duyuru-gonder': 'Duyuru Gönder',
       '/admin/duyuru-gonder': 'Duyuru Gönder',
       '/firma/finans': 'Finans Yönetimi',

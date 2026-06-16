@@ -6,6 +6,7 @@ class AppUser {
   final String email;
   final UserRole role;
   final String? firmaId;
+  final String? firmaName;
   final String? phone;
   final String? il;
   final String? ilce;
@@ -19,6 +20,7 @@ class AppUser {
     required this.email,
     required this.role,
     this.firmaId,
+    this.firmaName,
     this.phone,
     this.il,
     this.ilce,
@@ -42,6 +44,7 @@ class AppUser {
       email: data['email'] ?? '',
       role: parsedRole,
       firmaId: data['firmaId'],
+      firmaName: data['firmaName'],
       phone: data['phone'],
       il: data['il'],
       ilce: data['ilce'],
@@ -65,6 +68,7 @@ class AppUser {
       email: c['email']!,
       role: role,
       firmaId: role == UserRole.admin ? null : 'demo_firma_1',
+      firmaName: role == UserRole.admin ? null : 'Kayseri Çiftlik',
       phone: c['phone']!,
       il: 'Kayseri',
       ilce: 'Kocasinan',
@@ -90,6 +94,7 @@ class AppUser {
       'email': email,
       'role': role.name,
       'firmaId': firmaId,
+      'firmaName': firmaName,
       'phone': phone,
       'il': il,
       'ilce': ilce,

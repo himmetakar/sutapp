@@ -147,8 +147,9 @@ class _FirmaPersonelPerformansScreenState extends State<FirmaPersonelPerformansS
                     builder: (context, collectionsSnapshot) {
                       return StreamBuilder<QuerySnapshot>(
                         stream: FirebaseFirestore.instance
-                            .collection('teslimatlar')
+                            .collection('sut_kabul')
                             .where('firma', isEqualTo: currentFirmaName)
+                            .where('durum', isEqualTo: 'Kabul Edildi')
                             .snapshots(),
                         builder: (context, deliveriesSnapshot) {
                           final collections = collectionsSnapshot.data?.docs ?? [];
@@ -209,19 +210,30 @@ class _FirmaPersonelPerformansScreenState extends State<FirmaPersonelPerformansS
                                       }
                                     }
 
-                                    // Compute deliveries
-                                    // To calculate deliveries, find vehicle plates assigned to this driver
-                                    // Compute Tank Açığı (fark)
+                                    // Compute Tank Açığı/Fazlası (fark)
                                     double tankShortage = 0.0;
                                     final driverDeliveries = deliveries.where((d) {
                                       final dData = d.data() as Map<String, dynamic>;
-                                      final String sr = dData['sr'] ?? dData['surucu'] ?? '';
-                                      return sr == driverName;
+                                      final String sr = dData['sr'] ?? dData['surucuName'] ?? dData['email'] ?? '';
+                                      if (sr != driverName) return false;
+
+                                      // Check date
+                                      final ts = dData['timestamp'];
+                                      if (ts is Timestamp) {
+                                        return _isWithinPeriod(ts.toDate());
+                                      }
+                                      final tarih = dData['tarih'];
+                                      if (tarih is String) {
+                                        return _isStringDateWithinPeriod(tarih);
+                                      }
+                                      return false;
                                     }).toList();
                                     for (var del in driverDeliveries) {
                                       final dData = del.data() as Map<String, dynamic>;
-                                      final double diff = (dData['fark'] ?? 0.0).toDouble();
-                                      tankShortage += diff;
+                                      final double toplanan = (dData['miktar'] ?? 0.0).toDouble();
+                                      final double teslim = (dData['kabulEdilenMiktar'] ?? dData['miktar'] ?? 0.0).toDouble();
+                                      final double fark = toplanan - teslim;
+                                      tankShortage += fark;
                                     }
 
                                     return Container(
@@ -274,12 +286,12 @@ class _FirmaPersonelPerformansScreenState extends State<FirmaPersonelPerformansS
                                                 value: '${driverCollections.length}',
                                                 label: 'Teslimat',
                                               ),
-                                              // Tank Açığı
+                                              // Tank Açığı / Tank Fazlası
                                               _buildMetricCard(
-                                                icon: Icons.warning_amber_rounded,
-                                                iconColor: Colors.red,
-                                                value: '${NumberFormat('#,##0', 'tr_TR').format(tankShortage)} L',
-                                                label: 'Tank Açığı',
+                                                icon: tankShortage >= 0 ? Icons.warning_amber_rounded : Icons.check_circle_rounded,
+                                                iconColor: tankShortage >= 0 ? Colors.red : Colors.green,
+                                                value: '${NumberFormat('#,##0', 'tr_TR').format(tankShortage.abs())} L',
+                                                label: tankShortage >= 0 ? 'Tank Açığı' : 'Tank Fazlası',
                                               ),
                                             ],
                                           ),

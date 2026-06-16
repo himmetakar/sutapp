@@ -26,7 +26,6 @@ import '../screens/firma/firma_tanklar.dart';
 import '../screens/firma/firma_toplamalar.dart';
 import '../screens/firma/firma_teslimatlar.dart';
 import '../screens/firma/firma_raporlar.dart';
-import '../screens/firma/firma_fire_takip.dart';
 import '../screens/firma/finans_screens.dart';
 import '../screens/firma/sut_fiyat_ekranlari.dart';
 import '../screens/firma/avans_ekranlari.dart';
@@ -202,7 +201,6 @@ GoRouter createRouter(AuthProvider auth) {
           GoRoute(path: '/firma/toplamalar', builder: (_, __) => const FirmaToplamalar()),
           GoRoute(path: '/firma/teslimatlar', builder: (_, __) => const FirmaTeslimatlar()),
           GoRoute(path: '/firma/raporlar', builder: (_, __) => const FirmaRaporlar()),
-          GoRoute(path: '/firma/fire-takip', builder: (_, __) => const FirmaFireTakip()),
           GoRoute(path: '/firma/satis-raporlari', builder: (_, __) => const SatisRaporlariScreen()),
           GoRoute(path: '/firma/urunler', builder: (_, __) => const UrunlerScreen()),
           GoRoute(path: '/firma/urunler/siparisler', builder: (_, __) => const UrunSiparisleriScreen()),

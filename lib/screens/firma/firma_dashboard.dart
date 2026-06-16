@@ -737,6 +737,8 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
         _loadProducerTrends(currentFirmaName, false),
         _getProducersNoMilkToday(currentFirmaName),
         _loadStaffPerformance(currentFirmaName, false),
+        FirebaseFirestore.instance.collection('avanslar').where('firma', isEqualTo: currentFirmaName).get(),
+        FirebaseFirestore.instance.collection('tahsilatlar').where('firma', isEqualTo: currentFirmaName).get(),
       ]),
       builder: (context, snap) {
         final Map<String, List<Map<String, dynamic>>> trends = (snap.data != null && snap.data!.isNotEmpty && snap.data![0] is Map)
@@ -748,6 +750,34 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
         final List<Map<String, dynamic>> staffPerf = (snap.data != null && snap.data!.length > 2 && snap.data![2] is List<Map<String, dynamic>>)
             ? snap.data![2] as List<Map<String, dynamic>>
             : [];
+        final avansSnap = snap.data != null && snap.data!.length > 3 ? snap.data![3] as QuerySnapshot : null;
+        final tahsilatSnap = snap.data != null && snap.data!.length > 4 ? snap.data![4] as QuerySnapshot : null;
+
+        double avansTotal = 0.0;
+        if (avansSnap != null) {
+          for (var doc in avansSnap.docs) {
+            final data = doc.data() as Map<String, dynamic>;
+            final durum = data['durum'] as String? ?? 'aktif';
+            if (durum == 'iptal') continue;
+            final tVal = data['tutar'];
+            final val = tVal is num ? tVal.toDouble() : (double.tryParse(tVal.toString()) ?? 0.0);
+            avansTotal += val;
+          }
+        }
+
+        double tahsilatTotal = 0.0;
+        if (tahsilatSnap != null) {
+          final fs = FirestoreService();
+          for (var doc in tahsilatSnap.docs) {
+            final data = doc.data() as Map<String, dynamic>;
+            final tVal = data['tutar'];
+            final val = tVal is num ? tVal.toDouble() : (double.tryParse(tVal.toString()) ?? 0.0);
+            final type = fs.getTahsilatType(data);
+            if (type == 'tahsilat') {
+              tahsilatTotal += val;
+            }
+          }
+        }
 
         final formatNumber = NumberFormat('#,##0', 'tr_TR');
         final cards = [
@@ -774,7 +804,7 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
           StatCard(
             icon: Icons.credit_card_rounded,
             label: 'Verilen Avanslar (₺)',
-            value: '1.125.300',
+            value: formatNumber.format(avansTotal),
             color: Colors.teal,
             change: '',
             subtext: 'Sistem Toplamı',
@@ -784,7 +814,7 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
           StatCard(
             icon: Icons.account_balance_wallet_rounded,
             label: 'Tahsilat (₺)',
-            value: '265.200',
+            value: formatNumber.format(tahsilatTotal),
             color: Colors.purple,
             change: '',
             subtext: 'Sistem Toplamı',
@@ -847,11 +877,28 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
   }
 
   Widget _buildMonthlyOperationsTab(bool isDesktop, bool isTablet, List<QueryDocumentSnapshot> collections, double totalMilk, int collectionCount, String currentFirmaName) {
-    final monthlyMilk = totalMilk * 4.2;
+    final now = DateTime.now();
+    double currentMonthMilk = 0.0;
+    for (var doc in collections) {
+      final data = doc.data() as Map<String, dynamic>;
+      final date = _parseDocDate(data);
+      if (date != null && date.year == now.year && date.month == now.month) {
+        final m = data['m'];
+        if (m is num) {
+          currentMonthMilk += m.toDouble();
+        } else if (m is String) {
+          currentMonthMilk += double.tryParse(m) ?? 0.0;
+        }
+      }
+    }
+    final monthlyMilk = currentMonthMilk;
+
     return FutureBuilder<List<dynamic>>(
       future: Future.wait([
         _loadProducerTrends(currentFirmaName, true),
         _loadStaffPerformance(currentFirmaName, true),
+        FirebaseFirestore.instance.collection('avanslar').where('firma', isEqualTo: currentFirmaName).get(),
+        FirebaseFirestore.instance.collection('tahsilatlar').where('firma', isEqualTo: currentFirmaName).get(),
       ]),
       builder: (context, snap) {
         final Map<String, List<Map<String, dynamic>>> trends = (snap.data != null && snap.data!.isNotEmpty && snap.data![0] is Map)
@@ -860,6 +907,40 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
         final List<Map<String, dynamic>> staffPerf = (snap.data != null && snap.data!.length > 1 && snap.data![1] is List<Map<String, dynamic>>)
             ? snap.data![1] as List<Map<String, dynamic>>
             : [];
+        final avansSnap = snap.data != null && snap.data!.length > 2 ? snap.data![2] as QuerySnapshot : null;
+        final tahsilatSnap = snap.data != null && snap.data!.length > 3 ? snap.data![3] as QuerySnapshot : null;
+
+        double monthlyAvansTotal = 0.0;
+        if (avansSnap != null) {
+          for (var doc in avansSnap.docs) {
+            final data = doc.data() as Map<String, dynamic>;
+            final durum = data['durum'] as String? ?? 'aktif';
+            if (durum == 'iptal') continue;
+            final date = _parseDocDate(data);
+            if (date != null && date.year == now.year && date.month == now.month) {
+              final tVal = data['tutar'];
+              final val = tVal is num ? tVal.toDouble() : (double.tryParse(tVal.toString()) ?? 0.0);
+              monthlyAvansTotal += val;
+            }
+          }
+        }
+
+        double monthlyTahsilatTotal = 0.0;
+        if (tahsilatSnap != null) {
+          final fs = FirestoreService();
+          for (var doc in tahsilatSnap.docs) {
+            final data = doc.data() as Map<String, dynamic>;
+            final date = _parseDocDate(data);
+            if (date != null && date.year == now.year && date.month == now.month) {
+              final tVal = data['tutar'];
+              final val = tVal is num ? tVal.toDouble() : (double.tryParse(tVal.toString()) ?? 0.0);
+              final type = fs.getTahsilatType(data);
+              if (type == 'tahsilat') {
+                monthlyTahsilatTotal += val;
+              }
+            }
+          }
+        }
 
         final formatNumber = NumberFormat('#,##0', 'tr_TR');
         final cards = [
@@ -886,7 +967,7 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
           StatCard(
             icon: Icons.credit_card_rounded,
             label: 'Aylık Avans (₺)',
-            value: formatNumber.format(monthlyMilk * 12.0),
+            value: formatNumber.format(monthlyAvansTotal),
             color: Colors.teal,
             change: '',
             subtext: 'Sistem Toplamı',
@@ -896,7 +977,7 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
           StatCard(
             icon: Icons.account_balance_wallet_rounded,
             label: 'Aylık Tahsilat (₺)',
-            value: formatNumber.format(monthlyMilk * 11.5),
+            value: formatNumber.format(monthlyTahsilatTotal),
             color: Colors.purple,
             change: '',
             subtext: 'Sistem Toplamı',
@@ -2410,7 +2491,7 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
                 style: GoogleFonts.inter(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: const Color(0xFF10B981),
+                  color: const Color(0xFFEF4444),
                 ),
               ),
               Text(
@@ -2418,7 +2499,7 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
                 style: GoogleFonts.inter(
                   fontSize: 12,
                   fontWeight: FontWeight.bold,
-                  color: const Color(0xFF10B981),
+                  color: const Color(0xFFEF4444),
                 ),
               ),
             ],
@@ -2432,7 +2513,7 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
                 style: GoogleFonts.inter(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: const Color(0xFFEF4444),
+                  color: const Color(0xFF10B981),
                 ),
               ),
               Text(
@@ -2440,7 +2521,7 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
                 style: GoogleFonts.inter(
                   fontSize: 12,
                   fontWeight: FontWeight.bold,
-                  color: const Color(0xFFEF4444),
+                  color: const Color(0xFF10B981),
                 ),
               ),
             ],
@@ -2897,8 +2978,9 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
           .get();
 
       final deliveriesSnap = await FirebaseFirestore.instance
-          .collection('teslimatlar')
+          .collection('sut_kabul')
           .where('firma', isEqualTo: currentFirmaName)
+          .where('durum', isEqualTo: 'Kabul Edildi')
           .get();
 
       final now = DateTime.now();
@@ -2934,7 +3016,7 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
         double shortage = 0.0;
         for (var del in deliveriesSnap.docs) {
           final dData = del.data();
-          final String sr = dData['sr'] ?? dData['surucu'] ?? '';
+          final String sr = dData['sr'] ?? dData['surucuName'] ?? dData['email'] ?? '';
           if (sr != name) continue;
 
           final DateTime date = getDocDate(dData);
@@ -2951,7 +3033,10 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
           }
 
           if (inPeriod) {
-            shortage += (dData['fark'] ?? 0.0).toDouble();
+            final double toplanan = (dData['miktar'] ?? 0.0).toDouble();
+            final double teslim = (dData['kabulEdilenMiktar'] ?? dData['miktar'] ?? 0.0).toDouble();
+            final double fark = toplanan - teslim;
+            shortage += fark;
           }
         }
 

@@ -554,14 +554,6 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
                     bgColor: const Color(0xFFD97706),
                     onTap: () => context.push('/firma/sut-analiz'),
                   ),
-                  _buildMenuCard(
-                    icon: Icons.warning_amber_rounded,
-                    title: 'Fire Takibi',
-                    subtitle: 'Fire ve kayıp izleme',
-                    iconColor: Colors.white,
-                    bgColor: const Color(0xFFEF4444),
-                    onTap: () => context.push('/firma/fire-takip'),
-                  ),
                 ],
               ),
 

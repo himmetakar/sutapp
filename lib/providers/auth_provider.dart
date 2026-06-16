@@ -28,6 +28,14 @@ class AuthProvider extends ChangeNotifier {
   bool get isSurucu => _user?.role == UserRole.surucu;
   bool get isUretici => _user?.role == UserRole.uretici;
 
+  String get currentFirma {
+    if (_user == null) return '';
+    if (_user!.role == UserRole.firma) {
+      return _user!.firmaName ?? _user!.displayName;
+    }
+    return _user!.firmaName ?? '';
+  }
+
   Future<void> loadSavedSession() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -93,7 +101,7 @@ class AuthProvider extends ChangeNotifier {
               final String adres = fData['adres'] ?? '';
 
               final Map<String, dynamic> userData = {
-                'displayName': yetkiliName,
+                'displayName': firmaName,
                 'name': yetkiliName,
                 'email': '',
                 'role': 'firma',

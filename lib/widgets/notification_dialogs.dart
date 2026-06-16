@@ -8,7 +8,7 @@ import '../models/user_model.dart';
 import '../config/theme.dart';
 import 'milk_loading_indicator.dart';
 
-class NotificationDrawerDialog extends StatelessWidget {
+class NotificationDrawerDialog extends StatefulWidget {
   final String userId;
   final UserRole role;
   final BuildContext parentContext;
@@ -48,8 +48,21 @@ class NotificationDrawerDialog extends StatelessWidget {
   }
 
   @override
+  State<NotificationDrawerDialog> createState() => _NotificationDrawerDialogState();
+}
+
+class _NotificationDrawerDialogState extends State<NotificationDrawerDialog> {
+  final firestoreService = FirestoreService();
+  late final Stream<QuerySnapshot> _notificationsStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _notificationsStream = firestoreService.getNotificationsStream(widget.userId);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final firestoreService = FirestoreService();
     final width = MediaQuery.of(context).size.width;
     final isDesktop = width >= 640;
 
@@ -89,15 +102,15 @@ class NotificationDrawerDialog extends StatelessWidget {
                       ),
                     ),
                     const Spacer(),
-                    if (role == UserRole.admin || role == UserRole.firma)
+                    if (widget.role == UserRole.admin || widget.role == UserRole.firma)
                       IconButton(
                         icon: const Icon(Icons.campaign_outlined, color: AppColors.primary600, size: 24),
                         onPressed: () {
                           Navigator.pop(context);
-                          if (role == UserRole.admin) {
-                            parentContext.push('/admin/duyuru-gonder');
+                          if (widget.role == UserRole.admin) {
+                            widget.parentContext.push('/admin/duyuru-gonder');
                           } else {
-                            parentContext.push('/firma/duyuru-gonder');
+                            widget.parentContext.push('/firma/duyuru-gonder');
                           }
                         },
                         tooltip: 'Duyuru Gönder',
@@ -107,7 +120,7 @@ class NotificationDrawerDialog extends StatelessWidget {
                       icon: const Icon(Icons.settings_outlined, color: AppColors.gray500),
                       onPressed: () {
                         Navigator.pop(context);
-                        NotificationSettingsDialog.show(parentContext, userId, role);
+                        NotificationSettingsDialog.show(widget.parentContext, widget.userId, widget.role);
                       },
                       tooltip: 'Bildirim Ayarları',
                     ),
@@ -123,7 +136,7 @@ class NotificationDrawerDialog extends StatelessWidget {
               // Notification List Stream
               Expanded(
                 child: StreamBuilder<QuerySnapshot>(
-                  stream: firestoreService.getNotificationsStream(userId),
+                  stream: _notificationsStream,
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
                       return const Center(
@@ -183,346 +196,11 @@ class NotificationDrawerDialog extends StatelessWidget {
                       separatorBuilder: (_, __) => const Divider(height: 1, thickness: 1, color: AppColors.gray100),
                       itemBuilder: (context, index) {
                         final doc = docs[index];
-                        final data = doc.data() as Map<String, dynamic>;
-                        final isRead = data['read'] as bool? ?? false;
-                        final timestamp = data['timestamp'] as Timestamp?;
-                        final title = data['baslik'] as String? ?? 'Bildirim';
-                        final body = data['icerik'] as String? ?? '';
-                        final type = data['type'] as String? ?? 'genel';
-
-                        IconData iconData = Icons.info_outline_rounded;
-                        Color iconColor = AppColors.primary600;
-                        Color iconBgColor = AppColors.primary50;
-
-                        if (type == 'sut_alim') {
-                          iconData = Icons.water_drop_rounded;
-                          iconColor = const Color(0xFF008AAE);
-                          iconBgColor = const Color(0xFFE0F7FA);
-                        } else if (type == 'depo_aktarim') {
-                          iconData = Icons.local_shipping_rounded;
-                          iconColor = AppColors.success;
-                          iconBgColor = AppColors.successLight;
-                        } else if (type == 'firma_bildirim') {
-                          iconData = Icons.business_rounded;
-                          iconColor = Colors.orange;
-                          iconBgColor = const Color(0xFFFFF3E0);
-                        } else if (type == 'admin_bildirim') {
-                          iconData = Icons.admin_panel_settings_rounded;
-                          iconColor = const Color(0xFF7C3AED);
-                          iconBgColor = const Color(0xFFF3E5F5);
-                        } else if (type == 'sut_kabul') {
-                          iconData = Icons.outbox_rounded;
-                          iconColor = Colors.blue;
-                          iconBgColor = const Color(0xFFEFF6FF);
-                        }
-
-                        String dateStr = '';
-                        if (timestamp != null) {
-                          final dt = timestamp.toDate();
-                          dateStr = DateFormat('dd.MM.yyyy HH:mm').format(dt);
-                        }
-
-                        return InkWell(
-                          onTap: () async {
-                            if (!isRead) {
-                              firestoreService.markNotificationRead(doc.id);
-                            }
-                            // Navigate to the relevant screen based on type & role
-                            if (type == 'siparis') {
-                              Navigator.pop(context);
-                              if (role == UserRole.surucu) {
-                                parentContext.push('/surucu/teslimatlar');
-                              } else if (role == UserRole.firma) {
-                                parentContext.push('/firma/urunler/siparisler');
-                              }
-                            } else if (type == 'sut_kabul') {
-                              Navigator.pop(context);
-                              if (role == UserRole.firma) {
-                                parentContext.push('/firma/sut-kabul');
-                              }
-                            }
-                          },
-                          child: Container(
-                            color: isRead ? Colors.transparent : AppColors.primary50.withValues(alpha: 0.3),
-                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                // Icon
-                                Container(
-                                  width: 38,
-                                  height: 38,
-                                  decoration: BoxDecoration(
-                                    color: iconBgColor,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Icon(iconData, color: iconColor, size: 18),
-                                ),
-                                const SizedBox(width: 12),
-                                // Content
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          Expanded(
-                                            child: Text(
-                                              title,
-                                              style: GoogleFonts.inter(
-                                                fontSize: 13,
-                                                fontWeight: isRead ? FontWeight.w600 : FontWeight.w700,
-                                                color: AppColors.gray800,
-                                              ),
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ),
-                                          if (!isRead)
-                                            Container(
-                                              width: 6,
-                                              height: 6,
-                                              decoration: const BoxDecoration(
-                                                color: AppColors.primary600,
-                                                shape: BoxShape.circle,
-                                              ),
-                                            ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        body,
-                                        style: GoogleFonts.inter(
-                                          fontSize: 11.5,
-                                          fontWeight: isRead ? FontWeight.w400 : FontWeight.w500,
-                                          color: isRead ? AppColors.gray500 : AppColors.gray700,
-                                          height: 1.35,
-                                        ),
-                                      ),
-                                      if (dateStr.isNotEmpty) ...[
-                                        const SizedBox(height: 6),
-                                        Text(
-                                          dateStr,
-                                          style: GoogleFonts.inter(
-                                            fontSize: 9.5,
-                                            color: AppColors.gray400,
-                                            fontWeight: FontWeight.w400,
-                                          ),
-                                        ),
-                                      ],
-                                      if (type == 'sut_kabul' && data['sutKabulId'] != null) ...[
-                                        const SizedBox(height: 10),
-                                        StreamBuilder<DocumentSnapshot>(
-                                          stream: FirebaseFirestore.instance
-                                              .collection('sut_kabul')
-                                              .doc(data['sutKabulId'])
-                                              .snapshots(),
-                                          builder: (context, kabulSnap) {
-                                            if (!kabulSnap.hasData || !kabulSnap.data!.exists) {
-                                              return const SizedBox.shrink();
-                                            }
-                                            final kabulData = kabulSnap.data!.data() as Map<String, dynamic>;
-                                            final durum = kabulData['durum'] ?? 'Bekliyor';
-
-                                            if (durum == 'Bekliyor') {
-                                              return Row(
-                                                children: [
-                                                  Expanded(
-                                                    child: OutlinedButton(
-                                                      onPressed: () async {
-                                                        try {
-                                                          await firestoreService.rejectTankUnload(
-                                                            data['sutKabulId'],
-                                                            data['driverName'] ?? '',
-                                                            data['sourceTankName'] ?? '',
-                                                            data['targetTankName'] ?? '',
-                                                          );
-                                                          await firestoreService.markNotificationRead(doc.id);
-                                                        } catch (e) {
-                                                          if (context.mounted) {
-                                                            ScaffoldMessenger.of(context).showSnackBar(
-                                                              SnackBar(content: Text('Hata: $e')),
-                                                            );
-                                                          }
-                                                        }
-                                                      },
-                                                      style: OutlinedButton.styleFrom(
-                                                        padding: const EdgeInsets.symmetric(vertical: 4),
-                                                        side: const BorderSide(color: AppColors.gray300),
-                                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                                                      ),
-                                                      child: Text(
-                                                        'Reddet',
-                                                        style: GoogleFonts.inter(
-                                                          fontSize: 11,
-                                                          fontWeight: FontWeight.bold,
-                                                          color: AppColors.danger,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                  const SizedBox(width: 8),
-                                                  Expanded(
-                                                    child: ElevatedButton(
-                                                      onPressed: () async {
-                                                        final double amountVal = (data['miktar'] as num).toDouble();
-                                                        _showAcceptDialogInNotifications(
-                                                          context: context,
-                                                          sutKabulId: data['sutKabulId'],
-                                                          sourceTankName: data['sourceTankName'] ?? '',
-                                                          targetTankName: data['targetTankName'] ?? '',
-                                                          originalAmount: amountVal,
-                                                          vehiclePlate: data['vehiclePlate'] ?? '',
-                                                          driverName: data['driverName'] ?? '',
-                                                          notificationDocId: doc.id,
-                                                        );
-                                                      },
-                                                      style: ElevatedButton.styleFrom(
-                                                        padding: const EdgeInsets.symmetric(vertical: 4),
-                                                        backgroundColor: const Color(0xFF10B981),
-                                                        foregroundColor: Colors.white,
-                                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                                                        elevation: 0,
-                                                      ),
-                                                      child: Text(
-                                                        'Kabul Et',
-                                                        style: GoogleFonts.inter(
-                                                          fontSize: 11,
-                                                          fontWeight: FontWeight.bold,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ],
-                                              );
-                                            } else {
-                                              final Color badgeBg = durum == 'Kabul Edildi' ? const Color(0xFFE0F2FE) : const Color(0xFFFEE2E2);
-                                              final Color badgeText = durum == 'Kabul Edildi' ? const Color(0xFF0369A1) : const Color(0xFFB91C1C);
-                                              return Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                                decoration: BoxDecoration(
-                                                  color: badgeBg,
-                                                  borderRadius: BorderRadius.circular(6),
-                                                ),
-                                                child: Text(
-                                                  'Durum: $durum',
-                                                  style: GoogleFonts.inter(
-                                                    fontSize: 10,
-                                                    fontWeight: FontWeight.bold,
-                                                    color: badgeText,
-                                                  ),
-                                                ),
-                                              );
-                                            }
-                                          },
-                                        ),
-                                      ],
-                                      if (type == 'toplayici_talebi' && data['teklifId'] != null) ...[
-                                        const SizedBox(height: 10),
-                                        StreamBuilder<DocumentSnapshot>(
-                                          stream: FirebaseFirestore.instance
-                                              .collection('toplayici_teklifleri')
-                                              .doc(data['teklifId'])
-                                              .snapshots(),
-                                          builder: (context, teklifSnap) {
-                                            if (!teklifSnap.hasData || !teklifSnap.data!.exists) {
-                                              return const SizedBox.shrink();
-                                            }
-                                            final teklifData = teklifSnap.data!.data() as Map<String, dynamic>;
-                                            final durum = teklifData['durum'] ?? 'beklemede';
-
-                                            if (durum == 'beklemede') {
-                                              return Row(
-                                                children: [
-                                                  Expanded(
-                                                    child: OutlinedButton(
-                                                      onPressed: () async {
-                                                        try {
-                                                          await firestoreService.rejectToplayiciTeklif(doc.id, data['teklifId']);
-                                                        } catch (e) {
-                                                          if (context.mounted) {
-                                                            ScaffoldMessenger.of(context).showSnackBar(
-                                                              SnackBar(content: Text('Hata: $e')),
-                                                            );
-                                                          }
-                                                        }
-                                                      },
-                                                      style: OutlinedButton.styleFrom(
-                                                        padding: const EdgeInsets.symmetric(vertical: 4),
-                                                        side: const BorderSide(color: AppColors.gray300),
-                                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                                                      ),
-                                                      child: Text(
-                                                        'Reddet',
-                                                        style: GoogleFonts.inter(
-                                                          fontSize: 11,
-                                                          fontWeight: FontWeight.bold,
-                                                          color: AppColors.danger,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                  const SizedBox(width: 8),
-                                                  Expanded(
-                                                    child: ElevatedButton(
-                                                      onPressed: () async {
-                                                        try {
-                                                          await firestoreService.approveToplayiciTeklif(doc.id, data['teklifId']);
-                                                        } catch (e) {
-                                                          if (context.mounted) {
-                                                            ScaffoldMessenger.of(context).showSnackBar(
-                                                              SnackBar(content: Text('Hata: $e')),
-                                                            );
-                                                          }
-                                                        }
-                                                      },
-                                                      style: ElevatedButton.styleFrom(
-                                                        padding: const EdgeInsets.symmetric(vertical: 4),
-                                                        backgroundColor: const Color(0xFF10B981),
-                                                        foregroundColor: Colors.white,
-                                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                                                        elevation: 0,
-                                                      ),
-                                                      child: Text(
-                                                        'Onayla',
-                                                        style: GoogleFonts.inter(
-                                                          fontSize: 11,
-                                                          fontWeight: FontWeight.bold,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ],
-                                              );
-                                            } else {
-                                              final Color badgeBg = durum == 'onaylandi' ? const Color(0xFFE0F2FE) : const Color(0xFFFEE2E2);
-                                              final Color badgeText = durum == 'onaylandi' ? const Color(0xFF0369A1) : const Color(0xFFB91C1C);
-                                              final label = durum == 'onaylandi' ? 'Onaylandı' : 'Reddedildi';
-                                              return Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                                decoration: BoxDecoration(
-                                                  color: badgeBg,
-                                                  borderRadius: BorderRadius.circular(6),
-                                                ),
-                                                child: Text(
-                                                  'Durum: $label',
-                                                  style: GoogleFonts.inter(
-                                                    fontSize: 10,
-                                                    fontWeight: FontWeight.bold,
-                                                    color: badgeText,
-                                                  ),
-                                                ),
-                                              );
-                                            }
-                                          },
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
+                        return NotificationItemTile(
+                          doc: doc,
+                          role: widget.role,
+                          parentContext: widget.parentContext,
+                          firestoreService: firestoreService,
                         );
                       },
                     );
@@ -538,7 +216,7 @@ class NotificationDrawerDialog extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     TextButton(
-                      onPressed: () => firestoreService.markAllNotificationsRead(userId),
+                      onPressed: () => firestoreService.markAllNotificationsRead(widget.userId),
                       child: Text(
                         'Tümünü Okundu İşaretle',
                         style: GoogleFonts.inter(
@@ -549,7 +227,7 @@ class NotificationDrawerDialog extends StatelessWidget {
                       ),
                     ),
                     TextButton(
-                      onPressed: () => firestoreService.clearAllNotifications(userId),
+                      onPressed: () => firestoreService.clearAllNotifications(widget.userId),
                       child: Text(
                         'Temizle',
                         style: GoogleFonts.inter(
@@ -568,108 +246,510 @@ class NotificationDrawerDialog extends StatelessWidget {
       ),
     );
   }
+}
 
-  Future<void> _showAcceptDialogInNotifications({
-    required BuildContext context,
-    required String sutKabulId,
-    required String sourceTankName,
-    required String targetTankName,
-    required double originalAmount,
-    required String vehiclePlate,
-    required String driverName,
-    required String notificationDocId,
-  }) async {
-    final controller = TextEditingController();
-    final firestoreService = FirestoreService();
+class NotificationItemTile extends StatefulWidget {
+  final QueryDocumentSnapshot doc;
+  final UserRole role;
+  final BuildContext parentContext;
+  final FirestoreService firestoreService;
 
-    await showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text(
-            'Süt Kabul Miktarını Girin',
-            style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Toplayıcı Beyanı: ${originalAmount.toStringAsFixed(1)} L',
-                style: GoogleFonts.inter(fontSize: 13, color: AppColors.gray600, fontWeight: FontWeight.w500),
+  const NotificationItemTile({
+    super.key,
+    required this.doc,
+    required this.role,
+    required this.parentContext,
+    required this.firestoreService,
+  });
+
+  @override
+  State<NotificationItemTile> createState() => _NotificationItemTileState();
+}
+
+class _NotificationItemTileState extends State<NotificationItemTile> {
+  Stream<DocumentSnapshot>? _subStream;
+
+  @override
+  void initState() {
+    super.initState();
+    final data = widget.doc.data() as Map<String, dynamic>;
+    final type = data['type'] as String? ?? 'genel';
+    if (type == 'sut_kabul' && data['sutKabulId'] != null) {
+      _subStream = FirebaseFirestore.instance
+          .collection('sut_kabul')
+          .doc(data['sutKabulId'])
+          .snapshots();
+    } else if (type == 'toplayici_talebi' && data['teklifId'] != null) {
+      _subStream = FirebaseFirestore.instance
+          .collection('toplayici_teklifleri')
+          .doc(data['teklifId'])
+          .snapshots();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final doc = widget.doc;
+    final data = doc.data() as Map<String, dynamic>;
+    final isRead = data['read'] as bool? ?? false;
+    final timestamp = data['timestamp'] as Timestamp?;
+    final title = data['baslik'] as String? ?? 'Bildirim';
+    final body = data['icerik'] as String? ?? '';
+    final type = data['type'] as String? ?? 'genel';
+
+    IconData iconData = Icons.info_outline_rounded;
+    Color iconColor = AppColors.primary600;
+    Color iconBgColor = AppColors.primary50;
+
+    if (type == 'sut_alim') {
+      iconData = Icons.water_drop_rounded;
+      iconColor = const Color(0xFF008AAE);
+      iconBgColor = const Color(0xFFE0F7FA);
+    } else if (type == 'depo_aktarim') {
+      iconData = Icons.local_shipping_rounded;
+      iconColor = AppColors.success;
+      iconBgColor = AppColors.successLight;
+    } else if (type == 'firma_bildirim') {
+      iconData = Icons.business_rounded;
+      iconColor = Colors.orange;
+      iconBgColor = const Color(0xFFFFF3E0);
+    } else if (type == 'admin_bildirim') {
+      iconData = Icons.admin_panel_settings_rounded;
+      iconColor = const Color(0xFF7C3AED);
+      iconBgColor = const Color(0xFFF3E5F5);
+    } else if (type == 'sut_kabul') {
+      iconData = Icons.outbox_rounded;
+      iconColor = Colors.blue;
+      iconBgColor = const Color(0xFFEFF6FF);
+    }
+
+    String dateStr = '';
+    if (timestamp != null) {
+      final dt = timestamp.toDate();
+      dateStr = DateFormat('dd.MM.yyyy HH:mm').format(dt);
+    }
+
+    return InkWell(
+      onTap: () async {
+        if (!isRead) {
+          widget.firestoreService.markNotificationRead(doc.id);
+        }
+        // Navigate to the relevant screen based on type & role
+        if (type == 'siparis') {
+          Navigator.pop(context);
+          if (widget.role == UserRole.surucu) {
+            widget.parentContext.push('/surucu/teslimatlar');
+          } else if (widget.role == UserRole.firma) {
+            widget.parentContext.push('/firma/urunler/siparisler');
+          }
+        } else if (type == 'sut_kabul') {
+          Navigator.pop(context);
+          if (widget.role == UserRole.firma) {
+            widget.parentContext.push('/firma/sut-kabul');
+          }
+        }
+      },
+      child: Container(
+        color: isRead ? Colors.transparent : AppColors.primary50.withValues(alpha: 0.3),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Icon
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: iconBgColor,
+                shape: BoxShape.circle,
               ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: controller,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: InputDecoration(
-                  labelText: 'Kabul Edilen Miktar (Litre) *',
-                  hintText: originalAmount.toStringAsFixed(1),
-                  labelStyle: GoogleFonts.inter(fontSize: 13),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                  suffixText: 'L',
-                ),
-                style: GoogleFonts.inter(fontSize: 14),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(
-                'İptal',
-                style: GoogleFonts.inter(color: AppColors.gray500, fontWeight: FontWeight.bold),
-              ),
+              child: Icon(iconData, color: iconColor, size: 18),
             ),
-            ElevatedButton(
-              onPressed: () async {
-                if (controller.text.trim().isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Lütfen kabul edilen litre miktarını giriniz. (Zorunlu)')),
-                  );
-                  return;
-                }
-                final double? acceptedAmount = double.tryParse(controller.text.replaceAll(',', '.'));
-                if (acceptedAmount == null || acceptedAmount < 0) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Lütfen geçerli bir miktar giriniz.')),
-                  );
-                  return;
-                }
-                Navigator.pop(context);
-                
-                try {
-                  await firestoreService.transferTankStock(
-                    sutKabulId: sutKabulId,
-                    sourceTankName: sourceTankName,
-                    targetTankName: targetTankName,
-                    miktar: acceptedAmount,
-                    beyanEdilenMiktar: originalAmount,
-                    vehiclePlate: vehiclePlate,
-                    driverName: driverName,
-                  );
-                  await firestoreService.markNotificationRead(notificationDocId);
-                } catch (e) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Hata: $e')),
-                    );
-                  }
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF10B981),
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-              child: Text(
-                'Kabul Et',
-                style: GoogleFonts.inter(fontWeight: FontWeight.bold),
+            const SizedBox(width: 12),
+            // Content
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          title,
+                          style: GoogleFonts.inter(
+                            fontSize: 13,
+                            fontWeight: isRead ? FontWeight.w600 : FontWeight.w700,
+                            color: AppColors.gray800,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (!isRead)
+                        Container(
+                          width: 6,
+                          height: 6,
+                          decoration: const BoxDecoration(
+                            color: AppColors.primary600,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    body,
+                    style: GoogleFonts.inter(
+                      fontSize: 11.5,
+                      fontWeight: isRead ? FontWeight.w400 : FontWeight.w500,
+                      color: isRead ? AppColors.gray500 : AppColors.gray700,
+                      height: 1.35,
+                    ),
+                  ),
+                  if (dateStr.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      dateStr,
+                      style: GoogleFonts.inter(
+                        fontSize: 9.5,
+                        color: AppColors.gray400,
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                  ],
+                  if (type == 'sut_kabul' && data['sutKabulId'] != null && _subStream != null) ...[
+                    const SizedBox(height: 10),
+                    StreamBuilder<DocumentSnapshot>(
+                      stream: _subStream,
+                      builder: (context, kabulSnap) {
+                        if (!kabulSnap.hasData || !kabulSnap.data!.exists) {
+                          return const SizedBox.shrink();
+                        }
+                        final kabulData = kabulSnap.data!.data() as Map<String, dynamic>;
+                        final durum = kabulData['durum'] ?? 'Bekliyor';
+
+                        if (durum == 'Bekliyor') {
+                          return SutKabulNotificationActions(
+                            sutKabulId: data['sutKabulId'],
+                            notificationDocId: doc.id,
+                            originalAmount: (data['miktar'] as num).toDouble(),
+                            sourceTankName: data['sourceTankName'] ?? '',
+                            targetTankName: data['targetTankName'] ?? '',
+                            vehiclePlate: data['vehiclePlate'] ?? '',
+                            driverName: data['driverName'] ?? '',
+                            firestoreService: widget.firestoreService,
+                          );
+                        } else {
+                          final Color badgeBg = durum == 'Kabul Edildi' ? const Color(0xFFE0F2FE) : const Color(0xFFFEE2E2);
+                          final Color badgeText = durum == 'Kabul Edildi' ? const Color(0xFF0369A1) : const Color(0xFFB91C1C);
+                          return Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: badgeBg,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              'Durum: $durum',
+                              style: GoogleFonts.inter(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: badgeText,
+                              ),
+                            ),
+                          );
+                        }
+                      },
+                    ),
+                  ],
+                  if (type == 'toplayici_talebi' && data['teklifId'] != null && _subStream != null) ...[
+                    const SizedBox(height: 10),
+                    StreamBuilder<DocumentSnapshot>(
+                      stream: _subStream,
+                      builder: (context, teklifSnap) {
+                        if (!teklifSnap.hasData || !teklifSnap.data!.exists) {
+                          return const SizedBox.shrink();
+                        }
+                        final teklifData = teklifSnap.data!.data() as Map<String, dynamic>;
+                        final durum = teklifData['durum'] ?? 'beklemede';
+
+                        if (durum == 'beklemede') {
+                          return Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton(
+                                  onPressed: () async {
+                                    try {
+                                      await widget.firestoreService.rejectToplayiciTeklif(doc.id, data['teklifId']);
+                                    } catch (e) {
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text('Hata: $e')),
+                                        );
+                                      }
+                                    }
+                                  },
+                                  style: OutlinedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(vertical: 4),
+                                    side: const BorderSide(color: AppColors.gray300),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                  ),
+                                  child: Text(
+                                    'Reddet',
+                                    style: GoogleFonts.inter(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppColors.danger,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: ElevatedButton(
+                                  onPressed: () async {
+                                    try {
+                                      await widget.firestoreService.approveToplayiciTeklif(doc.id, data['teklifId']);
+                                    } catch (e) {
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text('Hata: $e')),
+                                        );
+                                      }
+                                    }
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(vertical: 4),
+                                    backgroundColor: const Color(0xFF10B981),
+                                    foregroundColor: Colors.white,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                    elevation: 0,
+                                  ),
+                                  child: Text(
+                                    'Onayla',
+                                    style: GoogleFonts.inter(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          );
+                        } else {
+                          final Color badgeBg = durum == 'onaylandi' ? const Color(0xFFE0F2FE) : const Color(0xFFFEE2E2);
+                          final Color badgeText = durum == 'onaylandi' ? const Color(0xFF0369A1) : const Color(0xFFB91C1C);
+                          final label = durum == 'onaylandi' ? 'Onaylandı' : 'Reddedildi';
+                          return Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: badgeBg,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              'Durum: $label',
+                              style: GoogleFonts.inter(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: badgeText,
+                              ),
+                            ),
+                          );
+                        }
+                      },
+                    ),
+                  ],
+                ],
               ),
             ),
           ],
-        );
-      },
+        ),
+      ),
+    );
+  }
+}
+
+class SutKabulNotificationActions extends StatefulWidget {
+  final String sutKabulId;
+  final String notificationDocId;
+  final double originalAmount;
+  final String sourceTankName;
+  final String targetTankName;
+  final String vehiclePlate;
+  final String driverName;
+  final FirestoreService firestoreService;
+
+  const SutKabulNotificationActions({
+    super.key,
+    required this.sutKabulId,
+    required this.notificationDocId,
+    required this.originalAmount,
+    required this.sourceTankName,
+    required this.targetTankName,
+    required this.vehiclePlate,
+    required this.driverName,
+    required this.firestoreService,
+  });
+
+  @override
+  State<SutKabulNotificationActions> createState() => _SutKabulNotificationActionsState();
+}
+
+class _SutKabulNotificationActionsState extends State<SutKabulNotificationActions> {
+  late final TextEditingController _controller;
+  bool _isProcessing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.originalAmount.toStringAsFixed(1));
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 38,
+          child: TextField(
+            controller: _controller,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.bold, color: AppColors.gray800),
+            decoration: InputDecoration(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              labelText: 'Kabul Edilen Miktar (LT)',
+              labelStyle: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500, fontWeight: FontWeight.w500),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: AppColors.gray200),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: AppColors.gray200),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: AppColors.primary600, width: 1.5),
+              ),
+              suffixText: 'L',
+              suffixStyle: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: _isProcessing
+                    ? null
+                    : () async {
+                        setState(() => _isProcessing = true);
+                        try {
+                          await widget.firestoreService.rejectTankUnload(
+                            widget.sutKabulId,
+                            widget.driverName,
+                            widget.sourceTankName,
+                            widget.targetTankName,
+                          );
+                          await widget.firestoreService.markNotificationRead(widget.notificationDocId);
+                        } catch (e) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Hata: $e')),
+                            );
+                          }
+                        } finally {
+                          if (context.mounted) setState(() => _isProcessing = false);
+                        }
+                      },
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  side: const BorderSide(color: AppColors.gray300),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                child: _isProcessing
+                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                    : Text(
+                        'Reddet',
+                        style: GoogleFonts.inter(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.danger,
+                        ),
+                      ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: ElevatedButton(
+                onPressed: _isProcessing
+                    ? null
+                    : () async {
+                        if (_controller.text.trim().isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Lütfen kabul edilen miktar giriniz.')),
+                          );
+                          return;
+                        }
+                        final double? acceptedAmount = double.tryParse(_controller.text.replaceAll(',', '.'));
+                        if (acceptedAmount == null || acceptedAmount < 0) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Geçersiz miktar.')),
+                          );
+                          return;
+                        }
+
+                        setState(() => _isProcessing = true);
+                        try {
+                          await widget.firestoreService.transferTankStock(
+                            sutKabulId: widget.sutKabulId,
+                            sourceTankName: widget.sourceTankName,
+                            targetTankName: widget.targetTankName,
+                            miktar: acceptedAmount,
+                            beyanEdilenMiktar: widget.originalAmount,
+                            vehiclePlate: widget.vehiclePlate,
+                            driverName: widget.driverName,
+                          );
+                          await widget.firestoreService.markNotificationRead(widget.notificationDocId);
+                        } catch (e) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Hata: $e')),
+                            );
+                          }
+                        } finally {
+                          if (context.mounted) setState(() => _isProcessing = false);
+                        }
+                      },
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  backgroundColor: const Color(0xFF10B981),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  elevation: 0,
+                ),
+                child: _isProcessing
+                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    : Text(
+                        'Kabul Et',
+                        style: GoogleFonts.inter(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

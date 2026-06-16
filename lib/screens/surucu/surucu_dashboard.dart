@@ -1189,6 +1189,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
       _cachedEmail = userEmail;
       _profileStream = FirebaseFirestore.instance
           .collection('suruculer')
+          .where('firma', isEqualTo: authProvider.currentFirma)
           .snapshots();
     }
 
@@ -1249,7 +1250,7 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
 
         if (_cachedDriverName != resolvedDriverName || _vehicleStream == null) {
           _cachedDriverName = resolvedDriverName;
-          _vehicleStream = _firestoreService.getDriverVehicleStream(resolvedDriverName);
+          _vehicleStream = _firestoreService.getDriverVehicleStream(resolvedDriverName, firma: authProvider.currentFirma);
           _savedRotaStream = FirebaseFirestore.instance
               .collection('surucu_rota_siralamalari')
               .doc(resolvedDriverName)

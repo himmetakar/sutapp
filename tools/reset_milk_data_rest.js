@@ -136,25 +136,37 @@ async function main() {
   const token = getAccessToken();
   console.log('✓ Firebase token alındı\n');
 
-  process.stdout.write('  [1/5] toplamalar siliniyor... ');
+  process.stdout.write('  [1/8] toplamalar siliniyor... ');
   const n1 = await deleteCollection('toplamalar', token);
   console.log(`${n1} kayıt ✓`);
 
-  process.stdout.write('  [2/5] sut_kabul siliniyor... ');
+  process.stdout.write('  [2/8] sut_kabul siliniyor... ');
   const n2 = await deleteCollection('sut_kabul', token);
   console.log(`${n2} kayıt ✓`);
 
-  process.stdout.write('  [3/5] bosaltma_talepleri siliniyor... ');
+  process.stdout.write('  [3/8] bosaltma_talepleri siliniyor... ');
   const n3 = await deleteCollection('bosaltma_talepleri', token);
   console.log(`${n3} kayıt ✓`);
 
-  process.stdout.write('  [4/5] tanklar.stok → 0... ');
-  const n4 = await resetAllTankStoks(token);
-  console.log(`${n4} tank ✓`);
+  process.stdout.write('  [4/8] fireler siliniyor... ');
+  const n4 = await deleteCollection('fireler', token);
+  console.log(`${n4} kayıt ✓`);
 
-  process.stdout.write('  [5/5] araç tank kopyaları → 0... ');
-  const n5 = await resetVehicleTankStocks(token);
-  console.log(`${n5} araç ✓`);
+  process.stdout.write('  [5/8] teslimatlar siliniyor... ');
+  const n5 = await deleteCollection('teslimatlar', token);
+  console.log(`${n5} kayıt ✓`);
+
+  process.stdout.write('  [6/8] sut_satislari siliniyor... ');
+  const n6 = await deleteCollection('sut_satislari', token);
+  console.log(`${n6} kayıt ✓`);
+
+  process.stdout.write('  [7/8] tanklar.stok → 0... ');
+  const n7 = await resetAllTankStoks(token);
+  console.log(`${n7} tank ✓`);
+
+  process.stdout.write('  [8/8] araç tank kopyaları → 0... ');
+  const n8 = await resetVehicleTankStocks(token);
+  console.log(`${n8} araç ✓`);
 
   console.log('');
   console.log('════════════════════════════════════');

@@ -52,27 +52,32 @@ class _FirmaPersonelAcikFazlaScreenState extends State<FirmaPersonelAcikFazlaScr
     }
   }
 
-  bool _isRecordMatchingDate(String dateStr) {
-    try {
-      final parts = dateStr.split('.');
-      if (parts.length != 3) return false;
-      final day = int.parse(parts[0]);
-      final month = int.parse(parts[1]);
-      final year = int.parse(parts[2]);
-      final recordDate = DateTime(year, month, day);
+  bool _isRecordMatchingDate(Timestamp? timestamp, String dateStr) {
+    DateTime? recordDate;
+    if (timestamp != null) {
+      recordDate = timestamp.toDate();
+    } else if (dateStr.isNotEmpty) {
+      try {
+        final parts = dateStr.split('.');
+        if (parts.length == 3) {
+          final day = int.parse(parts[0]);
+          final month = int.parse(parts[1]);
+          final year = int.parse(parts[2]);
+          recordDate = DateTime(year, month, day);
+        }
+      } catch (_) {}
+    }
+    if (recordDate == null) return false;
 
-      if (_selectedTab == 'Günlük') {
-        return recordDate.year == _selectedDate.year &&
-            recordDate.month == _selectedDate.month &&
-            recordDate.day == _selectedDate.day;
-      } else if (_selectedTab == 'Aylık') {
-        return recordDate.year == _selectedDate.year &&
-            recordDate.month == _selectedDate.month;
-      } else {
-        return recordDate.year == _selectedDate.year;
-      }
-    } catch (_) {
-      return false;
+    if (_selectedTab == 'Günlük') {
+      return recordDate.year == _selectedDate.year &&
+          recordDate.month == _selectedDate.month &&
+          recordDate.day == _selectedDate.day;
+    } else if (_selectedTab == 'Aylık') {
+      return recordDate.year == _selectedDate.year &&
+          recordDate.month == _selectedDate.month;
+    } else {
+      return recordDate.year == _selectedDate.year;
     }
   }
 
@@ -129,12 +134,41 @@ class _FirmaPersonelAcikFazlaScreenState extends State<FirmaPersonelAcikFazlaScr
                       onPressed: _prevDate,
                     ),
                   ),
-                  Text(
-                    _getDateLabel(),
-                    style: GoogleFonts.inter(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.gray800,
+                  GestureDetector(
+                    onTap: () async {
+                      final DateTime? picked = await showDatePicker(
+                        context: context,
+                        initialDate: _selectedDate,
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime(2100),
+                        locale: const Locale('tr', 'TR'),
+                        helpText: _selectedTab == 'Günlük' 
+                            ? 'Gün Seçin' 
+                            : _selectedTab == 'Aylık' 
+                                ? 'Ay Seçin' 
+                                : 'Yıl Seçin',
+                      );
+                      if (picked != null) {
+                        setState(() {
+                          _selectedDate = picked;
+                        });
+                      }
+                    },
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _getDateLabel(),
+                          style: GoogleFonts.inter(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.primary600,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.arrow_drop_down_rounded, color: AppColors.primary600, size: 20),
+                      ],
                     ),
                   ),
                   Container(
@@ -195,8 +229,9 @@ class _FirmaPersonelAcikFazlaScreenState extends State<FirmaPersonelAcikFazlaScr
                 ),
                 child: StreamBuilder<QuerySnapshot>(
                   stream: FirebaseFirestore.instance
-                      .collection('teslimatlar')
+                      .collection('sut_kabul')
                       .where('firma', isEqualTo: currentFirmaName)
+                      .where('durum', isEqualTo: 'Kabul Edildi')
                       .snapshots(),
                   builder: (context, teslimSnapshot) {
                     if (teslimSnapshot.connectionState == ConnectionState.waiting) {
@@ -209,15 +244,31 @@ class _FirmaPersonelAcikFazlaScreenState extends State<FirmaPersonelAcikFazlaScr
                     final filteredDeliveries = allDeliveries.where((doc) {
                       final data = doc.data() as Map<String, dynamic>;
                       final String dateStr = data['tarih'] ?? '';
-                      if (!_isRecordMatchingDate(dateStr)) return false;
+                      final Timestamp? timestamp = data['timestamp'] as Timestamp?;
+                      if (!_isRecordMatchingDate(timestamp, dateStr)) return false;
 
                       if (_selectedDriverFilter != 'Tümü') {
-                        final String driverName = data['sr'] ?? data['surucu'] ?? '';
+                        final String driverName = data['sr'] ?? data['surucuName'] ?? data['surucu'] ?? '';
                         if (driverName != _selectedDriverFilter) return false;
                       }
 
                       return true;
                     }).toList();
+
+                    double toplamAcik = 0.0;
+                    double toplamFazla = 0.0;
+
+                    for (var doc in filteredDeliveries) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      final double toplanan = (data['toplanan'] ?? data['miktar'] ?? 0.0).toDouble();
+                      final double teslim = (data['teslim'] ?? data['kabulEdilenMiktar'] ?? data['miktar'] ?? 0.0).toDouble();
+                      final double fark = toplanan - teslim;
+                      if (fark > 0) {
+                        toplamAcik += fark;
+                      } else if (fark < 0) {
+                        toplamFazla += fark.abs();
+                      }
+                    }
 
                     return ListView(
                       padding: const EdgeInsets.all(20),
@@ -252,18 +303,54 @@ class _FirmaPersonelAcikFazlaScreenState extends State<FirmaPersonelAcikFazlaScr
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
-                                  'Açık = Personelin beyan ettiği – Yöneticinin kabul ettiği miktar',
+                                  'Açık: Beyan edilen > Kabul edilen miktar (Eksik süt)\nFazla: Beyan edilen < Kabul edilen miktar (Fazla süt)',
                                   style: GoogleFonts.inter(
                                     fontSize: 11,
                                     color: const Color(0xFF1E40AF),
                                     fontWeight: FontWeight.w500,
+                                    height: 1.4,
                                   ),
                                 ),
                               ),
                             ],
                           ),
                         ),
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 20),
+
+                        // Period Summary Card
+                        if (filteredDeliveries.isNotEmpty) ...[
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: AppColors.gray200),
+                              boxShadow: AppShadows.sm,
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Dönem Özeti',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.gray800,
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                Row(
+                                  children: [
+                                    _buildSummaryStatBox('Toplam Açık', '${toplamAcik.toStringAsFixed(0)} L', Colors.red),
+                                    const SizedBox(width: 10),
+                                    _buildSummaryStatBox('Toplam Fazla', '${toplamFazla.toStringAsFixed(0)} L', Colors.green),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                        ],
 
                         if (filteredDeliveries.isEmpty) ...[
                           const SizedBox(height: 48),
@@ -298,13 +385,20 @@ class _FirmaPersonelAcikFazlaScreenState extends State<FirmaPersonelAcikFazlaScr
                           ...filteredDeliveries.map((doc) {
                             final data = doc.data() as Map<String, dynamic>;
                             final String plaka = data['plaka'] ?? '-';
-                            final String driver = data['sr'] ?? data['surucu'] ?? 'Bilinmeyen Sürücü';
+                            final String driver = data['sr'] ?? data['surucuName'] ?? data['surucu'] ?? 'Bilinmeyen Sürücü';
                             final double toplanan = (data['toplanan'] ?? data['miktar'] ?? 0.0).toDouble();
-                            final double teslim = (data['teslim'] ?? data['miktar'] ?? 0.0).toDouble();
-                            final double fark = (data['fark'] ?? (toplanan - teslim)).toDouble();
+                            final double teslim = (data['teslim'] ?? data['kabulEdilenMiktar'] ?? data['miktar'] ?? 0.0).toDouble();
+                            final double fark = toplanan - teslim;
 
-                            final date = data['tarih'] ?? '';
-                            final time = data['saat'] ?? '';
+                            String date = data['tarih'] ?? '';
+                            String time = data['saat'] ?? '';
+                            
+                            final Timestamp? ts = data['timestamp'] as Timestamp?;
+                            if (ts != null) {
+                              final dt = ts.toDate();
+                              date = DateFormat('dd.MM.yyyy').format(dt);
+                              time = DateFormat('HH:mm').format(dt);
+                            }
 
                             return Container(
                               margin: const EdgeInsets.only(bottom: 12),
@@ -361,7 +455,12 @@ class _FirmaPersonelAcikFazlaScreenState extends State<FirmaPersonelAcikFazlaScr
                                     children: [
                                       _buildCompactStatBox('Toplanan', '${toplanan.toStringAsFixed(0)} L', Colors.blue),
                                       _buildCompactStatBox('Teslim', '${teslim.toStringAsFixed(0)} L', Colors.green),
-                                      _buildCompactStatBox('Açık', '${fark.toStringAsFixed(0)} L', Colors.red),
+                                      if (fark > 0)
+                                        _buildCompactStatBox('Açık', '${fark.toStringAsFixed(0)} L', Colors.red)
+                                      else if (fark < 0)
+                                        _buildCompactStatBox('Fazla', '${fark.abs().toStringAsFixed(0)} L', Colors.green)
+                                      else
+                                        _buildCompactStatBox('Açık', '0 L', AppColors.gray500),
                                     ],
                                   ),
                                 ],
@@ -464,6 +563,41 @@ class _FirmaPersonelAcikFazlaScreenState extends State<FirmaPersonelAcikFazlaScr
             Text(
               value,
               style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: color),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSummaryStatBox(String label, String value, Color color) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: color.withValues(alpha: 0.15), width: 1),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: GoogleFonts.inter(
+                fontSize: 11,
+                color: color.withValues(alpha: 0.8),
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              value,
+              style: GoogleFonts.inter(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: color,
+              ),
             ),
           ],
         ),

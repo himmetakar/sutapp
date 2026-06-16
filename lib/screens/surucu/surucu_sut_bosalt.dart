@@ -49,7 +49,7 @@ class _SurucuSutBosaltScreenState extends State<SurucuSutBosaltScreen> {
       backgroundColor: AppColors.gray50,
       // ── LAYER 1: Sürücü profili ────────────────────────────────────────────
       body: StreamBuilder<QuerySnapshot>(
-        stream: _db.collection('suruculer').snapshots(),
+        stream: _db.collection('suruculer').where('firma', isEqualTo: authProvider.currentFirma).snapshots(),
         builder: (context, profileSnapshot) {
           String resolvedDriverName = driverName;
 
@@ -94,7 +94,7 @@ class _SurucuSutBosaltScreenState extends State<SurucuSutBosaltScreen> {
 
           // ── LAYER 2: Araç verisi ─────────────────────────────────────────
           return StreamBuilder<QuerySnapshot>(
-            stream: _firestoreService.getDriverVehicleStream(resolvedDriverName),
+            stream: _firestoreService.getDriverVehicleStream(resolvedDriverName, firma: authProvider.currentFirma),
             builder: (context, vehicleSnapshot) {
               if (vehicleSnapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
@@ -106,7 +106,7 @@ class _SurucuSutBosaltScreenState extends State<SurucuSutBosaltScreen> {
               bool hasTank = false;
               String plate = '';
               List<Map<String, dynamic>> tankList = [];
-              String currentFirmaName = '';
+              String currentFirmaName = authProvider.currentFirma;
 
               if (hasVehicle) {
                 final vehicleDoc = vehicleDocs.first;
@@ -119,7 +119,9 @@ class _SurucuSutBosaltScreenState extends State<SurucuSutBosaltScreen> {
                         : [];
                 tankList = List<Map<String, dynamic>>.from(rawTankList);
                 hasTank = tankList.isNotEmpty;
-                currentFirmaName = vehicleData['firma'] ?? '';
+                if (vehicleData['firma'] != null && (vehicleData['firma'] as String).isNotEmpty) {
+                  currentFirmaName = vehicleData['firma'] as String;
+                }
               }
 
               if (!hasVehicle || !hasTank) {
@@ -191,64 +193,99 @@ class _SurucuSutBosaltScreenState extends State<SurucuSutBosaltScreen> {
                     }
                   }
 
-                  // ── LAYER 4: Hedef merkez tanklar (live stream) ──────────
+                  // Resolve dynamic stock for offline support by summing matching collections for this vehicle
                   return StreamBuilder<QuerySnapshot>(
-                    stream: _db.collection('tanklar')
-                        .where('firma', isEqualTo: currentFirmaName)
-                        .snapshots(),
-                    builder: (context, allTanksSnapshot) {
-                      if (allTanksSnapshot.connectionState == ConnectionState.waiting) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
-
-                      final allTankDocs = allTanksSnapshot.data?.docs ?? [];
-                      final Map<String, Map<String, dynamic>> otherTanksMap = {};
-                      for (final doc in allTankDocs) {
-                        final data = doc.data() as Map<String, dynamic>;
-                        final ad = (data['ad'] as String?) ?? '';
-                        if (ad == tankName) continue;
-                        if ((data['tip'] as String?) != 'merkez') continue;
-                        if (ad.isEmpty) continue;
-                        if (!otherTanksMap.containsKey(ad)) {
-                          otherTanksMap[ad] = {
-                            'ad': ad,
-                            'tip': data['tip'] as String? ?? 'merkez',
-                            'stok': (data['stok'] as num?)?.toDouble() ?? 0.0,
-                            'kap': (data['kap'] as num?)?.toDouble() ?? 5000.0,
-                          };
+                    stream: _db.collection('toplamalar')
+                        .where('km', isEqualTo: plate)
+                        .snapshots(includeMetadataChanges: true),
+                    builder: (context, toplamaSnapshot) {
+                      double getDynamicStockForTank(String tName, double dbStock) {
+                        double computed = 0.0;
+                        if (toplamaSnapshot.hasData) {
+                          computed = toplamaSnapshot.data!.docs
+                              .where((doc) {
+                                final d = doc.data() as Map<String, dynamic>;
+                                return (d['tank'] as String? ?? '').trim() == tName.trim() && d['bosaltildi'] != true;
+                              })
+                              .fold(0.0, (double acc, doc) {
+                                final d = doc.data() as Map<String, dynamic>;
+                                return acc + ((d['m'] as num?)?.toDouble() ?? 0.0);
+                              });
                         }
-                      }
-                      final List<Map<String, dynamic>> otherTanks = otherTanksMap.values.toList();
-
-                      if (otherTanks.isEmpty) {
-                        return Center(
-                          child: Padding(
-                            padding: const EdgeInsets.all(24.0),
-                            child: Text(
-                              'Boşaltılabilecek merkez tankı bulunamadı!',
-                              style: GoogleFonts.inter(fontSize: 14, color: AppColors.gray600, fontWeight: FontWeight.bold),
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                        );
+                        return computed > 0 ? computed : dbStock;
                       }
 
-                      // ── LAYER 5: Bekleyen talepler ───────────────────────
+                      final double finalStock = getDynamicStockForTank(resolvedTankName, currentStock);
+
+                      // ── LAYER 4: Hedef merkez tanklar (live stream) ──────────
                       return StreamBuilder<QuerySnapshot>(
-                        stream: _db.collection('sut_kabul')
-                            .where('kaynak', isEqualTo: tankName)
-                            .where('durum', isEqualTo: 'Bekliyor')
+                        stream: _db.collection('tanklar')
+                            .where('firma', isEqualTo: currentFirmaName)
                             .snapshots(),
-                        builder: (context, pendingUnloadSnapshot) {
-                          double pendingUnload = 0.0;
-                          if (pendingUnloadSnapshot.hasData) {
-                            for (var doc in pendingUnloadSnapshot.data!.docs) {
-                              final val = doc['miktar'];
-                              pendingUnload += val is num ? val.toDouble() : (double.tryParse(val.toString()) ?? 0.0);
-                            }
+                        builder: (context, allTanksSnapshot) {
+                          if (allTanksSnapshot.connectionState == ConnectionState.waiting) {
+                            return const Center(child: CircularProgressIndicator());
                           }
 
-                          final double remainingStock = (currentStock - pendingUnload).clamp(0.0, double.infinity);
+                          final allTankDocs = allTanksSnapshot.data?.docs ?? [];
+                          
+                          double getLiveStockFromTanks(String tName, double fallbackStock) {
+                            for (var doc in allTankDocs) {
+                              final data = doc.data() as Map<String, dynamic>;
+                              if ((data['ad'] as String? ?? '').trim().toLowerCase() == tName.trim().toLowerCase()) {
+                                return (data['stok'] as num?)?.toDouble() ?? fallbackStock;
+                              }
+                            }
+                            return fallbackStock;
+                          }
+
+                          final Map<String, Map<String, dynamic>> otherTanksMap = {};
+                          for (final doc in allTankDocs) {
+                            final data = doc.data() as Map<String, dynamic>;
+                            final ad = (data['ad'] as String?) ?? '';
+                            if (ad == resolvedTankName) continue;
+                            if ((data['tip'] as String?) != 'merkez') continue;
+                            if (ad.isEmpty) continue;
+                            if (!otherTanksMap.containsKey(ad)) {
+                              otherTanksMap[ad] = {
+                                'ad': ad,
+                                'tip': data['tip'] as String? ?? 'merkez',
+                                'stok': (data['stok'] as num?)?.toDouble() ?? 0.0,
+                                'kap': (data['kap'] as num?)?.toDouble() ?? 5000.0,
+                              };
+                            }
+                          }
+                          final List<Map<String, dynamic>> otherTanks = otherTanksMap.values.toList();
+
+                          if (otherTanks.isEmpty) {
+                            return Center(
+                              child: Padding(
+                                padding: const EdgeInsets.all(24.0),
+                                child: Text(
+                                  'Boşaltılabilecek merkez tankı bulunamadı!',
+                                  style: GoogleFonts.inter(fontSize: 14, color: AppColors.gray600, fontWeight: FontWeight.bold),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            );
+                          }
+
+                          // ── LAYER 5: Bekleyen talepler ───────────────────────
+                          return StreamBuilder<QuerySnapshot>(
+                            stream: _db.collection('sut_kabul')
+                                .where('kaynak', isEqualTo: resolvedTankName)
+                                .where('durum', isEqualTo: 'Bekliyor')
+                                .snapshots(),
+                            builder: (context, pendingUnloadSnapshot) {
+                              double pendingUnload = 0.0;
+                              if (pendingUnloadSnapshot.hasData) {
+                                for (var doc in pendingUnloadSnapshot.data!.docs) {
+                                  final val = doc['miktar'];
+                                  pendingUnload += val is num ? val.toDouble() : (double.tryParse(val.toString()) ?? 0.0);
+                                }
+                              }
+
+                              final double remainingStock = (finalStock - pendingUnload).clamp(0.0, double.infinity);
 
                           if (_amountController.text.isEmpty && !_isSaving) {
                             _amountController.text = remainingStock.toStringAsFixed(0);
@@ -291,7 +328,7 @@ class _SurucuSutBosaltScreenState extends State<SurucuSutBosaltScreen> {
                                               crossAxisAlignment: CrossAxisAlignment.start,
                                               children: [
                                                 Text(
-                                                  tankName,
+                                                  resolvedTankName,
                                                   style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.gray800),
                                                 ),
                                                 Text(
@@ -305,7 +342,7 @@ class _SurucuSutBosaltScreenState extends State<SurucuSutBosaltScreen> {
                                             crossAxisAlignment: CrossAxisAlignment.end,
                                             children: [
                                               Text(
-                                                '${currentStock.toStringAsFixed(0)} LT',
+                                                '${finalStock.toStringAsFixed(0)} LT',
                                                 style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.primary600),
                                               ),
                                               Text(
@@ -357,7 +394,9 @@ class _SurucuSutBosaltScreenState extends State<SurucuSutBosaltScreen> {
                                           decoration: const InputDecoration(labelText: 'Boşaltılacak Araç Tankı *'),
                                           items: uniqueTankList.map((t) {
                                             final name = (t['ad'] as String?) ?? '';
-                                            final double stock = (t['stok'] as num?)?.toDouble() ?? 0.0;
+                                            final double fallbackDbStock = (t['stok'] as num?)?.toDouble() ?? 0.0;
+                                            final double dbStock = getLiveStockFromTanks(name, fallbackDbStock);
+                                            final double stock = getDynamicStockForTank(name, dbStock);
                                             return DropdownMenuItem(
                                               value: name,
                                               child: Text('$name (${stock.toStringAsFixed(0)} LT)', style: const TextStyle(fontSize: 13)),
@@ -408,7 +447,7 @@ class _SurucuSutBosaltScreenState extends State<SurucuSutBosaltScreen> {
                                       ElevatedButton(
                                         onPressed: _isSaving
                                             ? null
-                                            : () => _submitRequest(resolvedDriverName, tankName, remainingStock, plate, currentFirmaName),
+                                            : () => _submitRequest(resolvedDriverName, resolvedTankName, remainingStock, plate, currentFirmaName),
                                         style: ElevatedButton.styleFrom(
                                           backgroundColor: AppColors.primary600,
                                           foregroundColor: Colors.white,
@@ -433,7 +472,8 @@ class _SurucuSutBosaltScreenState extends State<SurucuSutBosaltScreen> {
                                 const SizedBox(height: 10),
                                 StreamBuilder<QuerySnapshot>(
                                   stream: _db.collection('sut_kabul')
-                                      .where('kaynak', isEqualTo: tankName)
+                                      .where('kaynak', isEqualTo: resolvedTankName)
+                                      .where('firma', isEqualTo: currentFirmaName)
                                       .snapshots(),
                                   builder: (context, historySnapshot) {
                                     if (historySnapshot.connectionState == ConnectionState.waiting) {
@@ -543,9 +583,11 @@ class _SurucuSutBosaltScreenState extends State<SurucuSutBosaltScreen> {
             },
           );
         },
-      ),
-    );
-  }
+      );
+    },
+  ),
+);
+}
 
   Future<void> _submitRequest(
     String driverName,

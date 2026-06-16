@@ -21,7 +21,7 @@
     }
   },
   "hosting": {
-    "public": "public_hosting",
+    "public": "build/web",
     "ignore": [
       "firebase.json",
       "**/.*",
@@ -36,6 +36,10 @@
       {
         "source": "/terms",
         "destination": "/terms.html"
+      },
+      {
+        "source": "**",
+        "destination": "/index.html"
       }
     ]
   }

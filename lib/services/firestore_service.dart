@@ -684,7 +684,7 @@ class FirestoreService {
     if (firma != null && firma.isNotEmpty) {
       return _tanks.where('firma', isEqualTo: firma).snapshots();
     }
-    return _tanks.snapshots();
+    return _tanks.where('firma', isEqualTo: '___NONE___').snapshots();
   }
 
   Future<void> addTank(Map<String, dynamic> tank) async {
@@ -696,7 +696,7 @@ class FirestoreService {
     if (firma != null && firma.isNotEmpty) {
       return _drivers.where('firma', isEqualTo: firma).snapshots();
     }
-    return _drivers.snapshots();
+    return _drivers.where('firma', isEqualTo: '___NONE___').snapshots();
   }
 
   Future<void> addDriver(Map<String, dynamic> driver) async {
@@ -708,7 +708,7 @@ class FirestoreService {
     if (firma != null && firma.isNotEmpty) {
       return _vehicles.where('firma', isEqualTo: firma).snapshots();
     }
-    return _vehicles.snapshots();
+    return _vehicles.where('firma', isEqualTo: '___NONE___').snapshots();
   }
 
   Future<void> addVehicle(Map<String, dynamic> vehicle) async {
@@ -724,7 +724,7 @@ class FirestoreService {
     if (firma != null && firma.isNotEmpty) {
       return _producers.where('firmalar', arrayContains: firma).snapshots();
     }
-    return _producers.snapshots();
+    return _producers.where('firmalar', arrayContains: '___NONE___').snapshots();
   }
 
   Future<void> addProducer({
@@ -797,7 +797,7 @@ class FirestoreService {
     if (firma != null && firma.isNotEmpty) {
       return _collections.where('firma', isEqualTo: firma).snapshots();
     }
-    return _collections.snapshots();
+    return _collections.where('firma', isEqualTo: '___NONE___').snapshots();
   }
 
   Future<void> addCollection(Map<String, dynamic> collection) async {
@@ -1350,10 +1350,12 @@ class FirestoreService {
 
     // 4. Update sut_kabul document state
     final double fire = (declared - miktar).clamp(0.0, double.infinity);
+    final double fazla = (miktar - declared).clamp(0.0, double.infinity);
     await kabulDocRef.update({
       'durum': 'Kabul Edildi',
       'kabulEdilenMiktar': miktar,
       'fire': fire,
+      'fazla': fazla,
     });
 
     // Write a fire document if there is fire
@@ -1377,6 +1379,7 @@ class FirestoreService {
     // 5. Log a delivery record to 'teslimatlar' for audit
     final timeStr = DateFormat('HH:mm').format(DateTime.now());
     await db.collection('teslimatlar').add({
+      'sutKabulId': sutKabulId,
       'plaka': vehiclePlate,
       'kaynakTank': sourceTankName,
       'hedefTank': targetTankName,
@@ -1418,6 +1421,111 @@ class FirestoreService {
         type: 'depo_aktarim',
       );
     } catch (_) {}
+  }
+
+  Future<void> updateAcceptedTankStock({
+    required String sutKabulId,
+    required double newAcceptedAmount,
+  }) async {
+    final db = FirebaseFirestore.instance;
+    final kabulDocRef = db.collection('sut_kabul').doc(sutKabulId);
+    final kabulDoc = await kabulDocRef.get();
+
+    if (!kabulDoc.exists) {
+      throw Exception('Kabul belgesi bulunamadı.');
+    }
+
+    final data = kabulDoc.data() as Map<String, dynamic>;
+    final String durum = data['durum'] ?? '';
+    if (durum != 'Kabul Edildi') {
+      throw Exception('Yalnızca kabul edilmiş kayıtlar düzenlenebilir.');
+    }
+
+    final String hedef = data['hedef'] ?? '';
+    final double miktar = (data['miktar'] as num?)?.toDouble() ?? 0.0;
+    final double oldAcceptedAmount = ((data['kabulEdilenMiktar'] ?? data['miktar']) as num).toDouble();
+
+    if (hedef.isEmpty) {
+      throw Exception('Hedef tank bilgisi eksik.');
+    }
+
+    // Find target tank
+    final targetQuery = await db.collection('tanklar')
+        .where('ad', isEqualTo: hedef)
+        .limit(1)
+        .get();
+
+    if (targetQuery.docs.isEmpty) {
+      throw Exception('Hedef tank bulunamadı.');
+    }
+
+    final targetDoc = targetQuery.docs.first;
+    final double targetCurrent = (targetDoc.data()['stok'] as num?)?.toDouble() ?? 0.0;
+
+    // Calculate new target stock
+    final double newTargetStock = (targetCurrent - oldAcceptedAmount + newAcceptedAmount).clamp(0.0, double.infinity);
+
+    // 1. Update target tank stock
+    await targetDoc.reference.update({'stok': newTargetStock});
+
+    // 2. Calculate new fire and fazla
+    final double newFire = (miktar - newAcceptedAmount).clamp(0.0, double.infinity);
+    final double newFazla = (newAcceptedAmount - miktar).clamp(0.0, double.infinity);
+
+    // 3. Update sut_kabul document state
+    await kabulDocRef.update({
+      'kabulEdilenMiktar': newAcceptedAmount,
+      'fire': newFire,
+      'fazla': newFazla,
+      'editedAt': FieldValue.serverTimestamp(),
+      'previousMiktar': oldAcceptedAmount,
+    });
+
+    // 4. Update or Delete matching 'fireler' record
+    final fireQuery = await db.collection('fireler')
+        .where('sutKabulId', isEqualTo: sutKabulId)
+        .limit(1)
+        .get();
+
+    if (fireQuery.docs.isNotEmpty) {
+      final fireDoc = fireQuery.docs.first;
+      if (newFire > 0) {
+        await fireDoc.reference.update({
+          'kabul': newAcceptedAmount,
+          'fire': newFire,
+        });
+      } else {
+        await fireDoc.reference.delete();
+      }
+    } else if (newFire > 0) {
+      final String resolvedFirma = targetDoc.data()['firma'] ?? '';
+      await db.collection('fireler').add({
+        'sutKabulId': sutKabulId,
+        'plaka': data['plaka'] ?? '',
+        'surucuName': data['sr'] ?? data['surucuName'] ?? (data['email'] ?? ''),
+        'kaynak': data['kaynak'] ?? '',
+        'hedef': hedef,
+        'beyan': miktar,
+        'kabul': newAcceptedAmount,
+        'fire': newFire,
+        'tarih': DateFormat('dd.MM.yyyy').format(DateTime.now()),
+        'timestamp': FieldValue.serverTimestamp(),
+        'firma': resolvedFirma,
+      });
+    }
+
+    // 5. Update matching 'teslimatlar' record
+    final teslimatQuery = await db.collection('teslimatlar')
+        .where('sutKabulId', isEqualTo: sutKabulId)
+        .limit(1)
+        .get();
+
+    if (teslimatQuery.docs.isNotEmpty) {
+      final teslimatDoc = teslimatQuery.docs.first;
+      await teslimatDoc.reference.update({
+        'miktar': newAcceptedAmount,
+      });
+    }
   }
 
   Future<void> approveToplayiciTeklif(String notificationId, String teklifId) async {
@@ -1632,8 +1740,12 @@ class FirestoreService {
 
   // --- DRIVER SPECIFIC STREAMS ---
 
-  Stream<QuerySnapshot> getDriverVehicleStream(String driverName) {
-    return _vehicles.where('suruculer', arrayContains: driverName).limit(1).snapshots();
+  Stream<QuerySnapshot> getDriverVehicleStream(String driverName, {String? firma}) {
+    Query q = _vehicles.where('suruculer', arrayContains: driverName);
+    if (firma != null && firma.isNotEmpty) {
+      q = q.where('firma', isEqualTo: firma);
+    }
+    return q.limit(1).snapshots();
   }
 
   Stream<QuerySnapshot> getDriverCollectionsStream(String driverName) {
