@@ -370,8 +370,8 @@ class UreticiDashboard extends StatelessWidget {
                                                             mainAxisSize: MainAxisSize.min,
                                                             children: [
                                                               Container(
-                                                                width: 60,
-                                                                height: 60,
+                                                                width: 80,
+                                                                height: 80,
                                                                 decoration: BoxDecoration(
                                                                   borderRadius: BorderRadius.circular(12),
                                                                   border: Border.all(color: AppColors.gray200, width: 1.5),
@@ -387,14 +387,14 @@ class UreticiDashboard extends StatelessWidget {
                                                                 ),
                                                                 child: logoUrl == null || logoUrl.isEmpty
                                                                     ? Center(
-                                                                        child: Icon(Icons.business_rounded, color: AppColors.gray400, size: 24),
+                                                                        child: Icon(Icons.business_rounded, color: AppColors.gray400, size: 32),
                                                                       )
                                                                     : null,
                                                               ),
                                                               if (currentFirma.isNotEmpty) ...[
                                                                 const SizedBox(height: 6),
                                                                 SizedBox(
-                                                                  width: 72,
+                                                                  width: 90,
                                                                   child: Text(
                                                                     currentFirma,
                                                                     textAlign: TextAlign.center,

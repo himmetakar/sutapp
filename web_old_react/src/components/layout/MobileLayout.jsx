@@ -3,7 +3,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import {
   FiHome, FiUsers, FiTruck, FiDroplet, FiPackage,
   FiBarChart2, FiClipboard, FiUser, FiBox, FiLogOut,
-  FiMenu, FiX, FiTrendingUp, FiGauge
+  FiMenu, FiX, FiTrendingUp, FiActivity
 } from 'react-icons/fi';
 import { useState } from 'react';
 
@@ -42,7 +42,7 @@ const TAB_CONFIG = {
   ],
   firma: [
     { path: '/firma', icon: FiHome, label: 'Ana Sayfa' },
-    { path: '/firma/dashboard', icon: FiGauge, label: 'Gösterge Paneli' },
+    { path: '/firma/dashboard', icon: FiActivity, label: 'Gösterge Paneli' },
     { path: '/firma/profil', icon: FiUser, label: 'Profil' },
   ],
   surucu: [

@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import '../../providers/auth_provider.dart';
 import '../../config/theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'firma_dashboard.dart';
 
 class FirmaHomeScreen extends StatefulWidget {
   static final ValueNotifier<String> currentMenuNotifier = ValueNotifier<String>('main');
@@ -160,6 +161,11 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bool isDesktop = MediaQuery.of(context).size.width >= 1024;
+    if (isDesktop) {
+      return const FirmaDashboard();
+    }
+
     final auth = Provider.of<AuthProvider>(context);
     final user = auth.user;
     final String currentFirma = user?.displayName ?? '';
@@ -170,6 +176,10 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
           .where('ad', isEqualTo: currentFirma)
           .snapshots(),
       builder: (context, firmSnap) {
+        final double screenWidth = MediaQuery.of(context).size.width;
+        final int crossAxisCount = screenWidth > 900 ? 4 : (screenWidth > 600 ? 3 : 2);
+        final double childAspectRatio = screenWidth > 900 ? 1.5 : (screenWidth > 600 ? 1.35 : 1.22);
+
         bool isExpired = false;
         bool isNearExpiration = false;
         DateTime? expiryDate;
@@ -251,8 +261,11 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
         return Scaffold(
           backgroundColor: AppColors.gray50,
           body: SafeArea(
-            child: ListView(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1200),
+                child: ListView(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
               children: [
                 if (isNearExpiration && expiryDate != null) ...[
                   Container(
@@ -290,8 +303,8 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       Container(
-                        width: 60,
-                        height: 60,
+                        width: 80,
+                        height: 80,
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(color: AppColors.gray200, width: 1.5),
@@ -307,14 +320,14 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
                         ),
                         child: logoUrl == null || logoUrl.isEmpty
                             ? Center(
-                                child: Icon(Icons.business_rounded, color: AppColors.gray400, size: 24),
+                                child: Icon(Icons.business_rounded, color: AppColors.gray400, size: 32),
                               )
                             : null,
                       ),
                       if (currentFirma.isNotEmpty) ...[
                         const SizedBox(height: 6),
                         SizedBox(
-                          width: 80,
+                          width: 95,
                           child: Text(
                             currentFirma,
                             textAlign: TextAlign.center,
@@ -382,12 +395,12 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
 
               // Modular Grid
               GridView.count(
-                crossAxisCount: 2,
+                crossAxisCount: crossAxisCount,
                 crossAxisSpacing: 14,
                 mainAxisSpacing: 14,
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                childAspectRatio: 1.22,
+                childAspectRatio: childAspectRatio,
                 children: [
                   // Üretici Yönetimi
                   _buildMenuCard(
@@ -457,12 +470,12 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
 
               // Submenu Grid
               GridView.count(
-                crossAxisCount: 2,
+                crossAxisCount: crossAxisCount,
                 crossAxisSpacing: 14,
                 mainAxisSpacing: 14,
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                childAspectRatio: 1.22,
+                childAspectRatio: childAspectRatio,
                 children: [
                   _buildMenuCard(
                     icon: Icons.people_outline_rounded,
@@ -491,12 +504,12 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
               _buildMiniSectionHeader('🥛 Süt İşlemleri'),
               const SizedBox(height: 10),
               GridView.count(
-                crossAxisCount: 2,
+                crossAxisCount: crossAxisCount,
                 crossAxisSpacing: 14,
                 mainAxisSpacing: 14,
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                childAspectRatio: 1.22,
+                childAspectRatio: childAspectRatio,
                 children: [
                   _buildMenuCard(
                     icon: Icons.water_drop_rounded,
@@ -563,12 +576,12 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
               _buildMiniSectionHeader('🛢 Tank İşlemleri'),
               const SizedBox(height: 10),
               GridView.count(
-                crossAxisCount: 2,
+                crossAxisCount: crossAxisCount,
                 crossAxisSpacing: 14,
                 mainAxisSpacing: 14,
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                childAspectRatio: 1.22,
+                childAspectRatio: childAspectRatio,
                 children: [
                   _buildMenuCard(
                     icon: Icons.speed_rounded,
@@ -614,9 +627,11 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
               ),
             ],
           ],
-        ),
-      ),
-    );
+                ),
+              ),
+            ),
+          ),
+        );
     },
   );
 }

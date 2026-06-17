@@ -1418,8 +1418,8 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Container(
-                                      width: 44,
-                                      height: 44,
+                                      width: 70,
+                                      height: 70,
                                       decoration: BoxDecoration(
                                         borderRadius: BorderRadius.circular(10),
                                         border: Border.all(color: AppColors.gray200, width: 1.5),
@@ -1435,14 +1435,14 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                                       ),
                                       child: logoUrl == null || logoUrl.isEmpty
                                           ? Center(
-                                              child: Icon(Icons.business_rounded, color: AppColors.gray400, size: 18),
+                                              child: Icon(Icons.business_rounded, color: AppColors.gray400, size: 28),
                                             )
                                           : null,
                                     ),
                                     if (currentFirmaName.isNotEmpty) ...[
                                       const SizedBox(height: 4),
                                       SizedBox(
-                                        width: 70,
+                                        width: 80,
                                         child: Text(
                                           currentFirmaName,
                                           textAlign: TextAlign.center,
@@ -1461,17 +1461,17 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 8),
-                            Text(
-                              widget.showSutAlDirectly
-                                  ? 'Üreticiden aldığınız süt miktarını girerek tank stoğuna ekleyin.'
-                                  : 'Süt toplama rotanızı ve araç tank doluluğunu buradan takip edebilirsiniz.',
-                              style: GoogleFonts.inter(
-                                fontSize: 11,
-                                color: AppColors.gray500,
-                                fontWeight: FontWeight.w400,
+                            if (widget.showSutAlDirectly) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                'Üreticiden aldığınız süt miktarını girerek tank stoğuna ekleyin.',
+                                style: GoogleFonts.inter(
+                                  fontSize: 11,
+                                  color: AppColors.gray500,
+                                  fontWeight: FontWeight.w400,
+                                ),
                               ),
-                            ),
+                            ],
                             if (canAddCustomer) ...[
                               const SizedBox(height: 12),
                               SizedBox(
@@ -1522,17 +1522,6 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                                     ),
                                   ),
                                 ],
-                                const SizedBox(height: 4),
-                                Text(
-                                  widget.showSutAlDirectly
-                                      ? 'Üreticiden aldığınız süt miktarını girerek tank stoğuna ekleyin.'
-                                      : 'Süt toplama rotanızı ve araç tank doluluğunu buradan takip edebilirsiniz.',
-                                  style: GoogleFonts.inter(
-                                    fontSize: isDesktop ? 12 : 11,
-                                    color: AppColors.gray500,
-                                    fontWeight: FontWeight.w400,
-                                  ),
-                                ),
                               ],
                             ),
                           ),
@@ -1563,8 +1552,8 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Container(
-                                    width: 50,
-                                    height: 50,
+                                    width: 80,
+                                    height: 80,
                                     decoration: BoxDecoration(
                                       borderRadius: BorderRadius.circular(10),
                                       border: Border.all(color: AppColors.gray200, width: 1.5),
@@ -1580,14 +1569,14 @@ class _SurucuDashboardState extends State<SurucuDashboard> {
                                     ),
                                     child: logoUrl == null || logoUrl.isEmpty
                                         ? Center(
-                                            child: Icon(Icons.business_rounded, color: AppColors.gray400, size: 20),
+                                            child: Icon(Icons.business_rounded, color: AppColors.gray400, size: 32),
                                           )
                                         : null,
                                   ),
                                   if (currentFirmaName.isNotEmpty) ...[
                                     const SizedBox(height: 4),
                                     SizedBox(
-                                      width: 75,
+                                      width: 90,
                                       child: Text(
                                         currentFirmaName,
                                         textAlign: TextAlign.center,

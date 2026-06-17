@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -35,19 +36,32 @@ void main() async {
   }
 
   // Enable Firestore offline persistence with unlimited cache size
-  FirebaseFirestore.instance.settings = const Settings(
-    persistenceEnabled: true,
-    cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
-  );
+  if (kIsWeb) {
+    FirebaseFirestore.instance.settings = const Settings(
+      cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+    );
+  } else {
+    FirebaseFirestore.instance.settings = const Settings(
+      persistenceEnabled: true,
+      cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+    );
+  }
 
   // Initialize Firestore mock data (Only in dev/demo mode)
   // Wrapped with timeout so it never blocks startup when offline
   if (!AppConstants.isProduction) {
-    try {
-      await FirestoreService()
-          .initializeMockDataIfNeeded()
-          .timeout(const Duration(seconds: 3));
-    } catch (_) {}
+    if (kIsWeb) {
+      // Run asynchronously on web to make startup fast
+      FirestoreService().initializeMockDataIfNeeded().catchError((e) {
+        debugPrint('Web mock init failed: $e');
+      });
+    } else {
+      try {
+        await FirestoreService()
+            .initializeMockDataIfNeeded()
+            .timeout(const Duration(seconds: 3));
+      } catch (_) {}
+    }
   }
 
   final authProvider = AuthProvider();

@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../config/theme.dart';
@@ -35,6 +36,16 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
       duration: const Duration(milliseconds: 1000),
     );
 
+    if (kIsWeb) {
+      // Immediately navigate without any delay or animation
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _navigateToNext();
+        }
+      });
+      return;
+    }
+
     _logoController.forward();
 
     // After 2 seconds, start the milk droplet dispersion animation
@@ -43,6 +54,29 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
         _startDropletsAnimation();
       }
     });
+  }
+
+  void _navigateToNext() {
+    if (!mounted) return;
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    if (auth.isLoggedIn) {
+      switch (auth.user!.role) {
+        case UserRole.admin:
+          context.go('/admin');
+          break;
+        case UserRole.firma:
+          context.go('/firma');
+          break;
+        case UserRole.surucu:
+          context.go('/surucu');
+          break;
+        case UserRole.uretici:
+          context.go('/uretici');
+          break;
+      }
+    } else {
+      context.go('/login');
+    }
   }
 
   void _startDropletsAnimation() {
@@ -71,26 +105,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     }
 
     _particleController.forward().then((_) {
-      if (!mounted) return;
-      final auth = Provider.of<AuthProvider>(context, listen: false);
-      if (auth.isLoggedIn) {
-        switch (auth.user!.role) {
-          case UserRole.admin:
-            context.go('/admin');
-            break;
-          case UserRole.firma:
-            context.go('/firma');
-            break;
-          case UserRole.surucu:
-            context.go('/surucu');
-            break;
-          case UserRole.uretici:
-            context.go('/uretici');
-            break;
-        }
-      } else {
-        context.go('/login');
-      }
+      _navigateToNext();
     });
   }
 

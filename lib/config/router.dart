@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
 import '../providers/auth_provider.dart';
 import '../models/user_model.dart';
@@ -69,13 +70,25 @@ import '../screens/uretici/dijital_sut_karti.dart';
 GoRouter createRouter(AuthProvider auth) {
   return GoRouter(
     refreshListenable: auth,
-    initialLocation: '/splash',
+    initialLocation: kIsWeb ? '/login' : '/splash',
     redirect: (context, state) {
       final loggedIn = auth.isLoggedIn;
       final needsRegistration = auth.needsRegistration;
       final loggingIn = state.matchedLocation == '/login';
       final registering = state.matchedLocation == '/register';
       final splashing = state.matchedLocation == '/splash';
+
+      if (kIsWeb && splashing) {
+        if (loggedIn) {
+          switch (auth.user!.role) {
+            case UserRole.admin: return '/admin';
+            case UserRole.firma: return '/firma';
+            case UserRole.surucu: return '/surucu';
+            case UserRole.uretici: return '/uretici';
+          }
+        }
+        return '/login';
+      }
 
       if (splashing) return null;
 

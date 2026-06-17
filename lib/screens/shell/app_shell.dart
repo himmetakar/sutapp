@@ -88,13 +88,44 @@ class _AppShellState extends State<AppShell> {
         ];
       case UserRole.firma:
         return [
-          _DrawerItem('/firma/hesap-ozeti', Icons.person_pin_circle_outlined, 'Hesap Görüntüle'),
-          _DrawerItem('/firma/sut-kabul', Icons.opacity_rounded, 'Süt Kabul'),
-          _DrawerItem('/firma/satislar', Icons.point_of_sale_rounded, 'Satış Yap'),
-          _DrawerItem('/firma/finans/avanslar/ekle', Icons.handshake_outlined, 'Avans Ver'),
-          _DrawerItem('/firma/tahsilat', Icons.arrow_circle_down_outlined, 'Tahsilat Yap'),
-          _DrawerItem('/firma/urunler/siparisler', Icons.fact_check_outlined, 'Sipariş Onay'),
-          _DrawerItem('/firma/sut-transferleri', Icons.compare_arrows_rounded, 'Süt Transfer'),
+          _DrawerItem('/firma', Icons.dashboard_rounded, 'Dashboard'),
+          _DrawerItem('/firma/ureticiler', Icons.people_rounded, 'Müşteri Yönetimi', isExpandable: true, children: [
+            _DrawerItem('/firma/ureticiler', Icons.list_rounded, 'Üretici Listesi'),
+            _DrawerItem('/firma/gruplar', Icons.group_work_rounded, 'Süt Toplama Grupları'),
+            _DrawerItem('/firma/birlikler', Icons.corporate_fare_rounded, 'Üretici Birlikleri'),
+          ]),
+          _DrawerItem('/firma/personel', Icons.badge_rounded, 'Personel & Araç', isExpandable: true, children: [
+            _DrawerItem('/firma/personel', Icons.people_outline_rounded, 'Personel Yönetimi'),
+            _DrawerItem('/firma/suruculer', Icons.person_rounded, 'Sürücüler'),
+            _DrawerItem('/firma/araclar', Icons.local_shipping_rounded, 'Araç Yönetimi'),
+          ]),
+          _DrawerItem('/firma/tanklar', Icons.water_drop_rounded, 'Süt & Tank', isExpandable: true, children: [
+            _DrawerItem('/firma/toplamalar', Icons.history_rounded, 'Süt Toplamalar'),
+            _DrawerItem('/firma/sut-kabul', Icons.input_rounded, 'Süt Kabul'),
+            _DrawerItem('/firma/aylik-sut', Icons.calendar_month_rounded, 'Aylık Süt Kayıtları'),
+            _DrawerItem('/firma/raporlar', Icons.bar_chart_rounded, 'Süt Toplama Raporu'),
+            _DrawerItem('/firma/satis-raporlari', Icons.analytics_rounded, 'Süt Satış Raporu'),
+            _DrawerItem('/firma/sut-transferleri', Icons.sync_alt_rounded, 'Süt Transfer & Takip'),
+            _DrawerItem('/firma/sut-analiz', Icons.science_rounded, 'Süt Analiz'),
+            _DrawerItem('/firma/tanklar', Icons.speed_rounded, 'Tank Durumu'),
+          ]),
+          _DrawerItem('/firma/urunler', Icons.category_rounded, 'Ürün Yönetimi', isExpandable: true, children: [
+            _DrawerItem('/firma/urunler', Icons.list_alt_rounded, 'Ürün Listesi'),
+            _DrawerItem('/firma/urunler/siparisler', Icons.fact_check_rounded, 'Sipariş Onay'),
+          ]),
+          _DrawerItem('/firma/finans', Icons.monetization_on_rounded, 'Finans Yönetimi', isExpandable: true, children: [
+            _DrawerItem('/firma/finans', Icons.insights_rounded, 'Finansal Genel Bakış'),
+            _DrawerItem('/firma/finans/sut-fiyatlari', Icons.settings_rounded, 'Süt Fiyat Ayarları'),
+            _DrawerItem('/firma/finans/avanslar', Icons.handshake_rounded, 'Avanslar'),
+            _DrawerItem('/firma/finans/sut-odemeleri', Icons.payment_rounded, 'Süt Ödemeleri'),
+            _DrawerItem('/firma/finans/cezalar', Icons.report_problem_rounded, 'Cezalar'),
+            _DrawerItem('/firma/finans/kesintiler', Icons.vertical_align_bottom_rounded, 'Kesintiler'),
+          ]),
+          _DrawerItem('/firma/profil', Icons.business_rounded, 'Firma Yönetimi', isExpandable: true, children: [
+            _DrawerItem('/firma/profil', Icons.info_rounded, 'Firma Bilgileri'),
+            _DrawerItem('/firma/yonetimi', Icons.admin_panel_settings_rounded, 'Firma Ayarları'),
+            _DrawerItem('/firma/firmalar', Icons.handshake_rounded, 'Tedarikçi Firmalar'),
+          ]),
         ];
       case UserRole.surucu:
         return [
@@ -549,14 +580,26 @@ class _AppShellState extends State<AppShell> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  _buildQuickActionButton('+ Süt Girişi Yap', Icons.add_rounded, () {
-                    QuickActionsDialogs.showSutGirisiDialog(context);
+                  _buildQuickActionButton('Hesap Görüntüle', Icons.person_pin_circle_outlined, () {
+                    context.go('/firma/hesap-ozeti');
                   }),
-                  _buildQuickActionButton('+ Süt Kabul', Icons.input_rounded, () {
-                    QuickActionsDialogs.showSutKabulDialog(context);
+                  _buildQuickActionButton('Süt Kabul', Icons.opacity_rounded, () {
+                    context.go('/firma/sut-kabul');
                   }),
-                  _buildQuickActionButton('+ Tahsilat Yap', Icons.monetization_on_rounded, () {
-                    QuickActionsDialogs.showTahsilatDialog(context);
+                  _buildQuickActionButton('Satış Yap', Icons.point_of_sale_rounded, () {
+                    context.go('/firma/satislar');
+                  }),
+                  _buildQuickActionButton('Avans Ver', Icons.handshake_outlined, () {
+                    context.go('/firma/finans/avanslar/ekle');
+                  }),
+                  _buildQuickActionButton('Tahsilat Yap', Icons.arrow_circle_down_outlined, () {
+                    context.go('/firma/tahsilat');
+                  }),
+                  _buildQuickActionButton('Sipariş Onay', Icons.fact_check_outlined, () {
+                    context.go('/firma/urunler/siparisler');
+                  }),
+                  _buildQuickActionButton('Süt Transfer', Icons.compare_arrows_rounded, () {
+                    context.go('/firma/sut-transferleri');
                   }),
                 ],
               ],

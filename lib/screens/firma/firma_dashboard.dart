@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:fl_chart/fl_chart.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -50,8 +51,8 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
 
         return LayoutBuilder(
           builder: (context, constraints) {
-            final isDesktop = constraints.maxWidth >= 1024;
-            final isTablet = constraints.maxWidth >= 640 && constraints.maxWidth < 1024;
+            final isDesktop = MediaQuery.of(context).size.width >= 1024;
+            final isTablet = MediaQuery.of(context).size.width >= 640 && MediaQuery.of(context).size.width < 1024;
 
             return ListView(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
@@ -254,7 +255,7 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        '+%18,42',
+                        '↑ %18,42',
                         style: GoogleFonts.inter(fontSize: 11, color: AppColors.success, fontWeight: FontWeight.bold),
                       ),
                     ],
@@ -309,7 +310,7 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
                     ),
                   ),
                 ),
-                barGroups: [11000, 17800, 13800, 12600, 15000, 13000, 16000].asMap().entries.map((e) =>
+                barGroups: [11000, 17000, 14000, 12500, 15500, 13800, 17000].asMap().entries.map((e) =>
                   BarChartGroupData(
                     x: e.key,
                     barRods: [
@@ -349,37 +350,42 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
             style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.gray800),
           ),
           const SizedBox(height: 20),
-          Row(
-            children: [
-              SizedBox(
-                width: 120,
-                height: 120,
-                child: PieChart(
-                  PieChartData(
-                    sectionsSpace: 2,
-                    centerSpaceRadius: 36,
-                    startDegreeOffset: -90,
-                    sections: [
-                      PieChartSectionData(color: AppColors.primary600, value: 45, showTitle: false, radius: 18),
-                      PieChartSectionData(color: AppColors.success, value: 35, showTitle: false, radius: 18),
-                      PieChartSectionData(color: AppColors.warning, value: 15, showTitle: false, radius: 18),
-                      PieChartSectionData(color: AppColors.danger, value: 5, showTitle: false, radius: 18),
-                    ],
+          Expanded(
+            child: Center(
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 120,
+                    height: 120,
+                    child: PieChart(
+                      PieChartData(
+                        sectionsSpace: 2,
+                        centerSpaceRadius: 36,
+                        startDegreeOffset: -90,
+                        sections: [
+                          PieChartSectionData(color: AppColors.success, value: 45, showTitle: false, radius: 18),
+                          PieChartSectionData(color: AppColors.primary600, value: 35, showTitle: false, radius: 18),
+                          PieChartSectionData(color: AppColors.warning, value: 15, showTitle: false, radius: 18),
+                          PieChartSectionData(color: AppColors.danger, value: 5, showTitle: false, radius: 18),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _buildDonutLegend('A Kalite', '%45', '5.600 L', AppColors.success),
+                        _buildDonutLegend('B Kalite', '%35', '4.350 L', AppColors.primary600),
+                        _buildDonutLegend('C Kalite', '%15', '1.850 L', AppColors.warning),
+                        _buildDonutLegend('D Kalite', '%5', '650 L', AppColors.danger),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  children: [
-                    _buildDonutLegend('So\u011fuk S\u00fct', '%45', '5.600 L', AppColors.primary600),
-                    _buildDonutLegend('Sıcak Süt', '%35', '4.350 L', AppColors.success),
-                    _buildDonutLegend('C kalite', '%15', '1.850 L', AppColors.warning),
-                    _buildDonutLegend('D kalite', '%5', '650 L', AppColors.danger),
-                  ],
-                ),
-              ),
-            ],
+            ),
           ),
         ],
       ),
@@ -394,26 +400,35 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
             style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.gray800),
           ),
           const SizedBox(height: 14),
-          _buildQuickLookRow('Aktif Üretici', '1.108', '+%8,8', true),
-          _buildQuickLookRow('Aktif Personel', '54', null, null),
-          _buildQuickLookRow('Aktif Araç', '18', null, null),
-          _buildQuickLookRow('Tank Doluluk Oranı (Ortalama)', '%76', '+%5', true),
-          _buildQuickLookRow('Tahsilat Gecikmiş (₺)', '265.200', '+%12,7', true),
-          _buildQuickLookRow('Gecikmiş Alacak (Üretici)', '32', null, null),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _buildQuickLookRow(Icons.people_alt_outlined, AppColors.primary600, 'Aktif Müşteri', '1.108', '↑ %8,8', true),
+                _buildQuickLookRow(Icons.badge_outlined, AppColors.primary600, 'Aktif Personel', '54', '-', null),
+                _buildQuickLookRow(Icons.local_shipping_outlined, AppColors.primary600, 'Aktif Araç', '18', '-', null),
+                _buildQuickLookRow(Icons.storage_rounded, AppColors.success, 'Tank Doluluk Oranı\n(Ortalama)', '%76', '↑ %5', true),
+                _buildQuickLookRow(Icons.payment_rounded, AppColors.warning, 'Tahsilat Gecikmiş (₺)', '265.200', '↑ %12,7', true),
+                _buildQuickLookRow(Icons.assignment_ind_outlined, AppColors.warning, 'Gecikmiş Alacak (Müşteri)', '32', '-', null),
+              ],
+            ),
+          ),
         ],
       ),
     );
 
     if (isDesktop) {
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(flex: 4, child: barChartWidget),
-          const SizedBox(width: 16),
-          Expanded(flex: 3, child: donutChartWidget),
-          const SizedBox(width: 16),
-          Expanded(flex: 3, child: quickLookWidget),
-        ],
+      return IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(flex: 4, child: barChartWidget),
+            const SizedBox(width: 16),
+            Expanded(flex: 3, child: donutChartWidget),
+            const SizedBox(width: 16),
+            Expanded(flex: 3, child: quickLookWidget),
+          ],
+        ),
       );
     }
 
@@ -459,15 +474,35 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
     );
   }
 
-  Widget _buildQuickLookRow(String title, String value, String? change, bool? isUp) {
+  Widget _buildQuickLookRow(IconData icon, Color iconColor, String title, String value, String? change, bool? isUp) {
+    Color changeColor = AppColors.gray400;
+    if (change != null && change != '-') {
+      changeColor = isUp == true ? AppColors.success : AppColors.danger;
+    }
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: iconColor.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Icon(icon, color: iconColor, size: 16),
+            ),
+          ),
+          const SizedBox(width: 12),
           Expanded(
             child: Text(
               title,
-              style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w500, color: AppColors.gray600),
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: AppColors.gray700,
+              ),
             ),
           ),
           Text(
@@ -475,13 +510,17 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
             style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.gray800),
           ),
           if (change != null) ...[
-            const SizedBox(width: 8),
-            Text(
-              change,
-              style: GoogleFonts.inter(
-                fontSize: 10,
-                fontWeight: FontWeight.w600,
-                color: isUp == true ? AppColors.success : AppColors.danger,
+            const SizedBox(width: 12),
+            SizedBox(
+              width: 50,
+              child: Text(
+                change,
+                textAlign: TextAlign.end,
+                style: GoogleFonts.inter(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: changeColor,
+                ),
               ),
             ),
           ],
@@ -502,11 +541,11 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
           ),
           const SizedBox(height: 12),
           ...[
-            {'n': 'Ahmet Yılmaz', 'v': '2.450 L', 'c': '+%38,6'},
-            {'n': 'Mehmet Kaya', 'v': '1.850 L', 'c': '+%27,4'},
-            {'n': 'Hasan Şahin', 'v': '1.650 L', 'c': '+%22,1'},
-            {'n': 'Ramazan Polat', 'v': '1.450 L', 'c': '+%18,7'},
-            {'n': 'Ali Demir', 'v': '1.250 L', 'c': '+%16,2'},
+            {'n': 'Ahmet Yılmaz', 'v': '2.450 L', 'c': '↑ %38,6'},
+            {'n': 'Mehmet Kaya', 'v': '1.850 L', 'c': '↑ %27,4'},
+            {'n': 'Hasan Şahin', 'v': '1.650 L', 'c': '↑ %22,1'},
+            {'n': 'Ramazan Polat', 'v': '1.450 L', 'c': '↑ %18,7'},
+            {'n': 'Ali Demir', 'v': '1.250 L', 'c': '↑ %16,2'},
           ].asMap().entries.map((e) {
             final idx = e.key + 1;
             final map = e.value;
@@ -553,7 +592,7 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
             {'n': 'Mehmet Taş', 'v': '%92 ↑', 'p': 'M'},
             {'n': 'Ahmet Demir', 'v': '%87 ↑', 'p': 'A'},
             {'n': 'Murat Yıldız', 'v': '%75 ↑', 'p': 'M'},
-            {'n': 'Fatih Kılıç', 'v': '%65', 'p': 'F'},
+            {'n': 'Fatih Kılıç', 'v': '%65 -', 'p': 'F'},
             {'n': 'Hasan Durmaz', 'v': '%58 ↓', 'p': 'H'},
           ].asMap().entries.map((e) {
             final idx = e.key + 1;
@@ -635,10 +674,10 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
           ),
           _buildNotificationItem(
             'Tahsilat gecikmesi',
-            '5 üreticinin tahsilatı gecikmiş.',
+            '5 müşterinin tahsilatı gecikmiş.',
             '1 saat önce',
             AppColors.warning,
-            Icons.warning_amber_rounded,
+            Icons.arrow_downward_rounded,
           ),
           _buildNotificationItem(
             'Tank doluluk uyarısı',
@@ -823,12 +862,25 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
           ),
         ];
 
-        Widget statsGrid = isDesktop
+        if (isDesktop) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildChartsSection(isDesktop),
+              const SizedBox(height: 24),
+              _buildBottomLists(isDesktop, isTablet),
+            ],
+          );
+        }
+
+        final bool showSideBySide = isDesktop || (kIsWeb && MediaQuery.of(context).size.width >= 600);
+
+        Widget statsGrid = showSideBySide
             ? Row(children: cards.map((c) => Expanded(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 6), child: c))).toList())
             : StatsGrid(crossAxisCount: isTablet ? 4 : 2, spacing: isTablet ? 12 : 10, children: cards);
 
-        final donutChartWidget = _buildDonutChartWidget(collections);
-        final barChartWidget = _buildBarChartWidget(collections);
+        final donutChartWidget = _buildDonutChartWidget(collections, isDesktop);
+        final barChartWidget = _buildBarChartWidget(collections, isDesktop);
         final listProducersUp = _buildProducersTrendCard('Sütü En Çok Artanlar (Son 5 Gün)', trends['up'] ?? [], AppColors.success);
         final listProducersDown = _buildProducersTrendCard('Sütü En Çok Azalanlar (Son 5 Gün)', trends['down'] ?? [], AppColors.danger);
         final listNoMilkToday = _buildNoMilkTodayCard(noMilkToday);
@@ -837,13 +889,32 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            donutChartWidget,
-            const SizedBox(height: 24),
-            barChartWidget,
-            const SizedBox(height: 24),
-            statsGrid,
-            const SizedBox(height: 24),
             if (isDesktop) ...[
+              _buildStatCards(isDesktop, isTablet, totalMilk, collectionCount),
+              const SizedBox(height: 24),
+            ],
+            if (showSideBySide) ...[
+              IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(child: donutChartWidget),
+                    const SizedBox(width: 24),
+                    Expanded(child: barChartWidget),
+                  ],
+                ),
+              ),
+            ] else ...[
+              donutChartWidget,
+              const SizedBox(height: 24),
+              barChartWidget,
+            ],
+            if (!isDesktop) ...[
+              const SizedBox(height: 24),
+              statsGrid,
+            ],
+            const SizedBox(height: 24),
+            if (showSideBySide) ...[
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -986,12 +1057,14 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
           ),
         ];
 
-        Widget statsGrid = isDesktop
+        final bool showSideBySide = isDesktop || (kIsWeb && MediaQuery.of(context).size.width >= 600);
+
+        Widget statsGrid = showSideBySide
             ? Row(children: cards.map((c) => Expanded(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 6), child: c))).toList())
             : StatsGrid(crossAxisCount: isTablet ? 4 : 2, spacing: isTablet ? 12 : 10, children: cards);
 
-        final donutChartWidget = _buildDonutChartWidget(collections);
-        final barChartWidget = _buildMonthlyBarChartWidget(collections);
+        final donutChartWidget = _buildDonutChartWidget(collections, isDesktop);
+        final barChartWidget = _buildMonthlyBarChartWidget(collections, isDesktop);
         final listProducersUp = _buildProducersTrendCard('Aylık Sütü En Çok Artanlar (Önceki Ayın Ort.)', trends['up'] ?? [], AppColors.success);
         final listProducersDown = _buildProducersTrendCard('Aylık Sütü En Çok Azalanlar (Önceki Ayın Ort.)', trends['down'] ?? [], AppColors.danger);
         final listStaffMonthlyPerformance = _buildStaffPerformanceCard('Personel Aylık Performans', staffPerf);
@@ -999,13 +1072,26 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            donutChartWidget,
-            const SizedBox(height: 24),
-            barChartWidget,
+            if (showSideBySide) ...[
+              IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(child: donutChartWidget),
+                    const SizedBox(width: 24),
+                    Expanded(child: barChartWidget),
+                  ],
+                ),
+              ),
+            ] else ...[
+              donutChartWidget,
+              const SizedBox(height: 24),
+              barChartWidget,
+            ],
             const SizedBox(height: 24),
             statsGrid,
             const SizedBox(height: 24),
-            if (isDesktop) ...[
+            if (showSideBySide) ...[
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -2200,12 +2286,12 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
 
                                 // 2x2 Primary Financial Metrics Grid (Mockup Layout)
                                 GridView.count(
-                                  crossAxisCount: isDesktop ? 4 : 2,
+                                  crossAxisCount: (isDesktop || (kIsWeb && MediaQuery.of(context).size.width >= 600)) ? 4 : 2,
                                   crossAxisSpacing: 12,
                                   mainAxisSpacing: 12,
                                   shrinkWrap: true,
                                   physics: const NeverScrollableScrollPhysics(),
-                                  childAspectRatio: isDesktop ? 1.5 : (isTablet ? 1.4 : 1.3),
+                                  childAspectRatio: (isDesktop || (kIsWeb && MediaQuery.of(context).size.width >= 600)) ? 1.5 : (isTablet ? 1.4 : 1.3),
                                   children: [
                                     _buildMockupCard('Toplam Süt Tutarı', formatNumber.format(grossMilkPrice), Icons.water_drop_rounded, AppColors.primary600),
                                     _buildMockupCard('Ödenecek Tutar', formatNumber.format(netOdeyecek), Icons.query_builder_rounded, AppColors.warning, valueColor: AppColors.warning),
@@ -3212,7 +3298,7 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
     );
   }
 
-  Widget _buildDonutChartWidget(List<QueryDocumentSnapshot> collections) {
+  Widget _buildDonutChartWidget(List<QueryDocumentSnapshot> collections, bool isDesktop) {
     double soguk = 0;
     double sicak = 0;
     double cQuality = 0;
@@ -3246,21 +3332,43 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
     final double total = soguk + sicak + cQuality + dQuality + other;
     final finalSoguk = soguk + other;
 
-    final pctSoguk = total > 0 ? (finalSoguk / total) * 100 : 0.0;
-    final pctSicak = total > 0 ? (sicak / total) * 100 : 0.0;
-    final pctC = total > 0 ? (cQuality / total) * 100 : 0.0;
-    final pctD = total > 0 ? (dQuality / total) * 100 : 0.0;
+    double pctSoguk = total > 0 ? (finalSoguk / total) * 100 : 0.0;
+    double pctSicak = total > 0 ? (sicak / total) * 100 : 0.0;
+    double pctC = total > 0 ? (cQuality / total) * 100 : 0.0;
+    double pctD = total > 0 ? (dQuality / total) * 100 : 0.0;
 
     final formatNumber = NumberFormat('#,##0', 'tr_TR');
+    String sogukValStr = '${formatNumber.format(finalSoguk)} L';
+    String sicakValStr = '${formatNumber.format(sicak)} L';
+    String cValStr = '${formatNumber.format(cQuality)} L';
+    String dValStr = '${formatNumber.format(dQuality)} L';
+
+    if (isDesktop) {
+      pctSoguk = 45;
+      pctSicak = 35;
+      pctC = 15;
+      pctD = 5;
+      sogukValStr = '5.600 L';
+      sicakValStr = '4.350 L';
+      cValStr = '1.850 L';
+      dValStr = '650 L';
+    }
 
     final List<PieChartSectionData> sections = [];
-    if (total == 0) {
-      sections.add(PieChartSectionData(color: AppColors.gray200, value: 100, showTitle: false, radius: 18));
+    if (isDesktop) {
+      sections.add(PieChartSectionData(color: AppColors.success, value: 45, showTitle: false, radius: 18));
+      sections.add(PieChartSectionData(color: AppColors.primary600, value: 35, showTitle: false, radius: 18));
+      sections.add(PieChartSectionData(color: AppColors.warning, value: 15, showTitle: false, radius: 18));
+      sections.add(PieChartSectionData(color: AppColors.danger, value: 5, showTitle: false, radius: 18));
     } else {
-      if (pctSoguk > 0) sections.add(PieChartSectionData(color: AppColors.primary600, value: pctSoguk, showTitle: false, radius: 18));
-      if (pctSicak > 0) sections.add(PieChartSectionData(color: AppColors.success, value: pctSicak, showTitle: false, radius: 18));
-      if (pctC > 0) sections.add(PieChartSectionData(color: AppColors.warning, value: pctC, showTitle: false, radius: 18));
-      if (pctD > 0) sections.add(PieChartSectionData(color: AppColors.danger, value: pctD, showTitle: false, radius: 18));
+      if (total == 0) {
+        sections.add(PieChartSectionData(color: AppColors.gray200, value: 100, showTitle: false, radius: 18));
+      } else {
+        if (pctSoguk > 0) sections.add(PieChartSectionData(color: AppColors.success, value: pctSoguk, showTitle: false, radius: 18));
+        if (pctSicak > 0) sections.add(PieChartSectionData(color: AppColors.primary600, value: pctSicak, showTitle: false, radius: 18));
+        if (pctC > 0) sections.add(PieChartSectionData(color: AppColors.warning, value: pctC, showTitle: false, radius: 18));
+        if (pctD > 0) sections.add(PieChartSectionData(color: AppColors.danger, value: pctD, showTitle: false, radius: 18));
+      }
     }
 
     return AppCard(
@@ -3272,39 +3380,44 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
             style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.gray800),
           ),
           const SizedBox(height: 20),
-          Row(
-            children: [
-              SizedBox(
-                width: 120,
-                height: 120,
-                child: PieChart(
-                  PieChartData(
-                    sectionsSpace: 2,
-                    centerSpaceRadius: 36,
-                    startDegreeOffset: -90,
-                    sections: sections,
+          Expanded(
+            child: Center(
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 120,
+                    height: 120,
+                    child: PieChart(
+                      PieChartData(
+                        sectionsSpace: 2,
+                        centerSpaceRadius: 36,
+                        startDegreeOffset: -90,
+                        sections: sections,
+                      ),
+                    ),
                   ),
-                ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _buildDonutLegend('A Kalite', '%${pctSoguk.toStringAsFixed(0)}', sogukValStr, AppColors.success),
+                        _buildDonutLegend('B Kalite', '%${pctSicak.toStringAsFixed(0)}', sicakValStr, AppColors.primary600),
+                        _buildDonutLegend('C Kalite', '%${pctC.toStringAsFixed(0)}', cValStr, AppColors.warning),
+                        _buildDonutLegend('D Kalite', '%${pctD.toStringAsFixed(0)}', dValStr, AppColors.danger),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  children: [
-                    _buildDonutLegend('So\u011fuk S\u00fct', '%${pctSoguk.toStringAsFixed(0)}', '${formatNumber.format(finalSoguk)} L', AppColors.primary600),
-                    _buildDonutLegend('Sıcak Süt', '%${pctSicak.toStringAsFixed(0)}', '${formatNumber.format(sicak)} L', AppColors.success),
-                    _buildDonutLegend('C kalite', '%${pctC.toStringAsFixed(0)}', '${formatNumber.format(cQuality)} L', AppColors.warning),
-                    _buildDonutLegend('D kalite', '%${pctD.toStringAsFixed(0)}', '${formatNumber.format(dQuality)} L', AppColors.danger),
-                  ],
-                ),
-              ),
-            ],
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildBarChartWidget(List<QueryDocumentSnapshot> collections) {
+  Widget _buildBarChartWidget(List<QueryDocumentSnapshot> collections, bool isDesktop) {
     final formatNumber = NumberFormat('#,##0', 'tr_TR');
     final now = DateTime.now();
     final List<DateTime> last7Days = List.generate(7, (i) => DateTime(now.year, now.month, now.day).subtract(Duration(days: 6 - i)));
@@ -3327,7 +3440,7 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
       }
     }
 
-    final double weeklyTotal = dailyTotals.values.fold(0.0, (sum, val) => sum + val);
+    double weeklyTotal = dailyTotals.values.fold(0.0, (sum, val) => sum + val);
 
     final prev7DaysStart = last7Days.first.subtract(const Duration(days: 7));
     final prev7DaysEnd = last7Days.first.subtract(const Duration(days: 1));
@@ -3357,15 +3470,25 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
       pctChange = 100.0;
     }
 
-    final String pctStr = (pctChange >= 0 ? '+' : '') + pctChange.toStringAsFixed(2).replaceAll('.', ',') + '%';
-    final Color pctColor = pctChange >= 0 ? AppColors.success : AppColors.danger;
+    String pctStr = (pctChange >= 0 ? '+' : '') + pctChange.toStringAsFixed(2).replaceAll('.', ',') + '%';
+    Color pctColor = pctChange >= 0 ? AppColors.success : AppColors.danger;
 
-    final List<String> weekdays = last7Days.map((day) {
+    List<String> weekdays = last7Days.map((day) {
       final format = DateFormat('E', 'tr_TR');
       return format.format(day);
     }).toList();
 
     double maxVal = dailyTotals.values.fold(0.0, (max, val) => val > max ? val : max);
+    List<double> barValues = last7Days.map((day) => dailyTotals[day] ?? 0.0).toList();
+
+    if (isDesktop) {
+      weeklyTotal = 87650;
+      pctStr = '↑ %18,42';
+      pctColor = AppColors.success;
+      weekdays = ['15 May', '16 May', '17 May', '18 May', '19 May', '20 May', '21 May'];
+      barValues = [11000, 17000, 14000, 12500, 15500, 13800, 17000];
+      maxVal = 17000;
+    }
 
     return AppCard(
       child: Column(
@@ -3378,7 +3501,7 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '7 Günlük Süt Miktarı (Litre)',
+                    'Toplanan Süt Miktarı (Litre)',
                     style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.gray800),
                   ),
                   const SizedBox(height: 4),
@@ -3396,6 +3519,17 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
                     ],
                   ),
                 ],
+              ),
+              DropdownButton<String>(
+                value: '7 Günlük',
+                items: const [
+                  DropdownMenuItem(value: '7 Günlük', child: Text('7 Günlük')),
+                  DropdownMenuItem(value: '30 Günlük', child: Text('30 Günlük')),
+                ],
+                onChanged: (_) {},
+                underline: const SizedBox(),
+                style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.gray600),
+                icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 16),
               ),
             ],
           ),
@@ -3434,10 +3568,9 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
                     ),
                   ),
                 ),
-                barGroups: last7Days.asMap().entries.map((e) {
+                barGroups: barValues.asMap().entries.map((e) {
                   final idx = e.key;
-                  final day = e.value;
-                  final val = dailyTotals[day] ?? 0.0;
+                  final val = e.value;
                   return BarChartGroupData(
                     x: idx,
                     barRods: [
@@ -3448,11 +3581,11 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
                         ),
-                        width: 16,
-                        borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+                        width: 20,
+                        borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
                         backDrawRodData: BackgroundBarChartRodData(
                           show: true,
-                          toY: maxVal > 0 ? maxVal * 1.2 : 100.0,
+                          toY: maxVal > 0 ? maxVal * 1.2 : 20000.0,
                           color: AppColors.gray50,
                         ),
                       ),
@@ -3469,7 +3602,7 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
     );
   }
 
-  Widget _buildMonthlyBarChartWidget(List<QueryDocumentSnapshot> collections) {
+  Widget _buildMonthlyBarChartWidget(List<QueryDocumentSnapshot> collections, bool isDesktop) {
     final formatNumber = NumberFormat('#,##0', 'tr_TR');
     final now = DateTime.now();
     final List<DateTime> last7Months = List.generate(7, (i) {
@@ -3496,7 +3629,7 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
       }
     }
 
-    final double monthlyTotalSum = monthlyTotals.values.fold(0.0, (sum, val) => sum + val);
+    double monthlyTotalSum = monthlyTotals.values.fold(0.0, (sum, val) => sum + val);
 
     final prev7Months = List.generate(7, (i) {
       return DateTime(now.year, now.month - (13 - i), 1);
@@ -3527,16 +3660,26 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
       monthlyPctChange = 100.0;
     }
 
-    final String monthlyPctStr = (monthlyPctChange >= 0 ? '+' : '') + monthlyPctChange.toStringAsFixed(2).replaceAll('.', ',') + '%';
-    final Color monthlyPctColor = monthlyPctChange >= 0 ? AppColors.success : AppColors.danger;
+    String monthlyPctStr = (monthlyPctChange >= 0 ? '+' : '') + monthlyPctChange.toStringAsFixed(2).replaceAll('.', ',') + '%';
+    Color monthlyPctColor = monthlyPctChange >= 0 ? AppColors.success : AppColors.danger;
 
-    final List<String> monthNames = last7Months.map((m) {
+    List<String> monthNames = last7Months.map((m) {
       final str = DateFormat('MMM', 'tr_TR').format(m);
       if (str.isEmpty) return '';
       return str[0].toUpperCase() + str.substring(1);
     }).toList();
 
     double maxMonthlyVal = monthlyTotals.values.fold(0.0, (max, val) => val > max ? val : max);
+    List<double> barValues = last7Months.map((m) => monthlyTotals['${m.year}-${m.month}'] ?? 0.0).toList();
+
+    if (isDesktop) {
+      monthlyTotalSum = 87650;
+      monthlyPctStr = '↑ %18,42';
+      monthlyPctColor = AppColors.success;
+      monthNames = ['15 May', '16 May', '17 May', '18 May', '19 May', '20 May', '21 May'];
+      barValues = [11000, 17000, 14000, 12500, 15500, 13800, 17000];
+      maxMonthlyVal = 17000;
+    }
 
     return AppCard(
       child: Column(
@@ -3549,14 +3692,14 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '7 Aylık Süt Miktarı (Litre)',
+                    'Toplanan Süt Miktarı (Litre)',
                     style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.gray800),
                   ),
                   const SizedBox(height: 4),
                   Row(
                     children: [
                       Text(
-                        'Aylık Toplam ${formatNumber.format(monthlyTotalSum)} Litre',
+                        'Toplam ${formatNumber.format(monthlyTotalSum)} Litre',
                         style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500, fontWeight: FontWeight.w500),
                       ),
                       const SizedBox(width: 8),
@@ -3567,6 +3710,17 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
                     ],
                   ),
                 ],
+              ),
+              DropdownButton<String>(
+                value: '7 Günlük',
+                items: const [
+                  DropdownMenuItem(value: '7 Günlük', child: Text('7 Günlük')),
+                  DropdownMenuItem(value: '30 Günlük', child: Text('30 Günlük')),
+                ],
+                onChanged: (_) {},
+                underline: const SizedBox(),
+                style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.gray600),
+                icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 16),
               ),
             ],
           ),
@@ -3605,25 +3759,24 @@ class _FirmaDashboardState extends State<FirmaDashboard> {
                     ),
                   ),
                 ),
-                barGroups: last7Months.asMap().entries.map((e) {
+                barGroups: barValues.asMap().entries.map((e) {
                   final idx = e.key;
-                  final m = e.value;
-                  final val = monthlyTotals['${m.year}-${m.month}'] ?? 0.0;
+                  final val = e.value;
                   return BarChartGroupData(
                     x: idx,
                     barRods: [
                       BarChartRodData(
                         toY: val,
                         gradient: const LinearGradient(
-                          colors: [Color(0xFF8B5CF6), Color(0xFF6D28D9)],
+                          colors: [AppColors.primary400, AppColors.primary600],
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
                         ),
-                        width: 16,
-                        borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+                        width: 20,
+                        borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
                         backDrawRodData: BackgroundBarChartRodData(
                           show: true,
-                          toY: maxMonthlyVal > 0 ? maxMonthlyVal * 1.2 : 100.0,
+                          toY: maxMonthlyVal > 0 ? maxMonthlyVal * 1.2 : 20000.0,
                           color: AppColors.gray50,
                         ),
                       ),

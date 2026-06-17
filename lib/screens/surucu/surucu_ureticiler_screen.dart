@@ -27,19 +27,48 @@ class _SurucuUreticilerScreenState extends State<SurucuUreticilerScreen> {
 
   // ─── helpers ───────────────────────────────────────────────────────────────
 
-  Future<String> _getCurrentFirma(String driverName) async {
+  Future<Map<String, dynamic>> _getCurrentDriverInfo(String driverName, String userEmail) async {
     final snap = await _db
         .collection('suruculer')
-        .where('ad', isNotEqualTo: '')
         .get();
-    for (var doc in snap.docs) {
-      final d = doc.data();
-      final fullName = '${d['ad'] ?? ''} ${d['soyad'] ?? ''}'.trim();
-      if (fullName.toLowerCase() == driverName.toLowerCase()) {
-        return d['firma'] ?? '';
+    
+    DocumentSnapshot? matchedDoc;
+    // Pass 1: match by name
+    if (driverName.isNotEmpty) {
+      for (var doc in snap.docs) {
+        final d = doc.data();
+        final fullName = '${d['ad'] ?? ''} ${d['soyad'] ?? ''}'.trim();
+        if (fullName.toLowerCase() == driverName.toLowerCase()) {
+          matchedDoc = doc;
+          break;
+        }
       }
     }
-    return '';
+    // Pass 2: match by email
+    if (matchedDoc == null && userEmail.isNotEmpty) {
+      for (var doc in snap.docs) {
+        final d = doc.data();
+        final email = d['email'] ?? '';
+        if (email.isNotEmpty && email == userEmail) {
+          matchedDoc = doc;
+          break;
+        }
+      }
+    }
+
+    if (matchedDoc != null) {
+      final d = matchedDoc.data() as Map<String, dynamic>;
+      return {
+        'firma': d['firma'] ?? '',
+        'canAddCustomer': d['canAddCustomer'] ?? true,
+        'canEditCustomer': d['canEditCustomer'] ?? true,
+      };
+    }
+    return {
+      'firma': '',
+      'canAddCustomer': true,
+      'canEditCustomer': true,
+    };
   }
 
   // Returns pending teklifler for this toplayıcı keyed by ureticiId
@@ -545,14 +574,22 @@ class _SurucuUreticilerScreenState extends State<SurucuUreticilerScreen> {
   Widget build(BuildContext context) {
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final driverName = auth.user?.displayName ?? '';
+    final userEmail = auth.user?.email ?? '';
 
-    return FutureBuilder<String>(
-      future: _getCurrentFirma(driverName),
-      builder: (context, firmaSnap) {
-        final firma = firmaSnap.data ?? '';
+    return FutureBuilder<Map<String, dynamic>>(
+      future: _getCurrentDriverInfo(driverName, userEmail),
+      builder: (context, infoSnap) {
+        final info = infoSnap.data ?? {
+          'firma': '',
+          'canAddCustomer': true,
+          'canEditCustomer': true,
+        };
+        final firma = info['firma'] ?? '';
+        final canAddCustomer = info['canAddCustomer'] ?? true;
+        final canEditCustomer = info['canEditCustomer'] ?? true;
 
         // Auto-open add dialog when coming from '/surucu/ureticiler/ekle'
-        if (widget.openAddDialog && firma.isNotEmpty && !_addDialogOpened) {
+        if (widget.openAddDialog && firma.isNotEmpty && !_addDialogOpened && canAddCustomer) {
           _addDialogOpened = true;
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) _showAddDialog(context, driverName, firma);
@@ -587,7 +624,7 @@ class _SurucuUreticilerScreenState extends State<SurucuUreticilerScreen> {
               ),
             ),
             actions: [
-              if (firma.isNotEmpty)
+              if (firma.isNotEmpty && canAddCustomer)
                 IconButton(
                   icon: Container(
                     width: 32, height: 32,
@@ -602,11 +639,11 @@ class _SurucuUreticilerScreenState extends State<SurucuUreticilerScreen> {
               const SizedBox(width: 8),
             ],
           ),
-          body: firma.isEmpty && firmaSnap.connectionState == ConnectionState.done
+          body: firma.isEmpty && infoSnap.connectionState == ConnectionState.done
               ? _buildEmptyFirma()
               : firma.isEmpty
                   ? const Center(child: CircularProgressIndicator())
-                  : _buildBody(context, driverName, firma),
+                  : _buildBody(context, driverName, firma, canEditCustomer),
         );
       },
     );
@@ -637,7 +674,7 @@ class _SurucuUreticilerScreenState extends State<SurucuUreticilerScreen> {
         .trim();
   }
 
-  Widget _buildBody(BuildContext context, String driverName, String firma) {
+  Widget _buildBody(BuildContext context, String driverName, String firma, bool canEditCustomer) {
     // Listen to producers + pending teklifler + assignments simultaneously
     final ureticilerStream = _db
         .collection('ureticiler')
@@ -753,6 +790,7 @@ class _SurucuUreticilerScreenState extends State<SurucuUreticilerScreen> {
                     return _buildUreticiCard(
                       context, driverName, firma,
                       docId: doc.id, data: data, pendingTeklif: pending,
+                      canEditCustomer: canEditCustomer,
                     );
                   }),
               ],
@@ -819,6 +857,7 @@ class _SurucuUreticilerScreenState extends State<SurucuUreticilerScreen> {
     required String docId,
     required Map<String, dynamic> data,
     Map<String, dynamic>? pendingTeklif,
+    required bool canEditCustomer,
   }) {
     final name = data['name'] as String? ?? '—';
     final phone = data['phone'] as String? ?? '';
@@ -902,18 +941,20 @@ class _SurucuUreticilerScreenState extends State<SurucuUreticilerScreen> {
           if (!hasPending) ...[
             const SizedBox(height: 10),
             Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-              OutlinedButton.icon(
-                onPressed: () => _showEditDialog(context, driverName, firma, docId, data),
-                icon: const Icon(Icons.edit_rounded, size: 14),
-                label: Text('Düzenle', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold)),
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: AppColors.primary300),
-                  foregroundColor: AppColors.primary600,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              if (canEditCustomer) ...[
+                OutlinedButton.icon(
+                  onPressed: () => _showEditDialog(context, driverName, firma, docId, data),
+                  icon: const Icon(Icons.edit_rounded, size: 14),
+                  label: Text('Düzenle', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold)),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: AppColors.primary300),
+                    foregroundColor: AppColors.primary600,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
+                const SizedBox(width: 8),
+              ],
               OutlinedButton.icon(
                 onPressed: () => _showDeleteConfirm(context, driverName, firma, docId, data),
                 icon: const Icon(Icons.delete_outline_rounded, size: 14),
