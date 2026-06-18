@@ -536,12 +536,15 @@ class _FirmaTanklarState extends State<FirmaTanklar> {
           const SizedBox(width: 8),
         ],
       ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('tanklar')
-            .where('firma', isEqualTo: currentFirmaName)
-            .snapshots(),
-        builder: (context, snapshot) {
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 800),
+          child: StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('tanklar')
+                .where('firma', isEqualTo: currentFirmaName)
+                .snapshots(),
+            builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting || _isRefreshing) {
             return const Center(child: CircularProgressIndicator());
           }
@@ -617,8 +620,10 @@ class _FirmaTanklarState extends State<FirmaTanklar> {
           );
         },
       ),
-    );
-  }
+    ),
+  ),
+);
+}
 
   Widget _buildSectionTitle(String title, int count) {
     return Row(
@@ -670,6 +675,183 @@ class _FirmaTanklarState extends State<FirmaTanklar> {
   }
 
   Widget _buildVerticalTankList(List<QueryDocumentSnapshot> tanks) {
+    final bool isWeb = MediaQuery.of(context).size.width > 750;
+    
+    Widget buildTankCard(QueryDocumentSnapshot doc) {
+      final data = doc.data() as Map<String, dynamic>;
+      final String ad = data['ad'] ?? '';
+      final double stok = (data['stok'] as num?)?.toDouble() ?? 0.0;
+      final double kap = (data['kap'] as num?)?.toDouble() ?? 2000.0;
+      final double fillPercent = kap > 0 ? (stok / kap) : 0.0;
+      final String tip = data['tip'] ?? 'merkez';
+      final String arac = data['arac'] ?? '';
+
+      Color gaugeColor = const Color(0xFF3B82F6);
+      final bool isOverflow = stok > kap;
+      if (isOverflow || fillPercent >= 0.8) {
+        gaugeColor = const Color(0xFFEF4444);
+      } else if (fillPercent >= 0.5) {
+        gaugeColor = const Color(0xFFF59E0B);
+      }
+
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: isOverflow ? Colors.red : AppColors.gray200, width: isOverflow ? 1.5 : 1.0),
+          boxShadow: AppShadows.sm,
+        ),
+        child: Row(
+          children: [
+            // Left: Storage Icon
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: const Color(0xFFEFF6FF),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Center(
+                child: Icon(
+                  Icons.storage_rounded,
+                  color: Color(0xFF3B82F6),
+                  size: 20,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+
+            // Middle: Name & Vehicle Info
+            Expanded(
+              flex: 3,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    ad,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.inter(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.gray800,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    tip == 'merkez' ? 'Merkez Tankı' : (arac.isNotEmpty ? arac : 'Araç Tankı'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.inter(
+                      fontSize: 10,
+                      color: AppColors.gray400,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${stok.toStringAsFixed(0)} / ${kap.toStringAsFixed(0)} LT',
+                    style: GoogleFonts.inter(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.bold,
+                      color: isOverflow ? Colors.red : AppColors.gray600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+
+            // Right: Horizontal Progress Bar & Details
+            Expanded(
+              flex: 4,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Doluluk',
+                        style: GoogleFonts.inter(fontSize: 9, fontWeight: FontWeight.bold, color: AppColors.gray400),
+                      ),
+                      Text(
+                        '%${(fillPercent * 100).toStringAsFixed(0)}',
+                        style: GoogleFonts.inter(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.bold,
+                          color: isOverflow ? Colors.red : AppColors.gray800,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 5),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: fillPercent.clamp(0.0, 1.0),
+                      minHeight: 8,
+                      backgroundColor: AppColors.gray100,
+                      valueColor: AlwaysStoppedAnimation<Color>(gaugeColor),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+
+            // Action Button: Detay
+            GestureDetector(
+              onTap: () => _showTankIcerik(context, ad, tip),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppColors.gray50,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: AppColors.gray200),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.visibility_rounded, size: 12, color: AppColors.gray600),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Detay',
+                      style: GoogleFonts.inter(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.gray600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (isWeb) {
+      return GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          crossAxisSpacing: 16,
+          mainAxisSpacing: 12,
+          mainAxisExtent: 80,
+        ),
+        itemCount: tanks.length,
+        itemBuilder: (context, index) {
+          return buildTankCard(tanks[index]);
+        },
+      );
+    }
+
     final double cardHeight = 88.0;
     final double spacing = 8.0;
     final double totalItemHeight = cardHeight + spacing;
@@ -685,163 +867,7 @@ class _FirmaTanklarState extends State<FirmaTanklar> {
         physics: const AlwaysScrollableScrollPhysics(),
         itemCount: tanks.length,
         itemBuilder: (context, index) {
-          final data = tanks[index].data() as Map<String, dynamic>;
-          final String ad = data['ad'] ?? '';
-          final double stok = (data['stok'] as num?)?.toDouble() ?? 0.0;
-          final double kap = (data['kap'] as num?)?.toDouble() ?? 2000.0;
-          final double fillPercent = kap > 0 ? (stok / kap) : 0.0;
-          final String tip = data['tip'] ?? 'merkez';
-          final String arac = data['arac'] ?? '';
-
-          Color gaugeColor = const Color(0xFF3B82F6);
-          final bool isOverflow = stok > kap;
-          if (isOverflow || fillPercent >= 0.8) {
-            gaugeColor = const Color(0xFFEF4444);
-          } else if (fillPercent >= 0.5) {
-            gaugeColor = const Color(0xFFF59E0B);
-          }
-
-          return Container(
-            height: cardHeight,
-            margin: EdgeInsets.only(bottom: spacing),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: isOverflow ? Colors.red : AppColors.gray200, width: isOverflow ? 1.5 : 1.0),
-              boxShadow: AppShadows.sm,
-            ),
-            child: Row(
-              children: [
-                // Left: Storage Icon
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEFF6FF),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Center(
-                    child: Icon(
-                      Icons.storage_rounded,
-                      color: Color(0xFF3B82F6),
-                      size: 20,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-
-                // Middle: Name & Vehicle Info
-                Expanded(
-                  flex: 3,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        ad,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.inter(
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.gray800,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        tip == 'merkez' ? 'Merkez Tankı' : (arac.isNotEmpty ? arac : 'Araç Tankı'),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.inter(
-                          fontSize: 10,
-                          color: AppColors.gray400,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${stok.toStringAsFixed(0)} / ${kap.toStringAsFixed(0)} LT',
-                        style: GoogleFonts.inter(
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.bold,
-                          color: isOverflow ? Colors.red : AppColors.gray600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-
-                // Right: Horizontal Progress Bar & Details
-                Expanded(
-                  flex: 4,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            'Doluluk',
-                            style: GoogleFonts.inter(fontSize: 9, fontWeight: FontWeight.bold, color: AppColors.gray400),
-                          ),
-                          Text(
-                            '%${(fillPercent * 100).toStringAsFixed(0)}',
-                            style: GoogleFonts.inter(
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.bold,
-                              color: isOverflow ? Colors.red : AppColors.gray800,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 5),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
-                        child: LinearProgressIndicator(
-                          value: fillPercent.clamp(0.0, 1.0),
-                          minHeight: 8,
-                          backgroundColor: AppColors.gray100,
-                          valueColor: AlwaysStoppedAnimation<Color>(gaugeColor),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-
-                // Action Button: Detay
-                GestureDetector(
-                  onTap: () => _showTankIcerik(context, ad, tip),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: AppColors.gray50,
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: AppColors.gray200),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.visibility_rounded, size: 12, color: AppColors.gray600),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Detay',
-                          style: GoogleFonts.inter(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.gray600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          );
+          return buildTankCard(tanks[index]);
         },
       ),
     );

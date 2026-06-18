@@ -225,8 +225,294 @@ class _FirmaPersonelEkleScreenState extends State<FirmaPersonelEkleScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bool isWeb = MediaQuery.of(context).size.width > 650;
+
+    Widget buildFieldLabel(String label) {
+      return Text(
+        label,
+        style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.gray700),
+      );
+    }
+
+    final formWidget = Form(
+      key: _formKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Personel Bilgileri',
+            style: GoogleFonts.inter(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: AppColors.gray800,
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          if (isWeb) ...[
+            // Row 1: Ad Soyad & T.C. Kimlik
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      buildFieldLabel('Ad Soyad'),
+                      const SizedBox(height: 6),
+                      TextFormField(
+                        controller: _adSoyadCtrl,
+                        decoration: const InputDecoration(
+                          hintText: 'Örn: Ahmet Kara',
+                          fillColor: Color(0xFFF8FAFC),
+                        ),
+                        validator: (v) => (v == null || v.trim().isEmpty) ? 'Lütfen ad soyad girin' : null,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      buildFieldLabel('T.C. Kimlik Numarası'),
+                      const SizedBox(height: 6),
+                      TextFormField(
+                        controller: _tcCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          hintText: 'Örn: 11 Haneli T.C.',
+                          fillColor: Color(0xFFF8FAFC),
+                        ),
+                        validator: (v) {
+                          if (v == null || v.trim().isEmpty) return 'Lütfen T.C. kimlik numarası girin';
+                          if (v.trim().length != 11) return 'T.C. kimlik numarası 11 haneli olmalıdır';
+                          return null;
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            // Row 2: E-posta & Şifre
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      buildFieldLabel('E-posta Adresi'),
+                      const SizedBox(height: 6),
+                      TextFormField(
+                        controller: _emailCtrl,
+                        keyboardType: TextInputType.emailAddress,
+                        decoration: const InputDecoration(
+                          hintText: 'Örn: ahmet@sutapp.com',
+                          fillColor: Color(0xFFF8FAFC),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      buildFieldLabel('Şifre'),
+                      const SizedBox(height: 6),
+                      TextFormField(
+                        controller: _sifreCtrl,
+                        obscureText: true,
+                        decoration: const InputDecoration(
+                          hintText: 'En az 6 karakter',
+                          fillColor: Color(0xFFF8FAFC),
+                        ),
+                        validator: (v) => (v == null || v.length < 6) ? 'Şifre en az 6 karakter olmalıdır' : null,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            // Row 3: Telefon & Bölge
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      buildFieldLabel('Telefon Numarası'),
+                      const SizedBox(height: 6),
+                      TextFormField(
+                        controller: _telCtrl,
+                        keyboardType: TextInputType.phone,
+                        maxLength: 11,
+                        decoration: const InputDecoration(
+                          hintText: 'Örn: 0532 123 4567',
+                          fillColor: Color(0xFFF8FAFC),
+                          counterText: '',
+                        ),
+                        validator: (v) {
+                          if (v == null || v.trim().isEmpty) return 'Lütfen telefon girin';
+                          if (v.trim().length != 11) return 'Telefon numarası 11 haneli olmalıdır';
+                          return null;
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      buildFieldLabel('Bölge'),
+                      const SizedBox(height: 6),
+                      TextFormField(
+                        controller: _bolgeCtrl,
+                        decoration: const InputDecoration(
+                          hintText: 'Örn: Kocasinan',
+                          fillColor: Color(0xFFF8FAFC),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+          ] else ...[
+            buildFieldLabel('Ad Soyad'),
+            const SizedBox(height: 6),
+            TextFormField(
+              controller: _adSoyadCtrl,
+              decoration: const InputDecoration(
+                hintText: 'Örn: Ahmet Kara',
+                fillColor: Color(0xFFF8FAFC),
+              ),
+              validator: (v) => (v == null || v.trim().isEmpty) ? 'Lütfen ad soyad girin' : null,
+            ),
+            const SizedBox(height: 16),
+
+            buildFieldLabel('T.C. Kimlik Numarası'),
+            const SizedBox(height: 6),
+            TextFormField(
+              controller: _tcCtrl,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                hintText: 'Örn: 11 Haneli T.C.',
+                fillColor: Color(0xFFF8FAFC),
+              ),
+              validator: (v) {
+                if (v == null || v.trim().isEmpty) return 'Lütfen T.C. kimlik numarası girin';
+                if (v.trim().length != 11) return 'T.C. kimlik numarası 11 haneli olmalıdır';
+                return null;
+              },
+            ),
+            const SizedBox(height: 16),
+
+            buildFieldLabel('E-posta Adresi'),
+            const SizedBox(height: 6),
+            TextFormField(
+              controller: _emailCtrl,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(
+                hintText: 'Örn: ahmet@sutapp.com',
+                fillColor: Color(0xFFF8FAFC),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            buildFieldLabel('Şifre'),
+            const SizedBox(height: 6),
+            TextFormField(
+              controller: _sifreCtrl,
+              obscureText: true,
+              decoration: const InputDecoration(
+                hintText: 'En az 6 karakter',
+                fillColor: Color(0xFFF8FAFC),
+              ),
+              validator: (v) => (v == null || v.length < 6) ? 'Şifre en az 6 karakter olmalıdır' : null,
+            ),
+            const SizedBox(height: 16),
+
+            buildFieldLabel('Telefon Numarası'),
+            const SizedBox(height: 6),
+            TextFormField(
+              controller: _telCtrl,
+              keyboardType: TextInputType.phone,
+              maxLength: 11,
+              decoration: const InputDecoration(
+                hintText: 'Örn: 0532 123 4567',
+                fillColor: Color(0xFFF8FAFC),
+                counterText: '',
+              ),
+              validator: (v) {
+                if (v == null || v.trim().isEmpty) return 'Lütfen telefon girin';
+                if (v.trim().length != 11) return 'Telefon numarası 11 haneli olmalıdır';
+                return null;
+              },
+            ),
+            const SizedBox(height: 16),
+
+            buildFieldLabel('Bölge'),
+            const SizedBox(height: 6),
+            TextFormField(
+              controller: _bolgeCtrl,
+              decoration: const InputDecoration(
+                hintText: 'Örn: Kocasinan',
+                fillColor: Color(0xFFF8FAFC),
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+
+          buildFieldLabel('Adres'),
+          const SizedBox(height: 6),
+          TextFormField(
+            controller: _adresCtrl,
+            maxLines: 2,
+            decoration: const InputDecoration(
+              hintText: 'Açık adres...',
+              fillColor: Color(0xFFF8FAFC),
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          Align(
+            alignment: isWeb ? Alignment.centerRight : Alignment.center,
+            child: SizedBox(
+              width: isWeb ? 200 : double.infinity,
+              height: isWeb ? 42 : 50,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF2563EB),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                onPressed: _save,
+                child: Text(
+                  _isEdit ? 'Personeli Güncelle' : '+ Personel Oluştur',
+                  style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: isWeb ? 14 : 15),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: isWeb ? AppColors.gray50 : Colors.white,
       appBar: AppBar(
         title: Text(
           _isEdit ? 'Personel Düzenle' : 'Yeni Personel Ekle',
@@ -240,165 +526,35 @@ class _FirmaPersonelEkleScreenState extends State<FirmaPersonelEkleScreen> {
       body: SafeArea(
         child: _isSaving
             ? const Center(child: CircularProgressIndicator())
-            : Form(
-                key: _formKey,
-                child: ListView(
-                  padding: const EdgeInsets.all(24),
-                  children: [
-                    Text(
-                      'Personel Bilgileri',
-                      style: GoogleFonts.inter(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.gray800,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Ad Soyad
-                    Text(
-                      'Ad Soyad',
-                      style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.gray700),
-                    ),
-                    const SizedBox(height: 6),
-                    TextFormField(
-                      controller: _adSoyadCtrl,
-                      decoration: const InputDecoration(
-                        hintText: 'Örn: Ahmet Kara',
-                        fillColor: Color(0xFFF8FAFC),
-                      ),
-                      validator: (v) => (v == null || v.trim().isEmpty) ? 'Lütfen ad soyad girin' : null,
-                    ),
-                    const SizedBox(height: 16),
-
-                    // TC Kimlik
-                    Text(
-                      'T.C. Kimlik Numarası',
-                      style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.gray700),
-                    ),
-                    const SizedBox(height: 6),
-                    TextFormField(
-                      controller: _tcCtrl,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        hintText: 'Örn: 11 Haneli T.C.',
-                        fillColor: Color(0xFFF8FAFC),
-                      ),
-                      validator: (v) {
-                        if (v == null || v.trim().isEmpty) return 'Lütfen T.C. kimlik numarası girin';
-                        if (v.trim().length != 11) return 'T.C. kimlik numarası 11 haneli olmalıdır';
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 16),
-
-                    // E-posta
-                    Text(
-                      'E-posta Adresi',
-                      style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.gray700),
-                    ),
-                    const SizedBox(height: 6),
-                    TextFormField(
-                      controller: _emailCtrl,
-                      keyboardType: TextInputType.emailAddress,
-                      decoration: const InputDecoration(
-                        hintText: 'Örn: ahmet@sutapp.com',
-                        fillColor: Color(0xFFF8FAFC),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Şifre
-                    Text(
-                      'Şifre',
-                      style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.gray700),
-                    ),
-                    const SizedBox(height: 6),
-                    TextFormField(
-                      controller: _sifreCtrl,
-                      obscureText: true,
-                      decoration: const InputDecoration(
-                        hintText: 'En az 6 karakter',
-                        fillColor: Color(0xFFF8FAFC),
-                      ),
-                      validator: (v) => (v == null || v.length < 6) ? 'Şifre en az 6 karakter olmalıdır' : null,
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Telefon
-                    Text(
-                      'Telefon Numarası',
-                      style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.gray700),
-                    ),
-                    const SizedBox(height: 6),
-                    TextFormField(
-                      controller: _telCtrl,
-                      keyboardType: TextInputType.phone,
-                      maxLength: 11,
-                      decoration: const InputDecoration(
-                        hintText: 'Örn: 0532 123 4567',
-                        fillColor: Color(0xFFF8FAFC),
-                        counterText: '',
-                      ),
-                      validator: (v) {
-                        if (v == null || v.trim().isEmpty) return 'Lütfen telefon girin';
-                        if (v.trim().length != 11) return 'Telefon numarası 11 haneli olmalıdır';
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Adres
-                    Text(
-                      'Adres',
-                      style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.gray700),
-                    ),
-                    const SizedBox(height: 6),
-                    TextFormField(
-                      controller: _adresCtrl,
-                      maxLines: 2,
-                      decoration: const InputDecoration(
-                        hintText: 'Açık adres...',
-                        fillColor: Color(0xFFF8FAFC),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Bölge
-                    Text(
-                      'Bölge',
-                      style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.gray700),
-                    ),
-                    const SizedBox(height: 6),
-                    TextFormField(
-                      controller: _bolgeCtrl,
-                      decoration: const InputDecoration(
-                        hintText: 'Örn: Kocasinan',
-                        fillColor: Color(0xFFF8FAFC),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-
-                    // Save Button
-                    SizedBox(
-                      width: double.infinity,
-                      height: 50,
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF2563EB),
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        ),
-                        onPressed: _save,
-                        child: Text(
-                          _isEdit ? 'Personeli Güncelle' : '+ Personel Oluştur',
-                          style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 15),
+            : (isWeb
+                ? Center(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 24),
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 500),
+                        child: Container(
+                          padding: const EdgeInsets.all(24),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: AppColors.gray200),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.04),
+                                blurRadius: 16,
+                                offset: const Offset(0, 8),
+                              ),
+                            ],
+                          ),
+                          child: formWidget,
                         ),
                       ),
                     ),
-                  ],
-                ),
-              ),
+                  )
+                : SingleChildScrollView(
+                    padding: const EdgeInsets.all(24),
+                    child: formWidget,
+                  )),
       ),
     );
   }

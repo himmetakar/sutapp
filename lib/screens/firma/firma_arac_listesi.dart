@@ -54,12 +54,15 @@ class _FirmaAracListesiScreenState extends State<FirmaAracListesiScreen> {
         ],
       ),
       body: SafeArea(
-        child: StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection('araclar')
-              .where('firma', isEqualTo: currentFirmaName)
-              .snapshots(),
-          builder: (context, snapshot) {
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 800),
+            child: StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('araclar')
+                  .where('firma', isEqualTo: currentFirmaName)
+                  .snapshots(),
+              builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
             }
@@ -68,6 +71,8 @@ class _FirmaAracListesiScreenState extends State<FirmaAracListesiScreen> {
             }
 
             final docs = snapshot.data?.docs ?? [];
+            final bool isWeb = MediaQuery.of(context).size.width > 750;
+
             if (docs.isEmpty) {
               return Center(
                 child: Text(
@@ -77,52 +82,50 @@ class _FirmaAracListesiScreenState extends State<FirmaAracListesiScreen> {
               );
             }
 
-            return ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: docs.length,
-              itemBuilder: (context, index) {
-                final doc = docs[index];
-                final v = doc.data() as Map<String, dynamic>;
+            Widget buildVehicleCard(QueryDocumentSnapshot doc) {
+              final v = doc.data() as Map<String, dynamic>;
 
-                final String plaka = v['plaka'] ?? '';
-                final String model = v['model'] ?? 'Bilinmiyor';
-                final int yil = v['yil'] ?? 0;
-                final bool active = v['active'] as bool? ?? true;
-                final String label = v['ad'] ?? v['aracAdi'] ?? plaka;
+              final String plaka = v['plaka'] ?? '';
+              final String model = v['model'] ?? 'Bilinmiyor';
+              final int yil = v['yil'] ?? 0;
+              final bool active = v['active'] as bool? ?? true;
+              final String label = v['ad'] ?? v['aracAdi'] ?? plaka;
 
-                // Extract capacity
-                double capacity = 0.0;
-                if (v['kapasite'] != null) {
-                  capacity = (v['kapasite'] as num).toDouble();
-                } else {
-                  final tankList = v['tanklar'] as List?;
-                  if (tankList != null && tankList.isNotEmpty) {
-                    capacity = (tankList.first['kap'] as num).toDouble();
-                  }
+              // Extract capacity
+              double capacity = 0.0;
+              if (v['kapasite'] != null) {
+                capacity = (v['kapasite'] as num).toDouble();
+              } else {
+                final tankList = v['tanklar'] as List?;
+                if (tankList != null && tankList.isNotEmpty) {
+                  capacity = (tankList.first['kap'] as num).toDouble();
                 }
+              }
 
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 16),
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: AppColors.gray200),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.02),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Column(
+              return Container(
+                margin: isWeb ? EdgeInsets.zero : const EdgeInsets.only(bottom: 16),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppColors.gray200),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.02),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
@@ -132,6 +135,8 @@ class _FirmaAracListesiScreenState extends State<FirmaAracListesiScreen> {
                                   fontWeight: FontWeight.bold,
                                   color: AppColors.gray800,
                                 ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
                               const SizedBox(height: 2),
                               Text(
@@ -144,105 +149,133 @@ class _FirmaAracListesiScreenState extends State<FirmaAracListesiScreen> {
                               ),
                             ],
                           ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: active ? const Color(0xFF10B981) : const Color(0xFFEF4444),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  active ? Icons.check : Icons.close,
-                                  size: 11,
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: active ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                active ? Icons.check : Icons.close,
+                                size: 11,
+                                color: Colors.white,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                active ? 'Aktif' : 'Pasif',
+                                style: GoogleFonts.inter(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
                                   color: Colors.white,
                                 ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  active ? 'Aktif' : 'Pasif',
-                                  style: GoogleFonts.inter(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      const Divider(color: AppColors.gray200, height: 1),
-                      const SizedBox(height: 16),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    const Divider(color: AppColors.gray200, height: 1),
+                    const SizedBox(height: 12),
 
-                      // Details
-                      _buildDetailRow(Icons.directions_car_filled_rounded, 'Model:', model),
-                      const SizedBox(height: 8),
-                      _buildDetailRow(Icons.calendar_month_rounded, 'Yıl:', yil > 0 ? '$yil' : '-'),
-                      const SizedBox(height: 8),
-                      _buildDetailRow(Icons.water_drop_rounded, 'Kapasite:', '${capacity.toStringAsFixed(0)} L'),
-                      const SizedBox(height: 16),
+                    // Details
+                    _buildDetailRow(Icons.directions_car_filled_rounded, 'Model:', model),
+                    const SizedBox(height: 6),
+                    _buildDetailRow(Icons.calendar_month_rounded, 'Yıl:', yil > 0 ? '$yil' : '-'),
+                    const SizedBox(height: 6),
+                    _buildDetailRow(Icons.water_drop_rounded, 'Kapasite:', '${capacity.toStringAsFixed(0)} L'),
+                    const SizedBox(height: 14),
 
-                      // Actions (Edit, Delete)
-                      Row(
-                        children: [
-                          Expanded(
-                            child: SizedBox(
-                              height: 38,
-                              child: OutlinedButton.icon(
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: const Color(0xFF2563EB),
-                                  side: const BorderSide(color: Color(0xFF2563EB)),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                ),
-                                onPressed: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => FirmaAracEkleScreen(
-                                        editVehicleData: v,
-                                        editVehicleId: doc.id,
-                                      ),
+                    // Actions (Edit, Delete)
+                    Row(
+                      children: [
+                        Expanded(
+                          child: SizedBox(
+                            height: 36,
+                            child: OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: const Color(0xFF2563EB),
+                                side: const BorderSide(color: Color(0xFF2563EB)),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                padding: EdgeInsets.zero,
+                              ),
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => FirmaAracEkleScreen(
+                                      editVehicleData: v,
+                                      editVehicleId: doc.id,
                                     ),
-                                  );
-                                },
-                                icon: const Icon(Icons.edit_rounded, size: 16),
-                                label: Text(
-                                  'Düzenle',
-                                  style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 13),
-                                ),
+                                  ),
+                                );
+                              },
+                              icon: const Icon(Icons.edit_rounded, size: 14),
+                              label: Text(
+                                'Düzenle',
+                                style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 12),
                               ),
                             ),
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: SizedBox(
-                              height: 38,
-                              child: OutlinedButton.icon(
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: const Color(0xFFEF4444),
-                                  side: const BorderSide(color: Color(0xFFFCA5A5)),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                ),
-                                onPressed: () => _deleteVehicle(doc.id, plaka, currentFirmaName),
-                                icon: const Icon(Icons.delete_rounded, size: 16),
-                                label: Text(
-                                  'Sil',
-                                  style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 13),
-                                ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: SizedBox(
+                            height: 36,
+                            child: OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: const Color(0xFFEF4444),
+                                side: const BorderSide(color: Color(0xFFFCA5A5)),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                padding: EdgeInsets.zero,
+                              ),
+                              onPressed: () => _deleteVehicle(doc.id, plaka, currentFirmaName),
+                              icon: const Icon(Icons.delete_rounded, size: 14),
+                              label: Text(
+                                'Sil',
+                                style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 12),
                               ),
                             ),
                           ),
-                        ],
-                      ),
-                    ],
-                  ),
-                );
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            if (isWeb) {
+              return GridView.builder(
+                padding: const EdgeInsets.all(16),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  crossAxisSpacing: 16,
+                  mainAxisSpacing: 16,
+                  mainAxisExtent: 220,
+                ),
+                itemCount: docs.length,
+                itemBuilder: (context, index) {
+                  return buildVehicleCard(docs[index]);
+                },
+              );
+            }
+
+            return ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: docs.length,
+              itemBuilder: (context, index) {
+                return buildVehicleCard(docs[index]);
               },
             );
           },
         ),
+            ),
+          ),
       ),
     );
   }

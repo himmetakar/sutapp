@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
@@ -113,7 +114,9 @@ class _FirmaPersonelListesiScreenState extends State<FirmaPersonelListesiScreen>
                     );
                   }
 
-                  return ListView.builder(
+                  return (kIsWeb || MediaQuery.sizeOf(context).width > 800)
+                      ? _buildWebTable(docs)
+                      : ListView.builder(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     itemCount: docs.length,
                     itemBuilder: (context, index) {
@@ -468,5 +471,262 @@ class _FirmaPersonelListesiScreenState extends State<FirmaPersonelListesiScreen>
         }
       }
     }
+  }
+
+  Widget _buildWebTable(List<DocumentSnapshot> docs) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.gray200),
+          boxShadow: const [
+            BoxShadow(
+              color: Colors.black12,
+              blurRadius: 4,
+              offset: Offset(0, 2),
+            )
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.vertical,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Theme(
+                data: Theme.of(context).copyWith(
+                  cardColor: Colors.white,
+                  dividerColor: AppColors.gray100,
+                ),
+                child: DataTable(
+                  headingRowColor: WidgetStateProperty.all(AppColors.gray50),
+                  headingRowHeight: 44,
+                  dataRowMinHeight: 52,
+                  dataRowMaxHeight: 52,
+                  columnSpacing: 24,
+                  showCheckboxColumn: false,
+                  columns: [
+                    DataColumn(
+                      label: Text(
+                        'Personel',
+                        style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.gray800),
+                      ),
+                    ),
+                    DataColumn(
+                      label: Text(
+                        'E-posta',
+                        style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.gray800),
+                      ),
+                    ),
+                    DataColumn(
+                      label: Text(
+                        'Telefon',
+                        style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.gray800),
+                      ),
+                    ),
+                    DataColumn(
+                      label: Text(
+                        'Durum',
+                        style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.gray800),
+                      ),
+                    ),
+                    DataColumn(
+                      label: Text(
+                        'Üretici Ekle',
+                        style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.gray800),
+                      ),
+                    ),
+                    DataColumn(
+                      label: Text(
+                        'Üretici Düzenle',
+                        style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.gray800),
+                      ),
+                    ),
+                    DataColumn(
+                      label: Text(
+                        'Sipariş Oluştur',
+                        style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.gray800),
+                      ),
+                    ),
+                    DataColumn(
+                      label: Text(
+                        'İşlemler',
+                        style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.gray800),
+                      ),
+                    ),
+                  ],
+                  rows: docs.map((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    final id = doc.id;
+                    final ad = data['ad'] ?? '';
+                    final soyad = data['soyad'] ?? '';
+                    final name = '$ad $soyad'.trim();
+                    final email = data['email'] ?? '';
+                    final tel = data['tel'] ?? '';
+                    final active = data['active'] as bool? ?? true;
+
+                    final canAddCustomer = data['canAddCustomer'] as bool? ?? true;
+                    final canEditCustomer = data['canEditCustomer'] as bool? ?? true;
+                    final canCreateOrder = data['canCreateOrder'] as bool? ?? false;
+
+                    return DataRow(
+                      cells: [
+                        DataCell(
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 28,
+                                height: 28,
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFFEFF6FF),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Center(
+                                  child: Icon(
+                                    Icons.person_rounded,
+                                    color: Color(0xFF2563EB),
+                                    size: 16,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                name,
+                                style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.gray900),
+                              ),
+                            ],
+                          ),
+                        ),
+                        DataCell(
+                          Text(
+                            email.isEmpty ? '-' : email,
+                            style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray700),
+                          ),
+                        ),
+                        DataCell(
+                          Text(
+                            tel.isEmpty ? '-' : tel,
+                            style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray700),
+                          ),
+                        ),
+                        DataCell(
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: active ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              active ? 'Aktif' : 'Pasif',
+                              style: GoogleFonts.inter(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: active ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                              ),
+                            ),
+                          ),
+                        ),
+                        DataCell(
+                          SizedBox(
+                            height: 24,
+                            child: Transform.scale(
+                              scale: 0.8,
+                              child: Switch(
+                                value: canAddCustomer,
+                                activeColor: const Color(0xFF10B981),
+                                onChanged: (val) {
+                                  FirebaseFirestore.instance.collection('suruculer').doc(id).update({'canAddCustomer': val});
+                                },
+                              ),
+                            ),
+                          ),
+                        ),
+                        DataCell(
+                          SizedBox(
+                            height: 24,
+                            child: Transform.scale(
+                              scale: 0.8,
+                              child: Switch(
+                                value: canEditCustomer,
+                                activeColor: const Color(0xFF10B981),
+                                onChanged: (val) {
+                                  FirebaseFirestore.instance.collection('suruculer').doc(id).update({'canEditCustomer': val});
+                                },
+                              ),
+                            ),
+                          ),
+                        ),
+                        DataCell(
+                          SizedBox(
+                            height: 24,
+                            child: Transform.scale(
+                              scale: 0.8,
+                              child: Switch(
+                                value: canCreateOrder,
+                                activeColor: const Color(0xFF10B981),
+                                onChanged: (val) {
+                                  FirebaseFirestore.instance.collection('suruculer').doc(id).update({'canCreateOrder': val});
+                                },
+                              ),
+                            ),
+                          ),
+                        ),
+                        DataCell(
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                                icon: Icon(
+                                  active ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                                  color: const Color(0xFF2563EB),
+                                  size: 18,
+                                ),
+                                tooltip: active ? 'Pasife Al' : 'Aktife Al',
+                                onPressed: () => _toggleActive(id, active),
+                              ),
+                              const SizedBox(width: 8),
+                              IconButton(
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                                icon: const Icon(Icons.edit_rounded, color: Color(0xFFF59E0B), size: 18),
+                                tooltip: 'Düzenle',
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => FirmaPersonelEkleScreen(
+                                        editDriverData: data,
+                                        editDriverId: id,
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                              const SizedBox(width: 8),
+                              IconButton(
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                                icon: const Icon(Icons.delete_rounded, color: Color(0xFFEF4444), size: 18),
+                                tooltip: 'Sil',
+                                onPressed: () => _deleteDriver(id, name),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

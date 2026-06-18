@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
@@ -24,6 +24,7 @@ class _FirmaAylikSutScreenState extends State<FirmaAylikSutScreen> {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   DateTime _selectedMonth = DateTime.now();
   List<String> _tanks = [];
+  String? _defaultCenterTank;
 
   @override
   void initState() {
@@ -33,7 +34,7 @@ class _FirmaAylikSutScreenState extends State<FirmaAylikSutScreen> {
 
   Future<void> _loadTanks() async {
     final auth = Provider.of<AuthProvider>(context, listen: false);
-    final currentFirmaName = auth.user?.displayName ?? '';
+    final currentFirmaName = auth.currentFirma;
     final isAdmin = auth.user?.role == UserRole.admin;
 
     final query = isAdmin
@@ -44,9 +45,21 @@ class _FirmaAylikSutScreenState extends State<FirmaAylikSutScreen> {
 
     final snapshot = await query.get();
     
+    String? defaultCenter;
+    final List<String> loadedTanks = [];
+    for (var doc in snapshot.docs) {
+      final name = doc['ad'] as String;
+      final tip = doc['tip'] as String? ?? 'merkez';
+      loadedTanks.add(name);
+      if (tip == 'merkez' && defaultCenter == null) {
+        defaultCenter = name;
+      }
+    }
+    
     if (mounted) {
       setState(() {
-        _tanks = snapshot.docs.map((doc) => doc['ad'] as String).toList();
+        _tanks = loadedTanks;
+        _defaultCenterTank = defaultCenter;
       });
     }
   }
@@ -73,7 +86,7 @@ class _FirmaAylikSutScreenState extends State<FirmaAylikSutScreen> {
 
     try {
       final auth = Provider.of<AuthProvider>(context, listen: false);
-      final currentFirmaName = auth.user?.displayName ?? '';
+      final currentFirmaName = auth.currentFirma;
       final isAdmin = auth.user?.role == UserRole.admin;
       final daysCount = _daysInMonth(_selectedMonth);
 
@@ -624,7 +637,7 @@ class _FirmaAylikSutScreenState extends State<FirmaAylikSutScreen> {
                       );
 
                       final auth = Provider.of<AuthProvider>(context, listen: false);
-                      final currentFirmaName = auth.user?.displayName ?? '';
+                      final currentFirmaName = auth.currentFirma;
                       final isAdmin = auth.user?.role == UserRole.admin;
 
                       String? targetFirma;
@@ -640,7 +653,9 @@ class _FirmaAylikSutScreenState extends State<FirmaAylikSutScreen> {
                         }
                       }
 
-                      final String resolvedTank = selectedTank == 'Tank seçimi (zorunlu değil)' ? 'Merkez Tank' : selectedTank;
+                      final String resolvedTank = selectedTank == 'Tank seçimi (zorunlu değil)'
+                          ? (_defaultCenterTank ?? 'Merkez Tank')
+                          : selectedTank;
 
                       await FirestoreService().recordMilkCollection(
                         producerName: producerName,
@@ -680,7 +695,7 @@ class _FirmaAylikSutScreenState extends State<FirmaAylikSutScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = Provider.of<AuthProvider>(context, listen: false);
-    final currentFirmaName = auth.user?.displayName ?? '';
+    final currentFirmaName = auth.currentFirma;
     final isAdmin = auth.user?.role == UserRole.admin;
     final monthStr = DateFormat('MMMM yyyy', 'tr_TR').format(_selectedMonth);
     final daysCount = _daysInMonth(_selectedMonth);

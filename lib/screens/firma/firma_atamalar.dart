@@ -194,7 +194,6 @@ class _FirmaAtamalarScreenState extends State<FirmaAtamalarScreen> {
                       value: selectedTargetType,
                       items: const [
                         DropdownMenuItem(value: 'Üretici', child: Text('Üretici')),
-                        DropdownMenuItem(value: 'Grup', child: Text('Grup / Köy')),
                         DropdownMenuItem(value: 'Birlik', child: Text('Birlik')),
                       ],
                       onChanged: (val) {
@@ -729,22 +728,7 @@ class _FirmaAtamalarScreenState extends State<FirmaAtamalarScreen> {
                                               textStyle: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600),
                                             ),
                                           ),
-                                          const SizedBox(width: 8),
-                                          OutlinedButton.icon(
-                                            onPressed: () => _showAddAssignmentDialog(
-                                              initialDriver: driverName,
-                                              initialTargetType: 'Grup',
-                                            ),
-                                            icon: const Icon(Icons.group_add_rounded, size: 16),
-                                            label: const Text('Grup Ekle/Çıkar'),
-                                            style: OutlinedButton.styleFrom(
-                                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                              side: const BorderSide(color: AppColors.primary300),
-                                              foregroundColor: AppColors.primary700,
-                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                              textStyle: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600),
-                                            ),
-                                          ),
+
                                           const SizedBox(width: 8),
                                           OutlinedButton.icon(
                                             onPressed: () => _showAddAssignmentDialog(

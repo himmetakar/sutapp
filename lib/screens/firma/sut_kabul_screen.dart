@@ -144,12 +144,15 @@ class _SutKabulScreenState extends State<SutKabulScreen> {
           const SizedBox(width: 8),
         ],
       ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('sut_kabul')
-            .where('firma', isEqualTo: currentFirmaName)
-            .snapshots(),
-        builder: (context, snapshot) {
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 800),
+          child: StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('sut_kabul')
+                .where('firma', isEqualTo: currentFirmaName)
+                .snapshots(),
+            builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting || _isRefreshing) {
             return const Center(child: CircularProgressIndicator());
           }
@@ -280,14 +283,37 @@ class _SutKabulScreenState extends State<SutKabulScreen> {
                           style: GoogleFonts.inter(color: AppColors.gray500),
                         ),
                       )
-                    : ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        itemCount: docs.length,
-                        itemBuilder: (context, index) {
-                          final doc = docs[index];
-                          return SutKabulCard(
-                            doc: doc,
-                            onAccept: _handleAcceptWithAmount,
+                    : LayoutBuilder(
+                        builder: (context, constraints) {
+                          final bool isWeb = constraints.maxWidth > 700;
+                          if (isWeb) {
+                            return GridView.builder(
+                              padding: const EdgeInsets.all(16),
+                              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 2,
+                                crossAxisSpacing: 16,
+                                mainAxisSpacing: 16,
+                                mainAxisExtent: 330,
+                              ),
+                              itemCount: docs.length,
+                              itemBuilder: (context, index) {
+                                return SutKabulCard(
+                                  doc: docs[index],
+                                  onAccept: _handleAcceptWithAmount,
+                                );
+                              },
+                            );
+                          }
+                          return ListView.builder(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            itemCount: docs.length,
+                            itemBuilder: (context, index) {
+                              final doc = docs[index];
+                              return SutKabulCard(
+                                doc: doc,
+                                onAccept: _handleAcceptWithAmount,
+                              );
+                            },
                           );
                         },
                       ),
@@ -296,6 +322,8 @@ class _SutKabulScreenState extends State<SutKabulScreen> {
           );
         },
       ),
+          ),
+        ),
     );
   }
 }

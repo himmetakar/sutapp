@@ -92,7 +92,13 @@ class _MusteriFiyatAyarlariScreenState extends State<MusteriFiyatAyarlariScreen>
         title: Text('Süt Fiyat Girişleri', style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16)),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.go('/firma/finans'),
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/firma/ureticiler');
+            }
+          },
         ),
         bottom: TabBar(
           controller: _subTabController,

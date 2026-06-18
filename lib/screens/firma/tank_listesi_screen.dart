@@ -51,8 +51,11 @@ class _TankListesiScreenState extends State<TankListesiScreen> {
           const SizedBox(width: 8),
         ],
       ),
-      body: Column(
-        children: [
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 800),
+          child: Column(
+            children: [
           // Search & Filters Panel
           Container(
             color: Colors.white,
@@ -208,168 +211,197 @@ class _TankListesiScreenState extends State<TankListesiScreen> {
                   );
                 }
 
+                final bool isWeb = MediaQuery.of(context).size.width > 750;
+
+                Widget buildTankCard(QueryDocumentSnapshot doc, int index) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  final String name = data['ad'] ?? '';
+                  final String code = data['kod'] ?? 'TANK-${index + 1}';
+                  final double kap = (data['kap'] as num?)?.toDouble() ?? 2000.0;
+                  final String typeVal = data['tip'] ?? 'merkez';
+                  final String vehicle = data['arac'] ?? '';
+                  final String statusVal = data['durum'] ?? 'aktif';
+
+                  final isMerkez = typeVal == 'merkez';
+
+                  return Container(
+                    margin: isWeb ? EdgeInsets.zero : const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(14),
+                      boxShadow: AppShadows.sm,
+                      border: Border.all(color: AppColors.gray200),
+                    ),
+                    child: Row(
+                      children: [
+                        // Left Icon
+                        Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEFF6FF),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Center(
+                            child: Icon(
+                              Icons.storage_rounded,
+                              color: Color(0xFF3B82F6),
+                              size: 22,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        
+                        // Center Info
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                name,
+                                style: GoogleFonts.inter(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.gray800,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                code,
+                                style: GoogleFonts.inter(
+                                  fontSize: 10.5,
+                                  color: AppColors.gray400,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  Text(
+                                    'Kapasite: ${kap.toStringAsFixed(0)}L',
+                                    style: GoogleFonts.inter(
+                                      fontSize: 10.5,
+                                      color: AppColors.gray500,
+                                    ),
+                                  ),
+                                  if (!isMerkez && vehicle.isNotEmpty) ...[
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        'Araç: $vehicle',
+                                        style: GoogleFonts.inter(
+                                          fontSize: 10.5,
+                                          color: AppColors.gray500,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        
+                        // Right Badges
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            // Type Badge
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: isMerkez ? const Color(0xFFFAF5FF) : const Color(0xFFEFF6FF),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    isMerkez ? Icons.business_rounded : Icons.local_shipping_outlined,
+                                    size: 11,
+                                    color: isMerkez ? const Color(0xFF8B5CF6) : const Color(0xFF3B82F6),
+                                  ),
+                                  const SizedBox(width: 3),
+                                  Text(
+                                    isMerkez ? 'Merkez' : 'Normal',
+                                    style: GoogleFonts.inter(
+                                      fontSize: 9.5,
+                                      fontWeight: FontWeight.w600,
+                                      color: isMerkez ? const Color(0xFF8B5CF6) : const Color(0xFF3B82F6),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            
+                            // Status Badge
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: statusVal == 'aktif'
+                                      ? const Color(0xFF10B981)
+                                      : statusVal == 'bakim'
+                                          ? const Color(0xFFF59E0B)
+                                          : const Color(0xFFEF4444),
+                                  width: 1,
+                                ),
+                              ),
+                              child: Text(
+                                statusVal == 'aktif'
+                                    ? 'Aktif'
+                                    : statusVal == 'bakim'
+                                        ? 'Bakımda'
+                                        : 'Pasif',
+                                style: GoogleFonts.inter(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w700,
+                                  color: statusVal == 'aktif'
+                                      ? const Color(0xFF10B981)
+                                      : statusVal == 'bakim'
+                                          ? const Color(0xFFF59E0B)
+                                          : const Color(0xFFEF4444),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                if (isWeb) {
+                  return GridView.builder(
+                    padding: const EdgeInsets.all(16),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      crossAxisSpacing: 16,
+                      mainAxisSpacing: 12,
+                      mainAxisExtent: 95,
+                    ),
+                    itemCount: filtered.length,
+                    itemBuilder: (context, index) {
+                      return buildTankCard(filtered[index], index);
+                    },
+                  );
+                }
+
                 return ListView.builder(
                   padding: const EdgeInsets.all(16),
                   itemCount: filtered.length,
                   itemBuilder: (context, index) {
-                    final doc = filtered[index];
-                    final data = doc.data() as Map<String, dynamic>;
-                    final String id = doc.id;
-                    final String name = data['ad'] ?? '';
-                    final String code = data['kod'] ?? 'TANK-${index + 1}';
-                    final double kap = (data['kap'] as num?)?.toDouble() ?? 2000.0;
-                    final String typeVal = data['tip'] ?? 'merkez';
-                    final String vehicle = data['arac'] ?? '';
-                    final String statusVal = data['durum'] ?? 'aktif';
-
-                    final isMerkez = typeVal == 'merkez';
-
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(14),
-                        boxShadow: AppShadows.sm,
-                        border: Border.all(color: AppColors.gray200),
-                      ),
-                      child: Row(
-                        children: [
-                          // Left Icon
-                          Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFEFF6FF),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: const Center(
-                              child: Icon(
-                                Icons.storage_rounded,
-                                color: Color(0xFF3B82F6),
-                                size: 24,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 14),
-                          
-                          // Center Info
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  name,
-                                  style: GoogleFonts.inter(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppColors.gray800,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  code,
-                                  style: GoogleFonts.inter(
-                                    fontSize: 11,
-                                    color: AppColors.gray400,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                Row(
-                                  children: [
-                                    Text(
-                                      'Kapasite: ${kap.toStringAsFixed(0)}L',
-                                      style: GoogleFonts.inter(
-                                        fontSize: 11,
-                                        color: AppColors.gray500,
-                                      ),
-                                    ),
-                                    if (!isMerkez && vehicle.isNotEmpty) ...[
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        'Araç: $vehicle',
-                                        style: GoogleFonts.inter(
-                                          fontSize: 11,
-                                          color: AppColors.gray500,
-                                        ),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                          
-                          // Right Badges
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              // Type Badge
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                decoration: BoxDecoration(
-                                  color: isMerkez ? const Color(0xFFFAF5FF) : const Color(0xFFEFF6FF),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      isMerkez ? Icons.business_rounded : Icons.local_shipping_outlined,
-                                      size: 11,
-                                      color: isMerkez ? const Color(0xFF8B5CF6) : const Color(0xFF3B82F6),
-                                    ),
-                                    const SizedBox(width: 3),
-                                    Text(
-                                      isMerkez ? 'Merkez' : 'Normal',
-                                      style: GoogleFonts.inter(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w600,
-                                        color: isMerkez ? const Color(0xFF8B5CF6) : const Color(0xFF3B82F6),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              
-                              // Status Badge
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(
-                                    color: statusVal == 'aktif'
-                                        ? const Color(0xFF10B981)
-                                        : statusVal == 'bakim'
-                                            ? const Color(0xFFF59E0B)
-                                            : const Color(0xFFEF4444),
-                                    width: 1,
-                                  ),
-                                ),
-                                child: Text(
-                                  statusVal == 'aktif'
-                                      ? 'Aktif'
-                                      : statusVal == 'bakim'
-                                          ? 'Bakımda'
-                                          : 'Pasif',
-                                  style: GoogleFonts.inter(
-                                    fontSize: 9.5,
-                                    fontWeight: FontWeight.w700,
-                                    color: statusVal == 'aktif'
-                                        ? const Color(0xFF10B981)
-                                        : statusVal == 'bakim'
-                                            ? const Color(0xFFF59E0B)
-                                            : const Color(0xFFEF4444),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    );
+                    return buildTankCard(filtered[index], index);
                   },
                 );
               },
@@ -377,6 +409,8 @@ class _TankListesiScreenState extends State<TankListesiScreen> {
           ),
         ],
       ),
-    );
+    ),
+  ),
+);
   }
 }

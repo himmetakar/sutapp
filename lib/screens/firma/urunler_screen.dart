@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -14,15 +15,32 @@ import '../../utils/file_download_helper.dart';
 import 'package:excel/excel.dart' hide Border, TextSpan;
 
 class UrunlerScreen extends StatefulWidget {
-  const UrunlerScreen({super.key});
+  final String? initialView;
+  const UrunlerScreen({super.key, this.initialView});
 
   @override
   State<UrunlerScreen> createState() => _UrunlerScreenState();
 }
 
 class _UrunlerScreenState extends State<UrunlerScreen> {
-  String _currentView = 'hub'; // hub, kategoriler, stok, siparisler, satis_raporlari, urunler_list
+  late String _currentView;
   bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentView = widget.initialView ?? (kIsWeb ? 'urunler_list' : 'hub');
+  }
+
+  @override
+  void didUpdateWidget(covariant UrunlerScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialView != oldWidget.initialView) {
+      setState(() {
+        _currentView = widget.initialView ?? (kIsWeb ? 'urunler_list' : 'hub');
+      });
+    }
+  }
   
   // Producer Cart & Store State
   final Map<String, Map<String, dynamic>> _cart = {}; // key: docId, value: cart item map
@@ -66,26 +84,53 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
 
     // Producers bypass the hub directly to product list with ordering capabilities
     if (!isFirma) {
-      return _buildProducerStoreView(currentFirmaName, auth.user?.displayName ?? 'Üretici');
+      final view = _buildProducerStoreView(currentFirmaName, auth.user?.displayName ?? 'Üretici');
+      if (kIsWeb) {
+        return Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 800),
+            child: view,
+          ),
+        );
+      }
+      return view;
     }
 
+    Widget body;
     switch (_currentView) {
       case 'kategoriler':
-        return _buildCategoriesView(currentFirmaName);
+        body = _buildCategoriesView(currentFirmaName);
+        break;
       case 'stok':
-        return _buildStockView(currentFirmaName);
+        body = _buildStockView(currentFirmaName);
+        break;
       case 'siparisler':
-        return _buildOrdersView(currentFirmaName);
+        body = _buildOrdersView(currentFirmaName);
+        break;
       case 'satis_raporlari':
-        return _buildSalesReportsView(currentFirmaName);
+        body = _buildSalesReportsView(currentFirmaName);
+        break;
       case 'urunler_list':
-        return _buildProductsListView(currentFirmaName);
+        body = _buildProductsListView(currentFirmaName);
+        break;
       case 'eksik_teslimatlar':
-        return _buildMissingDeliveriesView(currentFirmaName);
+        body = _buildMissingDeliveriesView(currentFirmaName);
+        break;
       case 'hub':
       default:
-        return _buildFirmaHubView(currentFirmaName);
+        body = _buildFirmaHubView(currentFirmaName);
+        break;
     }
+
+    if (kIsWeb) {
+      return Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 800),
+          child: body,
+        ),
+      );
+    }
+    return body;
   }
 
   // --- ARROW BACK UTILITY ---
@@ -93,6 +138,10 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
     return IconButton(
       icon: const Icon(Icons.arrow_back_rounded),
       onPressed: () {
+        if (kIsWeb && _currentView == 'urunler_list') {
+          context.go('/firma');
+          return;
+        }
         setState(() {
           _productSearchQuery = '';
           _selectedCategory = 'Tümü';
@@ -103,7 +152,7 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
           _orderSearchQuery = '';
           _orderFilter = 'Tümü';
           _orderSearchCtrl.clear();
-          _currentView = 'hub';
+          _currentView = kIsWeb ? 'urunler_list' : 'hub';
         });
       },
     );
@@ -699,6 +748,132 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
     );
   }
 
+  Widget _buildProductItemCard({
+    required String docId,
+    required String ad,
+    required String kat,
+    required String birim,
+    required double fiyat,
+    required double stok,
+    required Color stockBadgeColor,
+    required String stockStatus,
+    required Map<String, dynamic> data,
+    required String currentFirmaName,
+    required NumberFormat formatNumber,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.gray200),
+        boxShadow: AppShadows.sm,
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: AppColors.primary50,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(Icons.shopping_bag_outlined, color: AppColors.primary600, size: 22),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  ad,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.gray800),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: AppColors.gray100,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        kat,
+                        style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray600),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: stockBadgeColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        '$stockStatus: ${stok.toStringAsFixed(0)} $birim',
+                        style: GoogleFonts.inter(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: stockBadgeColor,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                '${formatNumber.format(fiyat)} ₺',
+                style: GoogleFonts.inter(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.primary600,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  GestureDetector(
+                    onTap: () => _showAddProductDialog(currentFirmaName, docId: docId, existingData: data),
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withOpacity(0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.edit_rounded, color: Colors.blue, size: 16),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: () => _deleteProduct(docId),
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: Colors.red.withOpacity(0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.delete_rounded, color: Colors.red, size: 16),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   // ==========================================
   // 3b. PRODUCT LIST VIEW
   // ==========================================
@@ -886,6 +1061,54 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
                   );
                 }
 
+                if (kIsWeb) {
+                  return GridView.builder(
+                    padding: const EdgeInsets.all(16),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      crossAxisSpacing: 16,
+                      mainAxisSpacing: 12,
+                      mainAxisExtent: 88,
+                    ),
+                    itemCount: docs.length,
+                    itemBuilder: (context, idx) {
+                      final doc = docs[idx];
+                      final data = doc.data() as Map<String, dynamic>;
+                      final docId = doc.id;
+                      final ad = data['ad'] ?? '';
+                      final kat = data['kategori'] ?? 'Diğer';
+                      final birim = data['birim'] ?? 'Adet';
+                      final fiyat = (data['fiyat'] as num?)?.toDouble() ?? 0.0;
+                      final stok = (data['stok'] as num?)?.toDouble() ?? 0.0;
+                      final minStok = (data['minStok'] as num?)?.toDouble() ?? 10.0;
+
+                      Color stockBadgeColor = Colors.green;
+                      String stockStatus = 'Stokta';
+                      if (stok <= 0) {
+                        stockBadgeColor = Colors.red;
+                        stockStatus = 'Tükendi';
+                      } else if (stok <= minStok) {
+                        stockBadgeColor = Colors.orange;
+                        stockStatus = 'Düşük';
+                      }
+
+                      return _buildProductItemCard(
+                        docId: docId,
+                        ad: ad,
+                        kat: kat,
+                        birim: birim,
+                        fiyat: fiyat,
+                        stok: stok,
+                        stockBadgeColor: stockBadgeColor,
+                        stockStatus: stockStatus,
+                        data: data,
+                        currentFirmaName: currentFirmaName,
+                        formatNumber: formatNumber,
+                      );
+                    },
+                  );
+                }
+
                 return ListView.builder(
                   padding: const EdgeInsets.all(16),
                   itemCount: docs.length,
@@ -900,7 +1123,6 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
                     final stok = (data['stok'] as num?)?.toDouble() ?? 0.0;
                     final minStok = (data['minStok'] as num?)?.toDouble() ?? 10.0;
 
-                    // Stock badge configuration
                     Color stockBadgeColor = Colors.green;
                     String stockStatus = 'Stokta';
                     if (stok <= 0) {
@@ -911,113 +1133,18 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
                       stockStatus = 'Düşük';
                     }
 
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: AppColors.gray200),
-                        boxShadow: AppShadows.sm,
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: AppColors.primary50,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: const Icon(Icons.shopping_bag_outlined, color: AppColors.primary600, size: 22),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  ad,
-                                  style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.gray800),
-                                ),
-                                const SizedBox(height: 4),
-                                Row(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: AppColors.gray100,
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                      child: Text(
-                                        kat,
-                                        style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray600),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: stockBadgeColor.withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                      child: Text(
-                                        '$stockStatus: ${stok.toStringAsFixed(0)} $birim',
-                                        style: GoogleFonts.inter(
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
-                                          color: stockBadgeColor,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text(
-                                '${formatNumber.format(fiyat)} ₺',
-                                style: GoogleFonts.inter(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w800,
-                                  color: AppColors.primary600,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Row(
-                                children: [
-                                  GestureDetector(
-                                    onTap: () => _showAddProductDialog(currentFirmaName, docId: docId, existingData: data),
-                                    child: Container(
-                                      padding: const EdgeInsets.all(6),
-                                      decoration: BoxDecoration(
-                                        color: Colors.blue.withOpacity(0.1),
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: const Icon(Icons.edit_rounded, color: Colors.blue, size: 16),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  GestureDetector(
-                                    onTap: () => _deleteProduct(docId),
-                                    child: Container(
-                                      padding: const EdgeInsets.all(6),
-                                      decoration: BoxDecoration(
-                                        color: Colors.red.withOpacity(0.1),
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: const Icon(Icons.delete_rounded, color: Colors.red, size: 16),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
+                    return _buildProductItemCard(
+                      docId: docId,
+                      ad: ad,
+                      kat: kat,
+                      birim: birim,
+                      fiyat: fiyat,
+                      stok: stok,
+                      stockBadgeColor: stockBadgeColor,
+                      stockStatus: stockStatus,
+                      data: data,
+                      currentFirmaName: currentFirmaName,
+                      formatNumber: formatNumber,
                     );
                   },
                 );

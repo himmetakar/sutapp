@@ -142,12 +142,15 @@ class _SutAnalizScreenState extends State<SutAnalizScreen> with SingleTickerProv
           ],
         ),
       ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('sut_analiz')
-            .orderBy('timestamp', descending: true)
-            .snapshots(),
-        builder: (context, snapshot) {
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 800),
+          child: StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('sut_analiz')
+                .orderBy('timestamp', descending: true)
+                .snapshots(),
+            builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting || _isRefreshing) {
             return const Center(child: CircularProgressIndicator());
           }
@@ -163,10 +166,14 @@ class _SutAnalizScreenState extends State<SutAnalizScreen> with SingleTickerProv
           );
         },
       ),
+          ),
+        ),
     );
   }
 
   Widget _buildAnalizList(List<QueryDocumentSnapshot> docs, String tipFilter) {
+    final bool isWeb = MediaQuery.of(context).size.width > 750;
+
     final filtered = docs.where((doc) {
       final data = doc.data() as Map<String, dynamic>;
       final String tipVal = data['tip'] ?? '';
@@ -205,6 +212,125 @@ class _SutAnalizScreenState extends State<SutAnalizScreen> with SingleTickerProv
     final double avgYag = totalCount > 0 ? totalYag / totalCount : 0.0;
     final double avgProtein = totalCount > 0 ? totalProtein / totalCount : 0.0;
     final double avgSicaklik = totalCount > 0 ? totalSicaklik / totalCount : 0.0;
+
+    Widget buildAnalizCard(QueryDocumentSnapshot doc) {
+      final data = doc.data() as Map<String, dynamic>;
+      final String hedef = data['hedef'] ?? '';
+      final String tarih = data['tarih'] ?? '';
+      final double yag = (data['yag'] as num?)?.toDouble() ?? 0.0;
+      final double protein = (data['protein'] as num?)?.toDouble() ?? 0.0;
+      final double su = (data['su'] as num?)?.toDouble() ?? 0.0;
+      final double sicaklik = (data['sicaklik'] as num?)?.toDouble() ?? 0.0;
+      final int somatik = (data['somatik'] as num?)?.toInt() ?? 0;
+      final String durum = data['durum'] ?? 'Normal';
+
+      final isRiskli = durum == 'Riskli';
+
+      return Container(
+        margin: isWeb ? EdgeInsets.zero : const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isRiskli ? const Color(0xFFFCA5A5) : AppColors.gray200,
+            width: isRiskli ? 1.5 : 1.0,
+          ),
+          boxShadow: AppShadows.sm,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Header (Target & Date)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        hedef,
+                        style: GoogleFonts.inter(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.gray800,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        tarih,
+                        style: GoogleFonts.inter(
+                          fontSize: 10.5,
+                          color: AppColors.gray400,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: isRiskli ? const Color(0xFFFEF2F2) : const Color(0xFFECFDF5),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: isRiskli ? const Color(0xFFEF4444) : const Color(0xFF10B981),
+                      width: 1,
+                    ),
+                  ),
+                  child: Text(
+                    durum,
+                    style: GoogleFonts.inter(
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.bold,
+                      color: isRiskli ? const Color(0xFFEF4444) : const Color(0xFF10B981),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            // Metrics Grid
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _buildMetricCol('Yağ', '${yag.toStringAsFixed(1)}%', yag < 3.0 ? const Color(0xFFEF4444) : AppColors.gray700),
+                _buildMetricCol('Protein', '${protein.toStringAsFixed(1)}%', protein < 2.9 ? const Color(0xFFEF4444) : AppColors.gray700),
+                _buildMetricCol('Eklenen Su', '${su.toStringAsFixed(1)}%', su > 0.0 ? const Color(0xFFEF4444) : AppColors.gray700),
+                _buildMetricCol('Sıcaklık', '${sicaklik.toStringAsFixed(1)}°C', sicaklik > 6.0 ? const Color(0xFFEF4444) : AppColors.gray700),
+              ],
+            ),
+
+            // Somatik Hücre Count Row
+            if (somatik > 0) ...[
+              const SizedBox(height: 10),
+              Divider(height: 1, color: AppColors.gray100),
+              const SizedBox(height: 6),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Somatik Hücre Sayısı:',
+                    style: GoogleFonts.inter(fontSize: 10.5, color: AppColors.gray500),
+                  ),
+                  Text(
+                    '${somatik.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]}.')} / mL',
+                    style: GoogleFonts.inter(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.bold,
+                      color: somatik > 300000 ? const Color(0xFFEF4444) : AppColors.gray700,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      );
+    }
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -272,121 +398,23 @@ class _SutAnalizScreenState extends State<SutAnalizScreen> with SingleTickerProv
           ),
 
         // Analysis Cards List
-        ...filtered.map((doc) {
-          final data = doc.data() as Map<String, dynamic>;
-          final String hedef = data['hedef'] ?? '';
-          final String tarih = data['tarih'] ?? '';
-          final double yag = (data['yag'] as num?)?.toDouble() ?? 0.0;
-          final double protein = (data['protein'] as num?)?.toDouble() ?? 0.0;
-          final double su = (data['su'] as num?)?.toDouble() ?? 0.0;
-          final double sicaklik = (data['sicaklik'] as num?)?.toDouble() ?? 0.0;
-          final int somatik = (data['somatik'] as num?)?.toInt() ?? 0;
-          final String durum = data['durum'] ?? 'Normal';
-
-          final isRiskli = durum == 'Riskli';
-
-          return Container(
-            margin: const EdgeInsets.only(bottom: 12),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: isRiskli ? const Color(0xFFFCA5A5) : AppColors.gray200,
-                width: isRiskli ? 1.5 : 1.0,
-              ),
-              boxShadow: AppShadows.sm,
+        if (isWeb)
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 16,
+              mainAxisSpacing: 12,
+              mainAxisExtent: 140,
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Header (Target & Date)
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            hedef,
-                            style: GoogleFonts.inter(
-                              fontSize: 14.5,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.gray800,
-                            ),
-                          ),
-                          Text(
-                            tarih,
-                            style: GoogleFonts.inter(
-                              fontSize: 11,
-                              color: AppColors.gray400,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: isRiskli ? const Color(0xFFFEF2F2) : const Color(0xFFECFDF5),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: isRiskli ? const Color(0xFFEF4444) : const Color(0xFF10B981),
-                          width: 1,
-                        ),
-                      ),
-                      child: Text(
-                        durum,
-                        style: GoogleFonts.inter(
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          color: isRiskli ? const Color(0xFFEF4444) : const Color(0xFF10B981),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-
-                // Metrics Grid
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    _buildMetricCol('Yağ', '${yag.toStringAsFixed(1)}%', yag < 3.0 ? const Color(0xFFEF4444) : AppColors.gray700),
-                    _buildMetricCol('Protein', '${protein.toStringAsFixed(1)}%', protein < 2.9 ? const Color(0xFFEF4444) : AppColors.gray700),
-                    _buildMetricCol('Eklenen Su', '${su.toStringAsFixed(1)}%', su > 0.0 ? const Color(0xFFEF4444) : AppColors.gray700),
-                    _buildMetricCol('Sıcaklık', '${sicaklik.toStringAsFixed(1)}°C', sicaklik > 6.0 ? const Color(0xFFEF4444) : AppColors.gray700),
-                  ],
-                ),
-
-                // Somatik Hücre Count Row
-                if (somatik > 0) ...[
-                  const SizedBox(height: 12),
-                  Divider(height: 1, color: AppColors.gray100),
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Somatik Hücre Sayısı:',
-                        style: GoogleFonts.inter(fontSize: 11.5, color: AppColors.gray500),
-                      ),
-                      Text(
-                        '${somatik.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]}.')} / mL',
-                        style: GoogleFonts.inter(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.bold,
-                          color: somatik > 300000 ? const Color(0xFFEF4444) : AppColors.gray700,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ],
-            ),
-          );
-        }),
+            itemCount: filtered.length,
+            itemBuilder: (context, index) {
+              return buildAnalizCard(filtered[index]);
+            },
+          )
+        else
+          ...filtered.map((doc) => buildAnalizCard(doc)),
       ],
     );
   }

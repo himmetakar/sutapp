@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -99,21 +100,24 @@ class AppTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: Colors.white,
+        isDense: kIsWeb,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: AppColors.gray200, width: 1.5),
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: AppColors.gray200, width: 1.2),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: AppColors.gray200, width: 1.5),
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: AppColors.gray200, width: 1.2),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: AppColors.primary400, width: 1.5),
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: AppColors.primary400, width: 1.2),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-        hintStyle: GoogleFonts.inter(color: AppColors.gray400, fontSize: 14),
-        labelStyle: GoogleFonts.inter(color: AppColors.gray500, fontSize: 13, fontWeight: FontWeight.w500),
+        contentPadding: kIsWeb
+            ? const EdgeInsets.symmetric(horizontal: 12, vertical: 9)
+            : const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+        hintStyle: GoogleFonts.inter(color: AppColors.gray400, fontSize: kIsWeb ? 13 : 14),
+        labelStyle: GoogleFonts.inter(color: AppColors.gray500, fontSize: kIsWeb ? 12 : 13, fontWeight: FontWeight.w500),
       ),
       dividerTheme: const DividerThemeData(color: AppColors.gray100, thickness: 1, space: 0),
     );

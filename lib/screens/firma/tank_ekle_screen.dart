@@ -98,375 +98,276 @@ class _TankEkleScreenState extends State<TankEkleScreen> {
                     _selectedSurucu = null;
                   }
 
-                  return Form(
-                    key: _formKey,
-                    child: ListView(
-                      padding: const EdgeInsets.all(20),
-                      children: [
-                        // Tank Adı
-                        Text(
-                          'Tank Adı',
-                          style: GoogleFonts.inter(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.gray600,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        TextFormField(
-                          controller: _adCtrl,
-                          style: GoogleFonts.inter(fontSize: 13),
-                          decoration: const InputDecoration(
-                            hintText: 'Örn: Ana Soğutma Tankı',
-                          ),
-                          validator: (value) =>
-                              value == null || value.trim().isEmpty ? 'Lütfen tank adı girin' : null,
-                        ),
-                        const SizedBox(height: 20),
+                  final bool isWeb = MediaQuery.of(context).size.width > 650;
 
-                        // Tank Kodu
-                        Text(
-                          'Tank Kodu (Otomatik)',
-                          style: GoogleFonts.inter(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.gray600,
+                  Widget buildFieldLabel(String label) {
+                    return Text(
+                      label,
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.gray600,
+                      ),
+                    );
+                  }
+
+                  Widget buildNormalTankCard() {
+                    return GestureDetector(
+                      onTap: () => setState(() => _tankTip = 'arac'),
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: _tankTip == 'arac' ? const Color(0xFF3B82F6) : AppColors.gray200,
+                            width: _tankTip == 'arac' ? 2 : 1,
                           ),
                         ),
-                        const SizedBox(height: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-                          decoration: BoxDecoration(
-                            color: AppColors.gray100,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: AppColors.gray200),
-                          ),
-                          child: Text(
-                            autoCode,
-                            style: GoogleFonts.inter(
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.gray600,
+                        child: Row(
+                          children: [
+                            Radio<String>(
+                              value: 'arac',
+                              groupValue: _tankTip,
+                              activeColor: const Color(0xFF3B82F6),
+                              onChanged: (val) {
+                                if (val != null) setState(() => _tankTip = val);
+                              },
                             ),
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Tank kodu sistem tarafından otomatik olarak oluşturulur.',
-                          style: GoogleFonts.inter(
-                            fontSize: 10.5,
-                            color: AppColors.gray400,
-                            fontStyle: FontStyle.italic,
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-
-                        // Tank Türü Selection Cards
-                        Text(
-                          'Tank Türü',
-                          style: GoogleFonts.inter(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.gray600,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        
-                        // Normal Tank Radio Container
-                        GestureDetector(
-                          onTap: () => setState(() => _tankTip = 'arac'),
-                          child: Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: _tankTip == 'arac' ? const Color(0xFF3B82F6) : AppColors.gray200,
-                                width: _tankTip == 'arac' ? 2 : 1,
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Normal Tank',
+                                    style: GoogleFonts.inter(
+                                      fontSize: 13.5,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppColors.gray800,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'Araçlara atanabilen mobil tanklar',
+                                    style: GoogleFonts.inter(
+                                      fontSize: 11,
+                                      color: AppColors.gray500,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
+
+                  Widget buildMerkezTankCard() {
+                    return GestureDetector(
+                      onTap: () => setState(() => _tankTip = 'merkez'),
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: _tankTip == 'merkez' ? const Color(0xFF3B82F6) : AppColors.gray200,
+                            width: _tankTip == 'merkez' ? 2 : 1,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Radio<String>(
+                              value: 'merkez',
+                              groupValue: _tankTip,
+                              activeColor: const Color(0xFF3B82F6),
+                              onChanged: (val) {
+                                if (val != null) setState(() => _tankTip = val);
+                              },
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Merkez Tankı',
+                                    style: GoogleFonts.inter(
+                                      fontSize: 13.5,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppColors.gray800,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'Fabrika/işletme merkezindeki sabit tanklar',
+                                    style: GoogleFonts.inter(
+                                      fontSize: 11,
+                                      color: AppColors.gray500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
+
+                  Widget buildVehicleDropdown() {
+                    return Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: AppColors.gray200),
+                      ),
+                      child: DropdownButtonFormField<String>(
+                        value: _selectedPlaka,
+                        hint: Text(
+                          'Araç plakası seçin...',
+                          style: GoogleFonts.inter(fontSize: 13, color: AppColors.gray400),
+                        ),
+                        decoration: InputDecoration(
+                          prefixIcon: const Icon(Icons.local_shipping_rounded, size: 18, color: AppColors.gray400),
+                          border: InputBorder.none,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          suffixIcon: _selectedPlaka != null
+                              ? IconButton(
+                                  icon: const Icon(Icons.close_rounded, size: 16, color: AppColors.gray400),
+                                  onPressed: () => setState(() => _selectedPlaka = null),
+                                )
+                              : null,
+                        ),
+                        isExpanded: true,
+                        items: vehiclePlates.map((plaka) {
+                          return DropdownMenuItem<String>(
+                            value: plaka,
                             child: Row(
                               children: [
-                                Radio<String>(
-                                  value: 'arac',
-                                  groupValue: _tankTip,
-                                  activeColor: const Color(0xFF3B82F6),
-                                  onChanged: (val) {
-                                    if (val != null) setState(() => _tankTip = val);
-                                  },
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'Normal Tank',
-                                        style: GoogleFonts.inter(
-                                          fontSize: 13.5,
-                                          fontWeight: FontWeight.bold,
-                                          color: AppColors.gray800,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        'Araçlara atanabilen mobil tanklar',
-                                        style: GoogleFonts.inter(
-                                          fontSize: 11,
-                                          color: AppColors.gray500,
-                                        ),
-                                      ),
-                                    ],
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.gray100,
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(color: AppColors.gray300),
+                                  ),
+                                  child: Text(
+                                    plaka,
+                                    style: GoogleFonts.inter(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppColors.gray700,
+                                    ),
                                   ),
                                 ),
                               ],
                             ),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
+                          );
+                        }).toList(),
+                        onChanged: (val) {
+                          setState(() => _selectedPlaka = val);
+                        },
+                      ),
+                    );
+                  }
 
-                        // Merkez Tankı Radio Container
-                        GestureDetector(
-                          onTap: () => setState(() => _tankTip = 'merkez'),
-                          child: Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: _tankTip == 'merkez' ? const Color(0xFF3B82F6) : AppColors.gray200,
-                                width: _tankTip == 'merkez' ? 2 : 1,
-                              ),
-                            ),
+                  Widget buildDriverDropdown() {
+                    return Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: AppColors.gray200),
+                      ),
+                      child: DropdownButtonFormField<String>(
+                        value: _selectedSurucu,
+                        hint: Text(
+                          'Toplayıcı seçin...',
+                          style: GoogleFonts.inter(fontSize: 13, color: AppColors.gray400),
+                        ),
+                        decoration: InputDecoration(
+                          prefixIcon: const Icon(Icons.person_rounded, size: 18, color: AppColors.gray400),
+                          border: InputBorder.none,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          suffixIcon: _selectedSurucu != null
+                              ? IconButton(
+                                  icon: const Icon(Icons.close_rounded, size: 16, color: AppColors.gray400),
+                                  onPressed: () => setState(() => _selectedSurucu = null),
+                                )
+                              : null,
+                        ),
+                        isExpanded: true,
+                        items: driverNames.map((name) {
+                          return DropdownMenuItem<String>(
+                            value: name,
                             child: Row(
                               children: [
-                                Radio<String>(
-                                  value: 'merkez',
-                                  groupValue: _tankTip,
-                                  activeColor: const Color(0xFF3B82F6),
-                                  onChanged: (val) {
-                                    if (val != null) setState(() => _tankTip = val);
-                                  },
+                                Container(
+                                  width: 28,
+                                  height: 28,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF0F8B5A).withOpacity(0.1),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Center(
+                                    child: Text(
+                                      name.isNotEmpty ? name[0] : '?',
+                                      style: GoogleFonts.inter(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        color: const Color(0xFF0F8B5A),
+                                      ),
+                                    ),
+                                  ),
                                 ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'Merkez Tankı',
-                                        style: GoogleFonts.inter(
-                                          fontSize: 13.5,
-                                          fontWeight: FontWeight.bold,
-                                          color: AppColors.gray800,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        'Fabrika/işletme merkezindeki sabit tanklar',
-                                        style: GoogleFonts.inter(
-                                          fontSize: 11,
-                                          color: AppColors.gray500,
-                                        ),
-                                      ),
-                                    ],
+                                const SizedBox(width: 10),
+                                Text(
+                                  name,
+                                  style: GoogleFonts.inter(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                    color: AppColors.gray700,
                                   ),
                                 ),
                               ],
                             ),
-                          ),
+                          );
+                        }).toList(),
+                        onChanged: (val) {
+                          setState(() => _selectedSurucu = val);
+                        },
+                      ),
+                    );
+                  }
+
+                  Widget buildAutoCodeContainer() {
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                      decoration: BoxDecoration(
+                        color: AppColors.gray100,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: AppColors.gray200),
+                      ),
+                      child: Text(
+                        autoCode,
+                        style: GoogleFonts.inter(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.gray600,
                         ),
-                        const SizedBox(height: 20),
+                      ),
+                    );
+                  }
 
-                        // Vehicle & Driver Selection - Only for Normal Tank
-                        if (_tankTip == 'arac') ...[
-                          // Vehicle Plate Dropdown
-                          Text(
-                            'Araç Seçimi (Opsiyonel)',
-                            style: GoogleFonts.inter(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.gray600,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Container(
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: AppColors.gray200),
-                            ),
-                            child: DropdownButtonFormField<String>(
-                              value: _selectedPlaka,
-                              hint: Text(
-                                'Araç plakası seçin...',
-                                style: GoogleFonts.inter(fontSize: 13, color: AppColors.gray400),
-                              ),
-                              decoration: InputDecoration(
-                                prefixIcon: const Icon(Icons.local_shipping_rounded, size: 18, color: AppColors.gray400),
-                                border: InputBorder.none,
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                suffixIcon: _selectedPlaka != null
-                                    ? IconButton(
-                                        icon: const Icon(Icons.close_rounded, size: 16, color: AppColors.gray400),
-                                        onPressed: () => setState(() => _selectedPlaka = null),
-                                      )
-                                    : null,
-                              ),
-                              isExpanded: true,
-                              items: vehiclePlates.map((plaka) {
-                                return DropdownMenuItem<String>(
-                                  value: plaka,
-                                  child: Row(
-                                    children: [
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                        decoration: BoxDecoration(
-                                          color: AppColors.gray100,
-                                          borderRadius: BorderRadius.circular(6),
-                                          border: Border.all(color: AppColors.gray300),
-                                        ),
-                                        child: Text(
-                                          plaka,
-                                          style: GoogleFonts.inter(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.bold,
-                                            color: AppColors.gray700,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              }).toList(),
-                              onChanged: (val) {
-                                setState(() => _selectedPlaka = val);
-                              },
-                            ),
-                          ),
-                          if (vehiclePlates.isEmpty)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 4),
-                              child: Text(
-                                'Sistemde kayıtlı araç bulunamadı.',
-                                style: GoogleFonts.inter(fontSize: 10.5, color: AppColors.gray400, fontStyle: FontStyle.italic),
-                              ),
-                            ),
-                          const SizedBox(height: 20),
-
-                          // Driver Selection Dropdown
-                          Text(
-                            'Toplayıcı Seçimi (Opsiyonel)',
-                            style: GoogleFonts.inter(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.gray600,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Container(
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: AppColors.gray200),
-                            ),
-                            child: DropdownButtonFormField<String>(
-                              value: _selectedSurucu,
-                              hint: Text(
-                                'Toplayıcı seçin...',
-                                style: GoogleFonts.inter(fontSize: 13, color: AppColors.gray400),
-                              ),
-                              decoration: InputDecoration(
-                                prefixIcon: const Icon(Icons.person_rounded, size: 18, color: AppColors.gray400),
-                                border: InputBorder.none,
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                suffixIcon: _selectedSurucu != null
-                                    ? IconButton(
-                                        icon: const Icon(Icons.close_rounded, size: 16, color: AppColors.gray400),
-                                        onPressed: () => setState(() => _selectedSurucu = null),
-                                      )
-                                    : null,
-                              ),
-                              isExpanded: true,
-                              items: driverNames.map((name) {
-                                return DropdownMenuItem<String>(
-                                  value: name,
-                                  child: Row(
-                                    children: [
-                                      Container(
-                                        width: 28,
-                                        height: 28,
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFF0F8B5A).withOpacity(0.1),
-                                          shape: BoxShape.circle,
-                                        ),
-                                        child: Center(
-                                          child: Text(
-                                            name.isNotEmpty ? name[0] : '?',
-                                            style: GoogleFonts.inter(
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.bold,
-                                              color: const Color(0xFF0F8B5A),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 10),
-                                      Text(
-                                        name,
-                                        style: GoogleFonts.inter(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w500,
-                                          color: AppColors.gray700,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              }).toList(),
-                              onChanged: (val) {
-                                setState(() => _selectedSurucu = val);
-                              },
-                            ),
-                          ),
-                          if (driverNames.isEmpty)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 4),
-                              child: Text(
-                                'Sistemde kayıtlı toplayıcı bulunamadı.',
-                                style: GoogleFonts.inter(fontSize: 10.5, color: AppColors.gray400, fontStyle: FontStyle.italic),
-                              ),
-                            ),
-                          const SizedBox(height: 20),
-                        ],
-
-                        // Tank Hacmi
-                        Text(
-                          'Tank Hacmi (Litre)',
-                          style: GoogleFonts.inter(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.gray600,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        TextFormField(
-                          controller: _hacimCtrl,
-                          style: GoogleFonts.inter(fontSize: 13),
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          decoration: const InputDecoration(
-                            hintText: 'Örn: 5000',
-                          ),
-                          validator: (value) {
-                            if (value == null || value.trim().isEmpty) return 'Lütfen tank hacmini girin';
-                            if (double.tryParse(value) == null) return 'Geçerli bir sayı girin';
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 32),
-
-                        // Kaydet butonu
-                        ElevatedButton(
+                  Widget buildSaveButton() {
+                    return Align(
+                      alignment: isWeb ? Alignment.centerRight : Alignment.center,
+                      child: SizedBox(
+                        width: isWeb ? 200 : double.infinity,
+                        height: isWeb ? 42 : 48,
+                        child: ElevatedButton(
                           onPressed: _saving
                               ? null
                               : () async {
@@ -550,10 +451,9 @@ class _TankEkleScreenState extends State<TankEkleScreen> {
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF3B82F6),
                             foregroundColor: Colors.white,
-                            minimumSize: const Size(double.infinity, 48),
                             elevation: 0,
                             shadowColor: Colors.transparent,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                           ),
                           child: _saving
                               ? const SizedBox(
@@ -567,8 +467,239 @@ class _TankEkleScreenState extends State<TankEkleScreen> {
                                   style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 14),
                                 ),
                         ),
-                      ],
-                    ),
+                      ),
+                    );
+                  }
+
+
+                  final formContent = isWeb
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      buildFieldLabel('Tank Adı'),
+                                      const SizedBox(height: 6),
+                                      TextFormField(
+                                        controller: _adCtrl,
+                                        style: GoogleFonts.inter(fontSize: 13),
+                                        decoration: const InputDecoration(
+                                          hintText: 'Örn: Ana Soğutma Tankı',
+                                        ),
+                                        validator: (value) =>
+                                            value == null || value.trim().isEmpty ? 'Lütfen tank adı girin' : null,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      buildFieldLabel('Tank Hacmi (Litre)'),
+                                      const SizedBox(height: 6),
+                                      TextFormField(
+                                        controller: _hacimCtrl,
+                                        style: GoogleFonts.inter(fontSize: 13),
+                                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                        decoration: const InputDecoration(
+                                          hintText: 'Örn: 5000',
+                                        ),
+                                        validator: (value) {
+                                          if (value == null || value.trim().isEmpty) return 'Lütfen tank hacmini girin';
+                                          if (double.tryParse(value) == null) return 'Geçerli bir sayı girin';
+                                          return null;
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            buildFieldLabel('Tank Türü'),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Expanded(child: buildNormalTankCard()),
+                                const SizedBox(width: 16),
+                                Expanded(child: buildMerkezTankCard()),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            if (_tankTip == 'arac') ...[
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        buildFieldLabel('Araç Seçimi (Opsiyonel)'),
+                                        const SizedBox(height: 6),
+                                        buildVehicleDropdown(),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        buildFieldLabel('Toplayıcı Seçimi (Opsiyonel)'),
+                                        const SizedBox(height: 6),
+                                        buildDriverDropdown(),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 16),
+                            ],
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      buildFieldLabel('Tank Kodu (Otomatik)'),
+                                      const SizedBox(height: 6),
+                                      buildAutoCodeContainer(),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'Tank kodu sistem tarafından otomatik olarak oluşturulur.',
+                                        style: GoogleFonts.inter(
+                                          fontSize: 10.5,
+                                          color: AppColors.gray400,
+                                          fontStyle: FontStyle.italic,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 16),
+                                const Spacer(),
+                              ],
+                            ),
+                            const SizedBox(height: 24),
+                            buildSaveButton(),
+                          ],
+                        )
+                      : ListView(
+                          padding: const EdgeInsets.all(20),
+                          children: [
+                            buildFieldLabel('Tank Adı'),
+                            const SizedBox(height: 6),
+                            TextFormField(
+                              controller: _adCtrl,
+                              style: GoogleFonts.inter(fontSize: 13),
+                              decoration: const InputDecoration(
+                                hintText: 'Örn: Ana Soğutma Tankı',
+                              ),
+                              validator: (value) =>
+                                  value == null || value.trim().isEmpty ? 'Lütfen tank adı girin' : null,
+                            ),
+                            const SizedBox(height: 20),
+                            buildFieldLabel('Tank Kodu (Otomatik)'),
+                            const SizedBox(height: 6),
+                            buildAutoCodeContainer(),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Tank kodu sistem tarafından otomatik olarak oluşturulur.',
+                              style: GoogleFonts.inter(
+                                fontSize: 10.5,
+                                color: AppColors.gray400,
+                                fontStyle: FontStyle.italic,
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+                            buildFieldLabel('Tank Türü'),
+                            const SizedBox(height: 8),
+                            buildNormalTankCard(),
+                            const SizedBox(height: 12),
+                            buildMerkezTankCard(),
+                            const SizedBox(height: 20),
+                            if (_tankTip == 'arac') ...[
+                              buildFieldLabel('Araç Seçimi (Opsiyonel)'),
+                              const SizedBox(height: 6),
+                              buildVehicleDropdown(),
+                              if (vehiclePlates.isEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: Text(
+                                    'Sistemde kayıtlı araç bulunamadı.',
+                                    style: GoogleFonts.inter(fontSize: 10.5, color: AppColors.gray400, fontStyle: FontStyle.italic),
+                                  ),
+                                ),
+                              const SizedBox(height: 20),
+                              buildFieldLabel('Toplayıcı Seçimi (Opsiyonel)'),
+                              const SizedBox(height: 6),
+                              buildDriverDropdown(),
+                              if (driverNames.isEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: Text(
+                                    'Sistemde kayıtlı toplayıcı bulunamadı.',
+                                    style: GoogleFonts.inter(fontSize: 10.5, color: AppColors.gray400, fontStyle: FontStyle.italic),
+                                  ),
+                                ),
+                              const SizedBox(height: 20),
+                            ],
+                            buildFieldLabel('Tank Hacmi (Litre)'),
+                            const SizedBox(height: 6),
+                            TextFormField(
+                              controller: _hacimCtrl,
+                              style: GoogleFonts.inter(fontSize: 13),
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              decoration: const InputDecoration(
+                                hintText: 'Örn: 5000',
+                              ),
+                              validator: (value) {
+                                if (value == null || value.trim().isEmpty) return 'Lütfen tank hacmini girin';
+                                if (double.tryParse(value) == null) return 'Geçerli bir sayı girin';
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: 32),
+                            buildSaveButton(),
+                          ],
+                        );
+
+                  return Form(
+                    key: _formKey,
+                    child: isWeb
+                        ? Center(
+                            child: SingleChildScrollView(
+                              padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 24),
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(maxWidth: 480),
+                                child: Container(
+                                  padding: const EdgeInsets.all(24),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(color: AppColors.gray200),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.04),
+                                        blurRadius: 16,
+                                        offset: const Offset(0, 8),
+                                      ),
+                                    ],
+                                  ),
+                                  child: formContent,
+                                ),
+                              ),
+                            ),
+                          )
+                        : formContent,
                   );
                 },
               );

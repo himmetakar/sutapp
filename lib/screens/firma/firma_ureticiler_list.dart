@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'dart:ui' as ui;
 import 'dart:io' show File;
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -2188,10 +2188,12 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
                           style: GoogleFonts.inter(color: AppColors.gray500),
                         ),
                       )
-                    : ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        itemCount: filteredDocs.length,
-                        itemBuilder: (_, i) {
+                    : (kIsWeb || MediaQuery.sizeOf(context).width > 800)
+                        ? _buildWebTable(filteredDocs)
+                        : ListView.builder(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            itemCount: filteredDocs.length,
+                            itemBuilder: (_, i) {
                           final doc = filteredDocs[i];
                           final u = doc.data() as Map<String, dynamic>;
                           final name = u['name'] ?? '';
@@ -2437,6 +2439,293 @@ class _FirmaUreticiListesiScreenState extends State<FirmaUreticiListesiScreen> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildWebTable(List<DocumentSnapshot> filteredDocs) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.gray200),
+          boxShadow: AppShadows.sm,
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.vertical,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Theme(
+                data: Theme.of(context).copyWith(
+                  cardColor: Colors.white,
+                  dividerColor: AppColors.gray100,
+                ),
+                child: DataTable(
+                  headingRowColor: WidgetStateProperty.all(AppColors.gray50),
+                  headingRowHeight: 44,
+                  dataRowMinHeight: 48,
+                  dataRowMaxHeight: 48,
+                  columnSpacing: 24,
+                  showCheckboxColumn: false,
+                  columns: [
+                    DataColumn(
+                      label: SizedBox(
+                        width: 24,
+                        child: Checkbox(
+                          tristate: true,
+                          value: _selectedProducerIds.isEmpty
+                              ? false
+                              : (_selectedProducerIds.length == filteredDocs.length
+                                  ? true
+                                  : null),
+                          activeColor: AppColors.primary600,
+                          onChanged: (val) {
+                            setState(() {
+                              if (val == true) {
+                                _selectedProducerIds.addAll(filteredDocs.map((d) => d.id));
+                              } else {
+                                _selectedProducerIds.clear();
+                              }
+                            });
+                          },
+                        ),
+                      ),
+                    ),
+                    DataColumn(
+                      label: Text(
+                        'Üretici',
+                        style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.gray800),
+                      ),
+                    ),
+                    DataColumn(
+                      label: Text(
+                        'TC / Vergi No',
+                        style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.gray800),
+                      ),
+                    ),
+                    DataColumn(
+                      label: Text(
+                        'Telefon',
+                        style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.gray800),
+                      ),
+                    ),
+                    DataColumn(
+                      label: Text(
+                        'Bölge / İlçe',
+                        style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.gray800),
+                      ),
+                    ),
+                    DataColumn(
+                      label: Text(
+                        'Grup',
+                        style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.gray800),
+                      ),
+                    ),
+                    DataColumn(
+                      label: Text(
+                        'Birlik',
+                        style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.gray800),
+                      ),
+                    ),
+                    DataColumn(
+                      label: Text(
+                        'Tür',
+                        style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.gray800),
+                      ),
+                    ),
+                    DataColumn(
+                      label: Text(
+                        'Sipariş İzni',
+                        style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.gray800),
+                      ),
+                    ),
+                    DataColumn(
+                      label: Text(
+                        'İşlemler',
+                        style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.gray800),
+                      ),
+                    ),
+                  ],
+                  rows: filteredDocs.map((doc) {
+                    final u = doc.data() as Map<String, dynamic>;
+                    final name = u['name'] ?? '';
+                    final phone = u['phone'] ?? '';
+                    final group = u['group'] ?? 'Genel';
+                    final birlik = u['birlik'] ?? 'Yok';
+                    final bolge = u['bolge'] ?? '';
+                    final tcNo = u['tcNo'] ?? '';
+                    final isYem = u['customerType'] == 'yem';
+                    final isSelected = _selectedProducerIds.contains(doc.id);
+
+                    return DataRow(
+                      selected: isSelected,
+                      color: WidgetStateProperty.resolveWith<Color?>((states) {
+                        if (isSelected) return AppColors.primary50;
+                        if (isYem) return Colors.amber[50]!.withOpacity(0.3);
+                        return null;
+                      }),
+                      cells: [
+                        DataCell(
+                          SizedBox(
+                            width: 24,
+                            child: Checkbox(
+                              value: isSelected,
+                              activeColor: AppColors.primary600,
+                              onChanged: (val) {
+                                setState(() {
+                                  if (val == true) {
+                                    _selectedProducerIds.add(doc.id);
+                                  } else {
+                                    _selectedProducerIds.remove(doc.id);
+                                  }
+                                });
+                              },
+                            ),
+                          ),
+                        ),
+                        DataCell(
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 28,
+                                height: 28,
+                                decoration: BoxDecoration(
+                                  gradient: AppColors.primaryGradient,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    name.isNotEmpty ? name[0] : 'Ü',
+                                    style: GoogleFonts.inter(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                name,
+                                style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.gray900),
+                              ),
+                            ],
+                          ),
+                        ),
+                        DataCell(
+                          Text(
+                            tcNo.isEmpty ? '-' : tcNo,
+                            style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray700),
+                          ),
+                        ),
+                        DataCell(
+                          Text(
+                            phone.isEmpty ? '-' : phone,
+                            style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray700),
+                          ),
+                        ),
+                        DataCell(
+                          Text(
+                            bolge.isEmpty ? '-' : bolge,
+                            style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray700),
+                          ),
+                        ),
+                        DataCell(StatusBadge.info(group)),
+                        DataCell(
+                          birlik != 'Yok'
+                              ? StatusBadge.active(birlik)
+                              : Text('-', style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray400)),
+                        ),
+                        DataCell(
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: isYem ? Colors.amber[100] : Colors.blue[100],
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              isYem ? 'Yem Müşterisi' : 'Süt Üreticisi',
+                              style: GoogleFonts.inter(
+                                  fontSize: 11,
+                                  color: isYem ? Colors.amber[900] : Colors.blue[900],
+                                  fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ),
+                        DataCell(
+                          SizedBox(
+                            height: 24,
+                            child: Transform.scale(
+                              scale: 0.8,
+                              child: Switch(
+                                value: u['siparisIzni'] ?? true,
+                                activeColor: AppColors.primary600,
+                                onChanged: (val) async {
+                                  await doc.reference.update({'siparisIzni': val});
+                                },
+                              ),
+                            ),
+                          ),
+                        ),
+                        DataCell(
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                                icon: const Icon(Icons.badge_rounded, color: Colors.orange, size: 18),
+                                tooltip: 'Dijital Kart',
+                                onPressed: () {
+                                  context.push('/firma/dijital-kart?name=$name');
+                                },
+                              ),
+                              const SizedBox(width: 8),
+                              IconButton(
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                                icon: const Icon(Icons.description_rounded, color: AppColors.primary600, size: 18),
+                                tooltip: 'Hesap Özeti',
+                                onPressed: () {
+                                  context.push('/firma/hesap-ozeti?name=$name');
+                                },
+                              ),
+                              const SizedBox(width: 8),
+                              IconButton(
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                                icon: const Icon(Icons.edit_rounded, color: AppColors.gray500, size: 18),
+                                tooltip: 'Düzenle',
+                                onPressed: () {
+                                  _showEditProducerDialog(doc);
+                                },
+                              ),
+                              const SizedBox(width: 8),
+                              IconButton(
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                                icon: const Icon(Icons.delete_rounded, color: Colors.red, size: 18),
+                                tooltip: 'Sil',
+                                onPressed: () {
+                                  _deleteSingleProducer(doc);
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

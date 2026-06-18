@@ -145,7 +145,7 @@ GoRouter createRouter(AuthProvider auth) {
           GoRoute(path: '/firma/duyuru-gonder', builder: (_, __) => const FirmaDuyuruGonderScreen()),
           GoRoute(path: '/firma/dashboard', builder: (_, __) => const FirmaDashboard()),
           GoRoute(path: '/firma/profil', builder: (_, __) => const FirmaProfilScreen()),
-          GoRoute(path: '/firma/ureticiler', builder: (_, __) => const FirmaUreticiler()),
+          GoRoute(path: '/firma/ureticiler', builder: (_, __) => kIsWeb ? const FirmaUreticiListesiScreen() : const FirmaUreticiler()),
           GoRoute(
             path: '/firma/ureticiler/liste',
             builder: (context, state) {
@@ -187,7 +187,7 @@ GoRouter createRouter(AuthProvider auth) {
           ),
           GoRoute(path: '/firma/araclar', builder: (_, __) => const FirmaAraclar()),
           GoRoute(path: '/firma/suruculer', builder: (_, __) => const FirmaSuruculer()),
-          GoRoute(path: '/firma/personel', builder: (_, __) => const FirmaPersonelYonetimiScreen()),
+          GoRoute(path: '/firma/personel', builder: (_, __) => kIsWeb ? const FirmaPersonelListesiScreen() : const FirmaPersonelYonetimiScreen()),
           GoRoute(path: '/firma/personel/ekle', builder: (_, __) => const FirmaPersonelEkleScreen()),
           GoRoute(path: '/firma/personel/liste', builder: (_, __) => const FirmaPersonelListesiScreen()),
           GoRoute(path: '/firma/personel/performans', builder: (_, __) => const FirmaPersonelPerformansScreen()),
@@ -215,9 +215,14 @@ GoRouter createRouter(AuthProvider auth) {
           GoRoute(path: '/firma/teslimatlar', builder: (_, __) => const FirmaTeslimatlar()),
           GoRoute(path: '/firma/raporlar', builder: (_, __) => const FirmaRaporlar()),
           GoRoute(path: '/firma/satis-raporlari', builder: (_, __) => const SatisRaporlariScreen()),
-          GoRoute(path: '/firma/urunler', builder: (_, __) => const UrunlerScreen()),
+          GoRoute(
+            path: '/firma/urunler',
+            builder: (context, state) => UrunlerScreen(
+              initialView: state.uri.queryParameters['view'],
+            ),
+          ),
           GoRoute(path: '/firma/urunler/siparisler', builder: (_, __) => const UrunSiparisleriScreen()),
-          GoRoute(path: '/firma/finans', builder: (_, __) => const FinansYonetimiScreen()),
+          GoRoute(path: '/firma/finans', builder: (_, __) => kIsWeb ? const FinansalGenelBakisScreen() : const FinansYonetimiScreen()),
           GoRoute(path: '/firma/finans/genel-bakis', builder: (_, __) => const FinansalGenelBakisScreen()),
           GoRoute(path: '/firma/finans/faturalar', builder: (_, __) => const FaturalarScreen()),
           GoRoute(path: '/firma/finans/faturalar/ekle', builder: (_, __) => const FaturaEkleScreen()),

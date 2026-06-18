@@ -202,8 +202,206 @@ class _FirmaAracEkleScreenState extends State<FirmaAracEkleScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bool isWeb = MediaQuery.of(context).size.width > 600;
+
+    Widget buildFieldLabel(String label) {
+      return Text(
+        label,
+        style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.gray700),
+      );
+    }
+
+    final formWidget = Form(
+      key: _formKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Araç Bilgileri',
+            style: GoogleFonts.inter(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: AppColors.gray800,
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          if (isWeb) ...[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      buildFieldLabel('Araç Adı *'),
+                      const SizedBox(height: 6),
+                      TextFormField(
+                        controller: _adCtrl,
+                        decoration: const InputDecoration(
+                          hintText: 'Örn: Süt Toplama Aracı 1',
+                          fillColor: Color(0xFFF8FAFC),
+                        ),
+                        validator: (v) => (v == null || v.trim().isEmpty) ? 'Lütfen araç adı girin' : null,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      buildFieldLabel('Plaka *'),
+                      const SizedBox(height: 6),
+                      TextFormField(
+                        controller: _plakaCtrl,
+                        decoration: const InputDecoration(
+                          hintText: 'Örn: 06 ABC 123',
+                          fillColor: Color(0xFFF8FAFC),
+                        ),
+                        validator: (v) => (v == null || v.trim().isEmpty) ? 'Lütfen plaka girin' : null,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      buildFieldLabel('Model *'),
+                      const SizedBox(height: 6),
+                      TextFormField(
+                        controller: _modelCtrl,
+                        decoration: const InputDecoration(
+                          hintText: 'Örn: Ford Transit',
+                          fillColor: Color(0xFFF8FAFC),
+                        ),
+                        validator: (v) => (v == null || v.trim().isEmpty) ? 'Lütfen model girin' : null,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      buildFieldLabel('Yıl *'),
+                      const SizedBox(height: 6),
+                      TextFormField(
+                        controller: _yilCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          hintText: 'Örn: 2022',
+                          fillColor: Color(0xFFF8FAFC),
+                        ),
+                        validator: (v) => (v == null || v.trim().isEmpty) ? 'Lütfen yıl girin' : null,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+          ] else ...[
+            buildFieldLabel('Araç Adı *'),
+            const SizedBox(height: 6),
+            TextFormField(
+              controller: _adCtrl,
+              decoration: const InputDecoration(
+                hintText: 'Örn: Süt Toplama Aracı 1',
+                fillColor: Color(0xFFF8FAFC),
+              ),
+              validator: (v) => (v == null || v.trim().isEmpty) ? 'Lütfen araç adı girin' : null,
+            ),
+            const SizedBox(height: 16),
+
+            buildFieldLabel('Plaka *'),
+            const SizedBox(height: 6),
+            TextFormField(
+              controller: _plakaCtrl,
+              decoration: const InputDecoration(
+                hintText: 'Örn: 06 ABC 123',
+                fillColor: Color(0xFFF8FAFC),
+              ),
+              validator: (v) => (v == null || v.trim().isEmpty) ? 'Lütfen plaka girin' : null,
+            ),
+            const SizedBox(height: 16),
+
+            buildFieldLabel('Model *'),
+            const SizedBox(height: 6),
+            TextFormField(
+              controller: _modelCtrl,
+              decoration: const InputDecoration(
+                hintText: 'Örn: Ford Transit',
+                fillColor: Color(0xFFF8FAFC),
+              ),
+              validator: (v) => (v == null || v.trim().isEmpty) ? 'Lütfen model girin' : null,
+            ),
+            const SizedBox(height: 16),
+
+            buildFieldLabel('Yıl *'),
+            const SizedBox(height: 6),
+            TextFormField(
+              controller: _yilCtrl,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                hintText: 'Örn: 2022',
+                fillColor: Color(0xFFF8FAFC),
+              ),
+              validator: (v) => (v == null || v.trim().isEmpty) ? 'Lütfen yıl girin' : null,
+            ),
+            const SizedBox(height: 16),
+          ],
+
+          buildFieldLabel('Kapasite (Litre) *'),
+          const SizedBox(height: 6),
+          TextFormField(
+            controller: _kapasiteCtrl,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              hintText: 'Örn: 5000',
+              fillColor: Color(0xFFF8FAFC),
+            ),
+            validator: (v) => (v == null || double.tryParse(v.trim()) == null || double.parse(v.trim()) <= 0) 
+                ? 'Lütfen geçerli bir kapasite girin' 
+                : null,
+          ),
+          const SizedBox(height: 28),
+
+          Align(
+            alignment: isWeb ? Alignment.centerRight : Alignment.center,
+            child: SizedBox(
+              width: isWeb ? 200 : double.infinity,
+              height: isWeb ? 42 : 50,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF2563EB),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                onPressed: _save,
+                child: Text(
+                  _isEdit ? 'Aracı Güncelle' : '+ Araç Oluştur',
+                  style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: isWeb ? 14 : 15),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: isWeb ? AppColors.gray50 : Colors.white,
       appBar: AppBar(
         title: Text(
           _isEdit ? 'Araç Düzenle' : 'Yeni Araç Ekle',
@@ -217,125 +415,35 @@ class _FirmaAracEkleScreenState extends State<FirmaAracEkleScreen> {
       body: SafeArea(
         child: _isSaving
             ? const Center(child: CircularProgressIndicator())
-            : Form(
-                key: _formKey,
-                child: ListView(
-                  padding: const EdgeInsets.all(24),
-                  children: [
-                    Text(
-                      'Araç Bilgileri',
-                      style: GoogleFonts.inter(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.gray800,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Araç Adı
-                    Text(
-                      'Araç Adı *',
-                      style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.gray700),
-                    ),
-                    const SizedBox(height: 6),
-                    TextFormField(
-                      controller: _adCtrl,
-                      decoration: const InputDecoration(
-                        hintText: 'Örn: Süt Toplama Aracı 1',
-                        fillColor: Color(0xFFF8FAFC),
-                      ),
-                      validator: (v) => (v == null || v.trim().isEmpty) ? 'Lütfen araç adı girin' : null,
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Plaka
-                    Text(
-                      'Plaka *',
-                      style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.gray700),
-                    ),
-                    const SizedBox(height: 6),
-                    TextFormField(
-                      controller: _plakaCtrl,
-                      decoration: const InputDecoration(
-                        hintText: 'Örn: 06 ABC 123',
-                        fillColor: Color(0xFFF8FAFC),
-                      ),
-                      validator: (v) => (v == null || v.trim().isEmpty) ? 'Lütfen plaka girin' : null,
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Model
-                    Text(
-                      'Model *',
-                      style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.gray700),
-                    ),
-                    const SizedBox(height: 6),
-                    TextFormField(
-                      controller: _modelCtrl,
-                      decoration: const InputDecoration(
-                        hintText: 'Örn: Ford Transit',
-                        fillColor: Color(0xFFF8FAFC),
-                      ),
-                      validator: (v) => (v == null || v.trim().isEmpty) ? 'Lütfen model girin' : null,
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Yıl
-                    Text(
-                      'Yıl *',
-                      style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.gray700),
-                    ),
-                    const SizedBox(height: 6),
-                    TextFormField(
-                      controller: _yilCtrl,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        hintText: 'Örn: 2022',
-                        fillColor: Color(0xFFF8FAFC),
-                      ),
-                      validator: (v) => (v == null || v.trim().isEmpty) ? 'Lütfen yıl girin' : null,
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Kapasite
-                    Text(
-                      'Kapasite (Litre) *',
-                      style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.gray700),
-                    ),
-                    const SizedBox(height: 6),
-                    TextFormField(
-                      controller: _kapasiteCtrl,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        hintText: 'Örn: 5000',
-                        fillColor: Color(0xFFF8FAFC),
-                      ),
-                      validator: (v) => (v == null || double.tryParse(v.trim()) == null || double.parse(v.trim()) <= 0) 
-                          ? 'Lütfen geçerli bir kapasite girin' 
-                          : null,
-                    ),
-                    const SizedBox(height: 28),
-
-                    // Create Button
-                    SizedBox(
-                      width: double.infinity,
-                      height: 50,
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF2563EB),
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        ),
-                        onPressed: _save,
-                        child: Text(
-                          _isEdit ? 'Aracı Güncelle' : '+ Araç Oluştur',
-                          style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 15),
+            : (isWeb
+                ? Center(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 24),
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 480),
+                        child: Container(
+                          padding: const EdgeInsets.all(24),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: AppColors.gray200),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.04),
+                                blurRadius: 16,
+                                offset: const Offset(0, 8),
+                              ),
+                            ],
+                          ),
+                          child: formWidget,
                         ),
                       ),
                     ),
-                  ],
-                ),
-              ),
+                  )
+                : SingleChildScrollView(
+                    padding: const EdgeInsets.all(24),
+                    child: formWidget,
+                  )),
       ),
     );
   }

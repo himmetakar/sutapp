@@ -61,8 +61,11 @@ class _FirmaPersonelPerformansScreenState extends State<FirmaPersonelPerformansS
         ),
       ),
       body: SafeArea(
-        child: Column(
-          children: [
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 800),
+            child: Column(
+              children: [
             // Period Selector Card
             Container(
               margin: const EdgeInsets.all(16),
@@ -155,164 +158,186 @@ class _FirmaPersonelPerformansScreenState extends State<FirmaPersonelPerformansS
                           final collections = collectionsSnapshot.data?.docs ?? [];
                           final deliveries = deliveriesSnapshot.data?.docs ?? [];
 
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-                                child: Text(
-                                  'Personel Performansları (${drivers.length})',
-                                  style: GoogleFonts.inter(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppColors.gray800,
+                          final bool isWeb = MediaQuery.of(context).size.width > 750;
+
+                              Widget buildDriverCard(QueryDocumentSnapshot driverDoc) {
+                                final driverName = '${driverDoc['ad']} ${driverDoc['soyad']}'.trim();
+
+                                // Filter collections for this driver and period
+                                final driverCollections = collections.where((c) {
+                                  final cData = c.data() as Map<String, dynamic>;
+                                  final sr = cData['sr'] ?? '';
+                                  if (sr != driverName) return false;
+
+                                  // Check date
+                                  final ts = cData['timestamp'];
+                                  if (ts is Timestamp) {
+                                    return _isWithinPeriod(ts.toDate());
+                                  }
+                                  final tarih = cData['tarih'];
+                                  if (tarih is String) {
+                                    return _isStringDateWithinPeriod(tarih);
+                                  }
+                                  return false;
+                                }).toList();
+
+                                // Compute milk sum
+                                double totalMilk = 0.0;
+                                final uniqueProducers = <String>{};
+                                for (var col in driverCollections) {
+                                  final colData = col.data() as Map<String, dynamic>;
+                                  final mVal = colData['m'];
+                                  if (mVal is num) {
+                                    totalMilk += mVal.toDouble();
+                                  }
+                                  final uVal = colData['u'];
+                                  if (uVal is String && uVal.isNotEmpty) {
+                                    uniqueProducers.add(uVal);
+                                  }
+                                }
+
+                                // Compute Tank Açığı/Fazlası (fark)
+                                double tankShortage = 0.0;
+                                final driverDeliveries = deliveries.where((d) {
+                                  final dData = d.data() as Map<String, dynamic>;
+                                  final String sr = dData['sr'] ?? dData['surucuName'] ?? dData['email'] ?? '';
+                                  if (sr != driverName) return false;
+
+                                  // Check date
+                                  final ts = dData['timestamp'];
+                                  if (ts is Timestamp) {
+                                    return _isWithinPeriod(ts.toDate());
+                                  }
+                                  final tarih = dData['tarih'];
+                                  if (tarih is String) {
+                                    return _isStringDateWithinPeriod(tarih);
+                                  }
+                                  return false;
+                                }).toList();
+                                for (var del in driverDeliveries) {
+                                  final dData = del.data() as Map<String, dynamic>;
+                                  final double toplanan = (dData['miktar'] ?? 0.0).toDouble();
+                                  final double teslim = (dData['kabulEdilenMiktar'] ?? dData['miktar'] ?? 0.0).toDouble();
+                                  final double fark = toplanan - teslim;
+                                  tankShortage += fark;
+                                }
+
+                                return Container(
+                                  margin: isWeb ? EdgeInsets.zero : const EdgeInsets.only(bottom: 16),
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(color: AppColors.gray200),
+                                    boxShadow: AppShadows.sm,
                                   ),
-                                ),
-                              ),
-                              Expanded(
-                                child: ListView.builder(
-                                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                                  itemCount: drivers.length,
-                                  itemBuilder: (context, index) {
-                                    final driverDoc = drivers[index];
-                                    final driverName = '${driverDoc['ad']} ${driverDoc['soyad']}'.trim();
-
-                                    // Filter collections for this driver and period
-                                    final driverCollections = collections.where((c) {
-                                      final cData = c.data() as Map<String, dynamic>;
-                                      final sr = cData['sr'] ?? '';
-                                      if (sr != driverName) return false;
-
-                                      // Check date
-                                      final ts = cData['timestamp'];
-                                      if (ts is Timestamp) {
-                                        return _isWithinPeriod(ts.toDate());
-                                      }
-                                      final tarih = cData['tarih'];
-                                      if (tarih is String) {
-                                        return _isStringDateWithinPeriod(tarih);
-                                      }
-                                      return false;
-                                    }).toList();
-
-                                    // Compute milk sum
-                                    double totalMilk = 0.0;
-                                    final uniqueProducers = <String>{};
-                                    for (var col in driverCollections) {
-                                      final colData = col.data() as Map<String, dynamic>;
-                                      final mVal = colData['m'];
-                                      if (mVal is num) {
-                                        totalMilk += mVal.toDouble();
-                                      }
-                                      final uVal = colData['u'];
-                                      if (uVal is String && uVal.isNotEmpty) {
-                                        uniqueProducers.add(uVal);
-                                      }
-                                    }
-
-                                    // Compute Tank Açığı/Fazlası (fark)
-                                    double tankShortage = 0.0;
-                                    final driverDeliveries = deliveries.where((d) {
-                                      final dData = d.data() as Map<String, dynamic>;
-                                      final String sr = dData['sr'] ?? dData['surucuName'] ?? dData['email'] ?? '';
-                                      if (sr != driverName) return false;
-
-                                      // Check date
-                                      final ts = dData['timestamp'];
-                                      if (ts is Timestamp) {
-                                        return _isWithinPeriod(ts.toDate());
-                                      }
-                                      final tarih = dData['tarih'];
-                                      if (tarih is String) {
-                                        return _isStringDateWithinPeriod(tarih);
-                                      }
-                                      return false;
-                                    }).toList();
-                                    for (var del in driverDeliveries) {
-                                      final dData = del.data() as Map<String, dynamic>;
-                                      final double toplanan = (dData['miktar'] ?? 0.0).toDouble();
-                                      final double teslim = (dData['kabulEdilenMiktar'] ?? dData['miktar'] ?? 0.0).toDouble();
-                                      final double fark = toplanan - teslim;
-                                      tankShortage += fark;
-                                    }
-
-                                    return Container(
-                                      margin: const EdgeInsets.only(bottom: 16),
-                                      padding: const EdgeInsets.all(16),
-                                      decoration: BoxDecoration(
-                                        color: Colors.white,
-                                        borderRadius: BorderRadius.circular(16),
-                                        border: Border.all(color: AppColors.gray200),
-                                        boxShadow: AppShadows.sm,
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        driverName,
+                                        style: GoogleFonts.inter(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.bold,
+                                          color: AppColors.gray800,
+                                        ),
                                       ),
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                      const SizedBox(height: 12),
+                                      GridView.count(
+                                        crossAxisCount: 2,
+                                        crossAxisSpacing: 10,
+                                        mainAxisSpacing: 10,
+                                        shrinkWrap: true,
+                                        physics: const NeverScrollableScrollPhysics(),
+                                        childAspectRatio: isWeb ? 2.2 : 1.5,
                                         children: [
-                                          Text(
-                                            driverName,
-                                            style: GoogleFonts.inter(
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.bold,
-                                              color: AppColors.gray800,
-                                            ),
+                                          // Toplam Süt
+                                          _buildMetricCard(
+                                            icon: Icons.water_drop_rounded,
+                                            iconColor: Colors.blue,
+                                            value: '${NumberFormat('#,##0', 'tr_TR').format(totalMilk)} L',
+                                            label: 'Toplam Süt',
                                           ),
-                                          const SizedBox(height: 16),
-                                          GridView.count(
-                                            crossAxisCount: 2,
-                                            crossAxisSpacing: 12,
-                                            mainAxisSpacing: 12,
-                                            shrinkWrap: true,
-                                            physics: const NeverScrollableScrollPhysics(),
-                                            childAspectRatio: 1.5,
-                                            children: [
-                                              // Toplam Süt
-                                              _buildMetricCard(
-                                                icon: Icons.water_drop_rounded,
-                                                iconColor: Colors.blue,
-                                                value: '${NumberFormat('#,##0', 'tr_TR').format(totalMilk)} L',
-                                                label: 'Toplam Süt',
-                                              ),
-                                              // Üretici
-                                              _buildMetricCard(
-                                                icon: Icons.people_rounded,
-                                                iconColor: const Color(0xFF10B981),
-                                                value: '${uniqueProducers.length}',
-                                                label: 'Üretici',
-                                              ),
-                                              // Teslimat
-                                              _buildMetricCard(
-                                                icon: Icons.local_shipping_rounded,
-                                                iconColor: const Color(0xFFF59E0B),
-                                                value: '${driverCollections.length}',
-                                                label: 'Teslimat',
-                                              ),
-                                              // Tank Açığı / Tank Fazlası
-                                              _buildMetricCard(
-                                                icon: tankShortage >= 0 ? Icons.warning_amber_rounded : Icons.check_circle_rounded,
-                                                iconColor: tankShortage >= 0 ? Colors.red : Colors.green,
-                                                value: '${NumberFormat('#,##0', 'tr_TR').format(tankShortage.abs())} L',
-                                                label: tankShortage >= 0 ? 'Tank Açığı' : 'Tank Fazlası',
-                                              ),
-                                            ],
+                                          // Üretici
+                                          _buildMetricCard(
+                                            icon: Icons.people_rounded,
+                                            iconColor: const Color(0xFF10B981),
+                                            value: '${uniqueProducers.length}',
+                                            label: 'Üretici',
+                                          ),
+                                          // Teslimat
+                                          _buildMetricCard(
+                                            icon: Icons.local_shipping_rounded,
+                                            iconColor: const Color(0xFFF59E0B),
+                                            value: '${driverCollections.length}',
+                                            label: 'Teslimat',
+                                          ),
+                                          // Tank Açığı / Tank Fazlası
+                                          _buildMetricCard(
+                                            icon: tankShortage >= 0 ? Icons.warning_amber_rounded : Icons.check_circle_rounded,
+                                            iconColor: tankShortage >= 0 ? Colors.red : Colors.green,
+                                            value: '${NumberFormat('#,##0', 'tr_TR').format(tankShortage.abs())} L',
+                                            label: tankShortage >= 0 ? 'Tank Açığı' : 'Tank Fazlası',
                                           ),
                                         ],
                                       ),
-                                    );
-                                  },
-                                ),
-                              ),
-                            ],
+                                    ],
+                                  ),
+                                );
+                              }
+
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                                    child: Text(
+                                      'Personel Performansları (${drivers.length})',
+                                      style: GoogleFonts.inter(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppColors.gray800,
+                                      ),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: isWeb
+                                        ? GridView.builder(
+                                            padding: const EdgeInsets.all(16),
+                                            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                                              crossAxisCount: 2,
+                                              crossAxisSpacing: 16,
+                                              mainAxisSpacing: 16,
+                                              mainAxisExtent: 220,
+                                            ),
+                                            itemCount: drivers.length,
+                                            itemBuilder: (context, index) {
+                                              return buildDriverCard(drivers[index]);
+                                            },
+                                          )
+                                        : ListView.builder(
+                                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                                            itemCount: drivers.length,
+                                            itemBuilder: (context, index) {
+                                              return buildDriverCard(drivers[index]);
+                                            },
+                                          ),
+                                  ),
+                                ],
+                              );
+                            },
                           );
                         },
                       );
                     },
-                  );
-                },
-              ),
+                  ),
             ),
           ],
         ),
-      ),
+            ),
+          ),
+        ),
     );
   }
 

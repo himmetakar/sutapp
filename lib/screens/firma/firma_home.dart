@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:convert';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:go_router/go_router.dart';
@@ -161,7 +162,7 @@ class _FirmaHomeScreenState extends State<FirmaHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final bool isDesktop = MediaQuery.of(context).size.width >= 1024;
+    final bool isDesktop = kIsWeb || MediaQuery.of(context).size.width >= 1024;
     if (isDesktop) {
       return const FirmaDashboard();
     }

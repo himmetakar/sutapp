@@ -887,6 +887,21 @@ class FirestoreService {
       }
     }
 
+    // Resolve tank name if it's 'Merkez Tank' or empty/default
+    String resolvedTank = tankName;
+    if (resolvedTank == 'Merkez Tank' || resolvedTank.trim().isEmpty || resolvedTank == 'Tank seçimi (zorunlu değil)') {
+      if (resolvedFirma.isNotEmpty) {
+        final tankQuery = await _tanks
+            .where('firma', isEqualTo: resolvedFirma)
+            .where('tip', isEqualTo: 'merkez')
+            .limit(1)
+            .get();
+        if (tankQuery.docs.isNotEmpty) {
+          resolvedTank = tankQuery.docs.first['ad'] ?? '';
+        }
+      }
+    }
+
     final targetDate = customDate ?? DateTime.now();
 
     // 1. Add collection record
@@ -899,7 +914,7 @@ class FirestoreService {
       'sr': driverName ?? 'Yönetici',
       'km': vehiclePlate ?? '-',
       'b': region ?? 'Merkez',
-      'tank': tankName,
+      'tank': resolvedTank,
       'tarih': DateFormat('dd.MM.yyyy').format(targetDate), // tarih: offline'da da filtrelenebilsin
       'timestamp': customDate != null ? Timestamp.fromDate(customDate) : FieldValue.serverTimestamp(),
       'firma': resolvedFirma,
@@ -914,13 +929,13 @@ class FirestoreService {
     // 2. Update tank stock in tanklar collection using increment() to prevent offline race conditions.
     // FieldValue.increment() is applied atomically on the server, so two offline writes both get
     // correctly accumulated when the device comes back online (no overwrite bug).
-    QuerySnapshot tankQuery = await getQueryWithCachePriority(_tanks.where('ad', isEqualTo: tankName).limit(1));
+    QuerySnapshot tankQuery = await getQueryWithCachePriority(_tanks.where('ad', isEqualTo: resolvedTank).limit(1));
 
     // Cache miss durumunda doğrudan server'dan dene (tank ID değişmiş olabilir)
     if (tankQuery.docs.isEmpty) {
-      print('[recordMilkCollection] Tank "$tankName" cache\'de bulunamadı, server deneniyor...');
+      print('[recordMilkCollection] Tank "$resolvedTank" cache\'de bulunamadı, server deneniyor...');
       try {
-        tankQuery = await _tanks.where('ad', isEqualTo: tankName).limit(1).get();
+        tankQuery = await _tanks.where('ad', isEqualTo: resolvedTank).limit(1).get();
       } catch (e) {
         print('[recordMilkCollection] Server sorgusu da başarısız: $e');
       }
@@ -931,20 +946,20 @@ class FirestoreService {
       // Use increment so offline queued writes stack correctly
       try {
         await tankDoc.reference.update({'stok': FieldValue.increment(miktar)});
-        print('[recordMilkCollection] Tank "$tankName" stok +$miktar LT güncellendi');
+        print('[recordMilkCollection] Tank "$resolvedTank" stok +$miktar LT güncellendi');
       } catch (e) {
         print('[recordMilkCollection] Tank güncelleme hatası (ID: ${tankDoc.id}): $e');
         if (e.toString().contains('not-found') || e.toString().contains('NOT_FOUND')) {
           try {
             print('[recordMilkCollection] Stale tank document ID detected in cache. Querying server directly...');
-            final freshTankQuery = await _tanks.where('ad', isEqualTo: tankName).limit(1).get(const GetOptions(source: Source.server));
+            final freshTankQuery = await _tanks.where('ad', isEqualTo: resolvedTank).limit(1).get(const GetOptions(source: Source.server));
             if (freshTankQuery.docs.isNotEmpty) {
               tankDoc = freshTankQuery.docs.first;
               await tankDoc.reference.update({'stok': FieldValue.increment(miktar)});
-              print('[recordMilkCollection] Tank "$tankName" stok +$miktar LT güncellendi (Fresh ID: ${tankDoc.id})');
+              print('[recordMilkCollection] Tank "$resolvedTank" stok +$miktar LT güncellendi (Fresh ID: ${tankDoc.id})');
               tankQuery = freshTankQuery; // Update query ref for downstream code
             } else {
-              print('[recordMilkCollection] Tank "$tankName" sunucuda da bulunamadı.');
+              print('[recordMilkCollection] Tank "$resolvedTank" sunucuda da bulunamadı.');
             }
           } catch (serverErr) {
             print('[recordMilkCollection] Sunucu üzerinden tank güncelleme hatası: $serverErr');
@@ -988,7 +1003,7 @@ class FirestoreService {
 
                 bool updated = false;
                 for (int i = 0; i < vehicleTanks.length; i++) {
-                  if (vehicleTanks[i]['ad'] == tankName) {
+                  if (vehicleTanks[i]['ad'] == resolvedTank) {
                     final double curStok =
                         (vehicleTanks[i]['stok'] as num?)?.toDouble() ?? 0.0;
                     vehicleTanks[i]['stok'] =
@@ -1000,9 +1015,9 @@ class FirestoreService {
 
                 if (updated) {
                   await vehicleDoc.reference.update({'tanklar': vehicleTanks});
-                  print('[recordMilkCollection] Araç tank $tankName stok +$miktar LT güncellendi (read-modify-write)');
+                  print('[recordMilkCollection] Araç tank $resolvedTank stok +$miktar LT güncellendi (read-modify-write)');
                 } else {
-                  print('[recordMilkCollection] ⚠️ Araç "$plate" içinde tank "$tankName" bulunamadı!');
+                  print('[recordMilkCollection] ⚠️ Araç "$plate" içinde tank "$resolvedTank" bulunamadı!');
                 }
               } else {
                 print('[recordMilkCollection] Araç "$plate" bulunamadı!');
@@ -1093,9 +1108,26 @@ class FirestoreService {
     final String producerName = data['u'] ?? '';
     final String vehiclePlate = data['km'] ?? '';
 
+    // Resolve tank name if it's 'Merkez Tank' or empty/default
+    String resolvedTank = tankName;
+    if (resolvedTank == 'Merkez Tank' || resolvedTank.trim().isEmpty) {
+      final String companyName = data['firma'] ?? '';
+      if (companyName.isNotEmpty) {
+        final tankQuery = await _tanks
+            .where('firma', isEqualTo: companyName)
+            .where('tip', isEqualTo: 'merkez')
+            .limit(1)
+            .get();
+        if (tankQuery.docs.isNotEmpty) {
+          resolvedTank = tankQuery.docs.first['ad'] ?? '';
+          await docRef.update({'tank': resolvedTank});
+        }
+      }
+    }
+
     // 1. Subtract from tank stock using increment(-miktar) for atomicity
-    if (tankName.isNotEmpty) {
-      final tankQuery = await _tanks.where('ad', isEqualTo: tankName).limit(1).get();
+    if (resolvedTank.isNotEmpty) {
+      final tankQuery = await _tanks.where('ad', isEqualTo: resolvedTank).limit(1).get();
       if (tankQuery.docs.isNotEmpty) {
         final tankDoc = tankQuery.docs.first;
         await tankDoc.reference.update({'stok': FieldValue.increment(-miktar)});
@@ -1109,7 +1141,7 @@ class FirestoreService {
                 .map((t) => Map<String, dynamic>.from(t as Map))
                 .toList();
             for (int i = 0; i < vehicleTanks.length; i++) {
-              if (vehicleTanks[i]['ad'] == tankName) {
+              if (vehicleTanks[i]['ad'] == resolvedTank) {
                 final double oldStok = (vehicleTanks[i]['stok'] as num?)?.toDouble() ?? 0.0;
                 vehicleTanks[i]['stok'] = (oldStok - miktar).clamp(0.0, double.infinity);
                 break;
@@ -1154,9 +1186,26 @@ class FirestoreService {
     // 1. Update document
     await docRef.update({'m': newMiktar});
 
+    // Resolve tank name if it's 'Merkez Tank' or empty/default
+    String resolvedTank = tankName;
+    if (resolvedTank == 'Merkez Tank' || resolvedTank.trim().isEmpty) {
+      final String companyName = data['firma'] ?? '';
+      if (companyName.isNotEmpty) {
+        final tankQuery = await _tanks
+            .where('firma', isEqualTo: companyName)
+            .where('tip', isEqualTo: 'merkez')
+            .limit(1)
+            .get();
+        if (tankQuery.docs.isNotEmpty) {
+          resolvedTank = tankQuery.docs.first['ad'] ?? '';
+          await docRef.update({'tank': resolvedTank});
+        }
+      }
+    }
+
     // 2. Adjust tank stock
-    if (tankName.isNotEmpty) {
-      final tankQuery = await _tanks.where('ad', isEqualTo: tankName).limit(1).get();
+    if (resolvedTank.isNotEmpty) {
+      final tankQuery = await _tanks.where('ad', isEqualTo: resolvedTank).limit(1).get();
       if (tankQuery.docs.isNotEmpty) {
         final tankDoc = tankQuery.docs.first;
         final currentStock = (tankDoc['stok'] as num).toDouble();
@@ -1172,7 +1221,7 @@ class FirestoreService {
                 .map((t) => Map<String, dynamic>.from(t as Map))
                 .toList();
             for (int i = 0; i < vehicleTanks.length; i++) {
-              if (vehicleTanks[i]['ad'] == tankName) {
+              if (vehicleTanks[i]['ad'] == resolvedTank) {
                 vehicleTanks[i]['stok'] = newStock;
                 break;
               }

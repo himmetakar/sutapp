@@ -272,7 +272,10 @@ class _FirmaTankAtamaScreenState extends State<FirmaTankAtamaScreen> {
         ),
       ),
       body: SafeArea(
-        child: StreamBuilder<QuerySnapshot>(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 800),
+            child: StreamBuilder<QuerySnapshot>(
           stream: _db
               .collection('araclar')
               .where('firma', isEqualTo: tenantFirma)
@@ -300,6 +303,199 @@ class _FirmaTankAtamaScreenState extends State<FirmaTankAtamaScreen> {
                 int totalAracTanks = aracTanks.length;
                 int assignedTanksCount = aracTanks.where((t) => ((t.data() as Map)['arac'] ?? '').isNotEmpty).length;
                 int freeTanksCount = totalAracTanks - assignedTanksCount;
+
+                final bool isWeb = MediaQuery.of(context).size.width > 750;
+
+                Widget buildVehicleCard(QueryDocumentSnapshot vDoc) {
+                  final vData = vDoc.data() as Map<String, dynamic>;
+                  final plate = vData['plaka'] ?? '';
+                  final drivers = List<String>.from(vData['suruculer'] ?? []);
+                  final vTanks = List<Map<String, dynamic>>.from(vData['tanklar'] ?? []);
+                  final currentTankNames = vTanks.map((t) => t['ad'] as String).toList();
+
+                  return Container(
+                    margin: isWeb ? EdgeInsets.zero : const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: AppColors.gray200),
+                      boxShadow: AppShadows.sm,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Plate and drivers subtitle
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    plate,
+                                    style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.gray800),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    drivers.isEmpty ? 'Sürücü Atanmamış' : 'Sürücüler: ${drivers.join(', ')}',
+                                    style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500, fontWeight: FontWeight.w500),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: vTanks.isNotEmpty ? AppColors.primary50 : AppColors.gray100,
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                '${vTanks.length} Tank Atandı',
+                                style: GoogleFonts.inter(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: vTanks.isNotEmpty ? AppColors.primary600 : AppColors.gray500,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(height: 12),
+                        const Divider(),
+                        const SizedBox(height: 12),
+
+                        // Assigned tanks list
+                        Expanded(
+                          child: vTanks.isEmpty
+                              ? Center(
+                                  child: Text(
+                                    'Bu araca atanmış tank bulunmamaktadır.',
+                                    style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray400, fontStyle: FontStyle.italic),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                )
+                              : ListView.builder(
+                                  shrinkWrap: true,
+                                  itemCount: vTanks.length,
+                                  itemBuilder: (context, tIdx) {
+                                    final t = vTanks[tIdx];
+                                    final name = t['ad'] ?? '';
+                                    final double kap = (t['kap'] as num?)?.toDouble() ?? 2000.0;
+                                    return Container(
+                                      margin: const EdgeInsets.only(bottom: 6),
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.gray50,
+                                        borderRadius: BorderRadius.circular(10),
+                                        border: Border.all(color: AppColors.gray100),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          const Icon(Icons.propane_tank_rounded, color: AppColors.gray500, size: 16),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              '$name (${kap.toStringAsFixed(0)} LT)',
+                                              style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.gray800),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                          IconButton(
+                                            icon: const Icon(Icons.link_off_rounded, color: AppColors.danger, size: 18),
+                                            padding: EdgeInsets.zero,
+                                            constraints: const BoxConstraints(),
+                                            onPressed: () => _removeTankAssignment(plate, name, kap, tanks),
+                                            tooltip: 'Tank Atamasını Kaldır',
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  },
+                                ),
+                        ),
+
+                        const SizedBox(height: 14),
+
+                        // Edit assignment button
+                        SizedBox(
+                          width: double.infinity,
+                          height: 36,
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primary600,
+                              foregroundColor: Colors.white,
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                            onPressed: () => _showTankSelectorDialog(plate, drivers, tanks, currentTankNames),
+                            icon: const Icon(Icons.link_rounded, size: 16),
+                            label: Text(
+                              vTanks.isNotEmpty ? 'Tankları Düzenle' : 'Tank Ata',
+                              style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                Widget buildAllTankCard(QueryDocumentSnapshot tDoc) {
+                  final data = tDoc.data() as Map<String, dynamic>;
+                  final name = data['ad'] ?? '';
+                  final cap = (data['kap'] as num?)?.toDouble() ?? 2000.0;
+                  final assignedPlate = data['arac'] ?? '';
+                  final isAssigned = assignedPlate.isNotEmpty;
+
+                  return Container(
+                    margin: isWeb ? EdgeInsets.zero : const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.gray200),
+                      boxShadow: AppShadows.sm,
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              name,
+                              style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.gray800),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Kapasite: ${cap.toStringAsFixed(0)} LT',
+                              style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500),
+                            ),
+                          ],
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: isAssigned ? Colors.green[50] : Colors.red[50],
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            isAssigned ? 'Atandı: $assignedPlate' : 'Boşta',
+                            style: GoogleFonts.inter(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: isAssigned ? Colors.green[700] : Colors.red[700],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }
 
                 return ListView(
                   padding: const EdgeInsets.all(16),
@@ -333,135 +529,24 @@ class _FirmaTankAtamaScreenState extends State<FirmaTankAtamaScreen> {
                         ),
                       )
                     else
-                      ...vehicles.map((vDoc) {
-                        final vData = vDoc.data() as Map<String, dynamic>;
-                        final plate = vData['plaka'] ?? '';
-                        final drivers = List<String>.from(vData['suruculer'] ?? []);
-                        final vTanks = List<Map<String, dynamic>>.from(vData['tanklar'] ?? []);
-                        final currentTankNames = vTanks.map((t) => t['ad'] as String).toList();
-
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: AppColors.gray200),
-                            boxShadow: AppShadows.sm,
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // Plate and drivers subtitle
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          plate,
-                                          style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.gray800),
-                                        ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          drivers.isEmpty ? 'Sürücü Atanmamış' : 'Sürücüler: ${drivers.join(', ')}',
-                                          style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500, fontWeight: FontWeight.w500),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: vTanks.isNotEmpty ? AppColors.primary50 : AppColors.gray100,
-                                      borderRadius: BorderRadius.circular(20),
-                                    ),
-                                    child: Text(
-                                      '${vTanks.length} Tank Atandı',
-                                      style: GoogleFonts.inter(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.bold,
-                                        color: vTanks.isNotEmpty ? AppColors.primary600 : AppColors.gray500,
-                                      ),
-                                    ),
-                                  ),
-                                ],
+                      isWeb
+                          ? GridView.builder(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 2,
+                                crossAxisSpacing: 16,
+                                mainAxisSpacing: 16,
+                                mainAxisExtent: 320,
                               ),
-
-                              const SizedBox(height: 12),
-                              const Divider(),
-                              const SizedBox(height: 12),
-
-                              // Assigned tanks list
-                              if (vTanks.isEmpty)
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(vertical: 8),
-                                  child: Text(
-                                    'Bu araca atanmış tank bulunmamaktadır.',
-                                    style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray400, fontStyle: FontStyle.italic),
-                                  ),
-                                )
-                              else
-                                ...vTanks.map((t) {
-                                  final name = t['ad'] ?? '';
-                                  final double kap = (t['kap'] as num?)?.toDouble() ?? 2000.0;
-                                  return Container(
-                                    margin: const EdgeInsets.only(bottom: 6),
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.gray50,
-                                      borderRadius: BorderRadius.circular(10),
-                                      border: Border.all(color: AppColors.gray100),
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        const Icon(Icons.propane_tank_rounded, color: AppColors.gray500, size: 16),
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                          child: Text(
-                                            '$name (${kap.toStringAsFixed(0)} LT)',
-                                            style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppColors.gray800),
-                                          ),
-                                        ),
-                                        IconButton(
-                                          icon: const Icon(Icons.link_off_rounded, color: AppColors.danger, size: 18),
-                                          padding: EdgeInsets.zero,
-                                          constraints: const BoxConstraints(),
-                                          onPressed: () => _removeTankAssignment(plate, name, kap, tanks),
-                                          tooltip: 'Tank Atamasını Kaldır',
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                }),
-
-                              const SizedBox(height: 14),
-
-                              // Edit assignment button
-                              SizedBox(
-                                width: double.infinity,
-                                height: 36,
-                                child: ElevatedButton.icon(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: AppColors.primary600,
-                                    foregroundColor: Colors.white,
-                                    elevation: 0,
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                  ),
-                                  onPressed: () => _showTankSelectorDialog(plate, drivers, tanks, currentTankNames),
-                                  icon: const Icon(Icons.link_rounded, size: 16),
-                                  label: Text(
-                                    vTanks.isNotEmpty ? 'Tankları Düzenle' : 'Tank Ata',
-                                    style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      }),
+                              itemCount: vehicles.length,
+                              itemBuilder: (context, index) {
+                                return buildVehicleCard(vehicles[index]);
+                              },
+                            )
+                          : Column(
+                              children: vehicles.map((vDoc) => buildVehicleCard(vDoc)).toList(),
+                            ),
 
                     const SizedBox(height: 24),
 
@@ -475,65 +560,32 @@ class _FirmaTankAtamaScreenState extends State<FirmaTankAtamaScreen> {
                     if (aracTanks.isEmpty)
                       _buildEmptyState('Sistemde kayıtlı araç tankı bulunmuyor.')
                     else
-                      ...aracTanks.map((tDoc) {
-                        final data = tDoc.data() as Map<String, dynamic>;
-                        final name = data['ad'] ?? '';
-                        final cap = (data['kap'] as num?)?.toDouble() ?? 2000.0;
-                        final assignedPlate = data['arac'] ?? '';
-
-                        final isAssigned = assignedPlate.isNotEmpty;
-
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: AppColors.gray200),
-                            boxShadow: AppShadows.sm,
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    name,
-                                    style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.gray800),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    'Kapasite: ${cap.toStringAsFixed(0)} LT',
-                                    style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500),
-                                  ),
-                                ],
+                      isWeb
+                          ? GridView.builder(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 2,
+                                crossAxisSpacing: 16,
+                                mainAxisSpacing: 12,
+                                mainAxisExtent: 68,
                               ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: isAssigned ? Colors.green[50] : Colors.red[50],
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Text(
-                                  isAssigned ? 'Atandı: $assignedPlate' : 'Boşta',
-                                  style: GoogleFonts.inter(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                    color: isAssigned ? Colors.green[700] : Colors.red[700],
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      }),
+                              itemCount: aracTanks.length,
+                              itemBuilder: (context, index) {
+                                return buildAllTankCard(aracTanks[index]);
+                              },
+                            )
+                          : Column(
+                              children: aracTanks.map((tDoc) => buildAllTankCard(tDoc)).toList(),
+                            ),
                     const SizedBox(height: 32),
                   ],
                 );
               },
             );
           },
+        ),
+          ),
         ),
       ),
     );

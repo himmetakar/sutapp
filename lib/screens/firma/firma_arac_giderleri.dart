@@ -219,8 +219,11 @@ class _FirmaAracGiderleriScreenState extends State<FirmaAracGiderleriScreen> {
         },
       ),
       body: SafeArea(
-        child: Column(
-          children: [
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 850),
+            child: Column(
+              children: [
             // Period Selector Tabs (Hafta, Ay, Yıl)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
@@ -438,6 +441,220 @@ class _FirmaAracGiderleriScreenState extends State<FirmaAracGiderleriScreen> {
                     }
                   }
 
+                  final bool isWeb = MediaQuery.of(context).size.width > 750;
+
+                  Widget buildSummaryCard(String plaka, double totalTutar, int count, String lastDate) {
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.gray200),
+                        boxShadow: AppShadows.sm,
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  plaka,
+                                  style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.gray800),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Araç Gideri',
+                                  style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray500),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Son Gider: $lastDate',
+                                  style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray400),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                '${formatNumber.format(totalTutar)} ₺',
+                                style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.red),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                '$count gider',
+                                style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+
+                  Widget buildDetailCard(QueryDocumentSnapshot doc) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    final String plaka = data['plaka'] ?? 'Bilinmiyor';
+                    final String aciklama = data['aciklama'] ?? 'Diğer';
+                    final double tutar = (data['tutar'] ?? 0.0).toDouble();
+                    final String tarih = data['tarih'] ?? '';
+                    final String ekAciklama = data['ekAciklama'] ?? '';
+                    final String personel = data['personel'] ?? '';
+
+                    // Pick matching icon
+                    IconData expIcon = Icons.local_shipping_rounded;
+                    if (aciklama == 'Yakıt') {
+                      expIcon = Icons.water_drop_rounded;
+                    } else if (aciklama == 'Bakım') {
+                      expIcon = Icons.build_rounded;
+                    } else if (aciklama == 'Lastik') {
+                      expIcon = Icons.adjust_rounded;
+                    } else if (aciklama == 'Sigorta') {
+                      expIcon = Icons.shield_rounded;
+                    } else if (aciklama == 'Muayene') {
+                      expIcon = Icons.analytics_rounded;
+                    }
+
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.gray200),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF2563EB).withValues(alpha: 0.1),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(expIcon, color: const Color(0xFF2563EB), size: 18),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  aciklama,
+                                  style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.gray800),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  plaka,
+                                  style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.primary600),
+                                ),
+                                if (personel.isNotEmpty) ...[
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Personel: $personel',
+                                    style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500),
+                                  ),
+                                ],
+                                if (ekAciklama.isNotEmpty) ...[
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    ekAciklama,
+                                    style: GoogleFonts.inter(fontSize: 11, fontStyle: FontStyle.italic, color: AppColors.gray400),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                '${formatNumber.format(tutar)} ₺',
+                                style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.red),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                tarih,
+                                style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray400),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+
+                  if (isWeb) {
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Left column: summary
+                          Expanded(
+                            flex: 4,
+                            child: SingleChildScrollView(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Araç Bazlı Gider Özeti',
+                                    style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.gray800),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  if (vehicleExpensesMap.isEmpty)
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(vertical: 20.0),
+                                      child: Text('Gider özeti bulunmuyor.', style: GoogleFonts.inter(color: AppColors.gray500, fontSize: 13)),
+                                    )
+                                  else
+                                    ...vehicleExpensesMap.entries.map((entry) {
+                                      final plaka = entry.key;
+                                      final totalTutar = entry.value;
+                                      final count = vehicleExpensesCount[plaka] ?? 0;
+                                      final lastDate = vehicleLastExpenseDate[plaka] ?? '-';
+                                      return buildSummaryCard(plaka, totalTutar, count, lastDate);
+                                    }),
+                                  const SizedBox(height: 80),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 24),
+                          // Right column: details
+                          Expanded(
+                            flex: 6,
+                            child: SingleChildScrollView(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Gider Kayıtları (${filteredDocs.length})',
+                                    style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.gray800),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  if (filteredDocs.isEmpty)
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(vertical: 20.0),
+                                      child: Text('Seçilen filtrelere uygun gider kaydı bulunamadı.', style: GoogleFonts.inter(color: AppColors.gray500, fontSize: 13)),
+                                    )
+                                  else
+                                    ...filteredDocs.map((doc) => buildDetailCard(doc)),
+                                  const SizedBox(height: 80),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+
                   return ListView(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     children: [
@@ -458,54 +675,7 @@ class _FirmaAracGiderleriScreenState extends State<FirmaAracGiderleriScreen> {
                           final count = vehicleExpensesCount[plaka] ?? 0;
                           final lastDate = vehicleLastExpenseDate[plaka] ?? '-';
 
-                          return Container(
-                            margin: const EdgeInsets.only(bottom: 12),
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: AppColors.gray200),
-                              boxShadow: AppShadows.sm,
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      plaka,
-                                      style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.gray800),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      'Bilinmiyor',
-                                      style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray500),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      'Son Gider: $lastDate',
-                                      style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray400),
-                                    ),
-                                  ],
-                                ),
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  children: [
-                                    Text(
-                                      '${formatNumber.format(totalTutar)} ₺',
-                                      style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.red),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      '$count gider',
-                                      style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          );
+                          return buildSummaryCard(plaka, totalTutar, count, lastDate);
                         }),
                         const SizedBox(height: 16),
                       ],
@@ -530,98 +700,7 @@ class _FirmaAracGiderleriScreenState extends State<FirmaAracGiderleriScreen> {
                           ),
                         ),
                       ] else
-                        ...filteredDocs.map((doc) {
-                          final data = doc.data() as Map<String, dynamic>;
-                          final String plaka = data['plaka'] ?? 'Bilinmiyor';
-                          final String aciklama = data['aciklama'] ?? 'Diğer';
-                          final double tutar = (data['tutar'] ?? 0.0).toDouble();
-                          final String tarih = data['tarih'] ?? '';
-                          final String ekAciklama = data['ekAciklama'] ?? '';
-                          final String personel = data['personel'] ?? '';
-
-                          // Pick matching icon
-                          IconData expIcon = Icons.local_shipping_rounded;
-                          if (aciklama == 'Yakıt') {
-                            expIcon = Icons.water_drop_rounded;
-                          } else if (aciklama == 'Bakım') {
-                            expIcon = Icons.build_rounded;
-                          } else if (aciklama == 'Lastik') {
-                            expIcon = Icons.adjust_rounded;
-                          } else if (aciklama == 'Sigorta') {
-                            expIcon = Icons.shield_rounded;
-                          } else if (aciklama == 'Muayene') {
-                            expIcon = Icons.analytics_rounded;
-                          }
-
-                          return Container(
-                            margin: const EdgeInsets.only(bottom: 12),
-                            padding: const EdgeInsets.all(14),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: AppColors.gray200),
-                            ),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Container(
-                                  width: 36,
-                                  height: 36,
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF2563EB).withValues(alpha: 0.1),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Icon(expIcon, color: const Color(0xFF2563EB), size: 18),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        aciklama,
-                                        style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.gray800),
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        plaka,
-                                        style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.primary600),
-                                      ),
-                                      if (personel.isNotEmpty) ...[
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          'Personel: $personel',
-                                          style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500),
-                                        ),
-                                      ],
-                                      if (ekAciklama.isNotEmpty) ...[
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          ekAciklama,
-                                          style: GoogleFonts.inter(fontSize: 11, fontStyle: FontStyle.italic, color: AppColors.gray400),
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                ),
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  children: [
-                                    Text(
-                                      '${formatNumber.format(tutar)} ₺',
-                                      style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.red),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      tarih,
-                                      style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray400),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          );
-                        }),
+                        ...filteredDocs.map((doc) => buildDetailCard(doc)),
                       const SizedBox(height: 80),
                     ],
                   );
@@ -630,6 +709,8 @@ class _FirmaAracGiderleriScreenState extends State<FirmaAracGiderleriScreen> {
             ),
           ],
         ),
+            ),
+          ),
       ),
     );
   }

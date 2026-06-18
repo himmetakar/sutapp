@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -89,15 +90,27 @@ class _AppShellState extends State<AppShell> {
       case UserRole.firma:
         return [
           _DrawerItem('/firma', Icons.dashboard_rounded, 'Dashboard'),
-          _DrawerItem('/firma/ureticiler', Icons.people_rounded, 'Müşteri Yönetimi', isExpandable: true, children: [
-            _DrawerItem('/firma/ureticiler', Icons.list_rounded, 'Üretici Listesi'),
+          _DrawerItem('/firma/ureticiler/liste', Icons.people_rounded, 'Müşteri Yönetimi', isExpandable: true, children: [
+            _DrawerItem('/firma/ureticiler/liste', Icons.list_rounded, 'Üretici Listesi'),
             _DrawerItem('/firma/gruplar', Icons.group_work_rounded, 'Süt Toplama Grupları'),
+            _DrawerItem('/firma/atamalar', Icons.person_add_alt_1_rounded, 'Atama İşlemleri'),
             _DrawerItem('/firma/birlikler', Icons.corporate_fare_rounded, 'Üretici Birlikleri'),
+            _DrawerItem('/firma/hesap-ozeti', Icons.description_rounded, 'Hesap Görüntüleme'),
+            _DrawerItem('/firma/finans/sut-fiyatlari', Icons.local_offer_rounded, 'Üretici Süt Fiyatları'),
           ]),
-          _DrawerItem('/firma/personel', Icons.badge_rounded, 'Personel & Araç', isExpandable: true, children: [
-            _DrawerItem('/firma/personel', Icons.people_outline_rounded, 'Personel Yönetimi'),
-            _DrawerItem('/firma/suruculer', Icons.person_rounded, 'Sürücüler'),
-            _DrawerItem('/firma/araclar', Icons.local_shipping_rounded, 'Araç Yönetimi'),
+          _DrawerItem('/firma/personel/liste', Icons.badge_rounded, 'Personel & Araç', isExpandable: true, children: [
+            _DrawerItem('/firma/personel/ekle', Icons.person_add_rounded, 'Personel Ekle'),
+            _DrawerItem('/firma/personel/liste', Icons.people_outline_rounded, 'Personel Listesi'),
+            if (!kIsWeb)
+              _DrawerItem('/firma/suruculer', Icons.person_rounded, 'Toplayıcı Listesi'),
+            _DrawerItem('/firma/araclar/ekle', Icons.add_road_rounded, 'Araç Ekle'),
+            _DrawerItem('/firma/araclar/liste', Icons.list_alt_rounded, 'Araç Listesi'),
+            _DrawerItem('/firma/araclar', Icons.local_shipping_rounded, 'Araç Detay & Tank'),
+            _DrawerItem('/firma/araclar/giderler', Icons.credit_card_rounded, 'Araç Gider Görüntüle'),
+            _DrawerItem('/firma/araclar/atama', Icons.link_rounded, 'Personele Araç Atama'),
+            _DrawerItem('/firma/personel/performans', Icons.bar_chart_rounded, 'Personel Performans Raporu'),
+            _DrawerItem('/firma/personel/acik-fazla', Icons.description_rounded, 'Personel Açık/Fazla Raporu'),
+            _DrawerItem('/firma/atamalar', Icons.person_add_alt_1_rounded, 'Personele Üretici Atama'),
           ]),
           _DrawerItem('/firma/tanklar', Icons.water_drop_rounded, 'Süt & Tank', isExpandable: true, children: [
             _DrawerItem('/firma/toplamalar', Icons.history_rounded, 'Süt Toplamalar'),
@@ -107,19 +120,36 @@ class _AppShellState extends State<AppShell> {
             _DrawerItem('/firma/satis-raporlari', Icons.analytics_rounded, 'Süt Satış Raporu'),
             _DrawerItem('/firma/sut-transferleri', Icons.sync_alt_rounded, 'Süt Transfer & Takip'),
             _DrawerItem('/firma/sut-analiz', Icons.science_rounded, 'Süt Analiz'),
-            _DrawerItem('/firma/tanklar', Icons.speed_rounded, 'Tank Durumu'),
+            _DrawerItem('/firma/tanklar/liste', Icons.speed_rounded, 'Tank Listesi'),
+            _DrawerItem('/firma/tanklar', Icons.storage_rounded, 'Tank Durumu (Detay)'),
+            _DrawerItem('/firma/tanklar/detay', Icons.water_drop_outlined, 'Tank İçerik Detay'),
+            _DrawerItem('/firma/tanklar/ekle', Icons.add_circle_outline_rounded, 'Tank Ekle'),
+            _DrawerItem('/firma/tanklar/sil', Icons.delete_outline_rounded, 'Tank Sil'),
+            _DrawerItem('/firma/tanklar/atama', Icons.assignment_ind_rounded, 'Tank Atama'),
           ]),
           _DrawerItem('/firma/urunler', Icons.category_rounded, 'Ürün Yönetimi', isExpandable: true, children: [
-            _DrawerItem('/firma/urunler', Icons.list_alt_rounded, 'Ürün Listesi'),
-            _DrawerItem('/firma/urunler/siparisler', Icons.fact_check_rounded, 'Sipariş Onay'),
+            _DrawerItem('/firma/urunler', Icons.inventory_rounded, 'Ürün Listesi'),
+            if (kIsWeb) ...[
+              _DrawerItem('/firma/urunler?view=stok', Icons.inventory_2_rounded, 'Stok Takibi'),
+              _DrawerItem('/firma/urunler?view=kategoriler', Icons.local_offer_rounded, 'Kategori Ekle'),
+              _DrawerItem('/firma/urunler?view=satis_raporlari', Icons.bar_chart_rounded, 'Ürün Satış Raporu'),
+              _DrawerItem('/firma/urunler?view=eksik_teslimatlar', Icons.assignment_late_rounded, 'Eksik Teslimat'),
+            ],
+            _DrawerItem('/firma/urunler/siparisler', Icons.shopping_bag_rounded, 'Sipariş Yönetimi'),
+            _DrawerItem('/firma/satislar', Icons.list_alt_rounded, 'Satış Yap'),
           ]),
           _DrawerItem('/firma/finans', Icons.monetization_on_rounded, 'Finans Yönetimi', isExpandable: true, children: [
-            _DrawerItem('/firma/finans', Icons.insights_rounded, 'Finansal Genel Bakış'),
-            _DrawerItem('/firma/finans/sut-fiyatlari', Icons.settings_rounded, 'Süt Fiyat Ayarları'),
+            _DrawerItem('/firma/finans/genel-bakis', Icons.speed_rounded, 'Finansal Bakış'),
+            _DrawerItem('/firma/finans/faturalar', Icons.description_rounded, 'Faturalar'),
+            _DrawerItem('/firma/finans/giderler', Icons.credit_card_rounded, 'Giderler'),
+            _DrawerItem('/firma/finans/gelirler', Icons.monetization_on_rounded, 'Gelirler'),
             _DrawerItem('/firma/finans/avanslar', Icons.handshake_rounded, 'Avanslar'),
-            _DrawerItem('/firma/finans/sut-odemeleri', Icons.payment_rounded, 'Süt Ödemeleri'),
-            _DrawerItem('/firma/finans/cezalar', Icons.report_problem_rounded, 'Cezalar'),
-            _DrawerItem('/firma/finans/kesintiler', Icons.vertical_align_bottom_rounded, 'Kesintiler'),
+            _DrawerItem('/firma/tahsilat', Icons.credit_card_rounded, 'Tahsilat Yap'),
+            _DrawerItem('/firma/finans/devir', Icons.sync_alt_rounded, 'Devir İşlemleri'),
+            _DrawerItem('/firma/finans/sut-odemeleri', Icons.people_rounded, 'Süt Ödemeleri'),
+            _DrawerItem('/firma/finans/odeme-gecmisi', Icons.history_rounded, 'Ödeme Geçmişi'),
+            _DrawerItem('/firma/finans/cezalar', Icons.gavel_rounded, 'Müşteri Cezaları'),
+            _DrawerItem('/firma/finans/kesintiler', Icons.content_cut_rounded, 'Kesintiler'),
           ]),
           _DrawerItem('/firma/profil', Icons.business_rounded, 'Firma Yönetimi', isExpandable: true, children: [
             _DrawerItem('/firma/profil', Icons.info_rounded, 'Firma Bilgileri'),
@@ -235,6 +265,29 @@ class _AppShellState extends State<AppShell> {
     context.go(_tabs[index].path);
   }
 
+  bool _isItemActive(String path, String loc) {
+    final childUri = Uri.parse(path);
+    final currentUri = widget.state.uri;
+    
+    if (childUri.path == currentUri.path) {
+      if (childUri.queryParameters.isNotEmpty) {
+        return childUri.queryParameters.entries.every(
+          (e) => currentUri.queryParameters[e.key] == e.value,
+        );
+      } else {
+        return currentUri.queryParameters.isEmpty;
+      }
+    } else {
+      return (path != '/firma' &&
+          path != '/firma/finans' &&
+          path != '/firma/personel' &&
+          path != '/firma/tanklar' &&
+          path != '/firma/ureticiler' &&
+          path != '/firma/urunler' &&
+          loc.startsWith(childUri.path));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = context.read<AuthProvider>();
@@ -247,7 +300,7 @@ class _AppShellState extends State<AppShell> {
     }
 
     final width = MediaQuery.of(context).size.width;
-    final isDesktop = width >= 1024;
+    final isDesktop = kIsWeb || width >= 1024;
 
     if (isDesktop) {
       return Scaffold(
@@ -433,7 +486,7 @@ class _AppShellState extends State<AppShell> {
               children: [
                 ..._drawerItems.map((item) {
                   if (item.isExpandable) {
-                    final isChildActive = item.children.any((c) => loc == c.path);
+                    final isChildActive = item.children.any((c) => _isItemActive(c.path, loc));
                     if (!_sidebarExpanded) {
                       return Tooltip(
                         message: item.label,
@@ -475,7 +528,7 @@ class _AppShellState extends State<AppShell> {
                             color: isChildActive ? Colors.white : AppColors.gray300,
                           )),
                           children: item.children.map((child) {
-                            final childActive = loc == child.path;
+                            final childActive = _isItemActive(child.path, loc);
                             return Container(
                               margin: const EdgeInsets.only(bottom: 2),
                               child: Material(
@@ -872,7 +925,7 @@ class _AppShellState extends State<AppShell> {
                 children: [
                   ..._drawerItems.map((item) {
                     if (item.isExpandable) {
-                      final isChildActive = item.children.any((c) => loc == c.path);
+                      final isChildActive = item.children.any((c) => loc == c.path || (c.path != '/firma' && c.path != '/firma/finans' && c.path != '/firma/personel' && c.path != '/firma/tanklar' && c.path != '/firma/ureticiler' && c.path != '/firma/urunler' && loc.startsWith(c.path)));
                       return Container(
                         margin: const EdgeInsets.only(bottom: 2),
                         decoration: BoxDecoration(
@@ -892,7 +945,7 @@ class _AppShellState extends State<AppShell> {
                               color: isChildActive ? AppColors.primary700 : AppColors.gray700,
                             )),
                             children: item.children.map((child) {
-                              final childActive = loc == child.path;
+                              final childActive = loc == child.path || (child.path != '/firma' && child.path != '/firma/finans' && child.path != '/firma/personel' && child.path != '/firma/tanklar' && child.path != '/firma/ureticiler' && child.path != '/firma/urunler' && loc.startsWith(child.path));
                               return Container(
                                 margin: const EdgeInsets.only(bottom: 2),
                                 child: Material(
