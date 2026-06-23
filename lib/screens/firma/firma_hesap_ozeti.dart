@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -32,11 +32,19 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   String? _selectedProducer;
   DateTime _selectedMonth = DateTime(DateTime.now().year, DateTime.now().month);
+  final TextEditingController _searchCtrl = TextEditingController();
+  String _searchQuery = '';
 
   @override
   void initState() {
     super.initState();
     _selectedProducer = widget.producerName;
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
   }
 
   void _changeMonth(int delta) {
@@ -189,62 +197,128 @@ class _FirmaHesapOzetiScreenState extends State<FirmaHesapOzetiScreen> {
             return Center(child: Text('Kayıtlı üretici bulunamadı.', style: GoogleFonts.inter(color: AppColors.gray500)));
           }
 
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: docs.length,
-            itemBuilder: (context, index) {
-              final doc = docs[index];
-              final data = doc.data() as Map<String, dynamic>;
-              final name = data['name'] ?? '';
-              final group = data['group'] ?? '';
+          // Filter documents based on search query
+          final filteredDocs = docs.where((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            final name = (data['name'] as String? ?? '').toLowerCase();
+            final group = (data['group'] as String? ?? '').toLowerCase();
+            final bolge = (data['bolge'] as String? ?? '').toLowerCase();
+            final query = _searchQuery.toLowerCase();
+            return name.contains(query) || group.contains(query) || bolge.contains(query);
+          }).toList();
 
-              return GestureDetector(
-                onTap: () {
-                  setState(() {
-                    _selectedProducer = name;
-                  });
-                },
-                child: Container(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(14),
-                    boxShadow: AppShadows.sm,
+          return Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                child: TextField(
+                  controller: _searchCtrl,
+                  style: GoogleFonts.inter(fontSize: 13, color: AppColors.gray800),
+                  decoration: InputDecoration(
+                    hintText: 'Üretici adı, grup veya bölge yazın...',
+                    hintStyle: GoogleFonts.inter(fontSize: 13, color: AppColors.gray400),
+                    prefixIcon: const Icon(Icons.search_rounded, color: AppColors.gray400, size: 20),
+                    suffixIcon: _searchCtrl.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear, size: 16),
+                            onPressed: () {
+                              _searchCtrl.clear();
+                              setState(() {
+                                _searchQuery = '';
+                              });
+                            },
+                          )
+                        : null,
+                    fillColor: Colors.white,
+                    filled: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    border: OutlineInputBorder(
+                      borderRadius: const BorderRadius.all(Radius.circular(12)),
+                      borderSide: BorderSide(color: Colors.grey.shade300),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: const BorderRadius.all(Radius.circular(12)),
+                      borderSide: BorderSide(color: Colors.grey.shade200),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: const BorderRadius.all(Radius.circular(12)),
+                      borderSide: const BorderSide(color: AppColors.primary500, width: 1.5),
+                    ),
                   ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          gradient: AppColors.primaryGradient,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Center(
-                          child: Text(
-                            name.isNotEmpty ? name[0] : 'Ü',
-                            style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(name, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600)),
-                            const SizedBox(height: 3),
-                            Text(group, style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500)),
-                          ],
-                        ),
-                      ),
-                      const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: AppColors.gray400),
-                    ],
-                  ),
+                  onChanged: (val) {
+                    setState(() {
+                      _searchQuery = val.trim();
+                    });
+                  },
                 ),
-              );
-            },
+              ),
+              Expanded(
+                child: filteredDocs.isEmpty
+                    ? Center(
+                        child: Text(
+                          _searchQuery.isEmpty ? 'Kayıtlı üretici bulunamadı.' : 'Arama sonucu bulunamadı.',
+                          style: GoogleFonts.inter(color: AppColors.gray500, fontSize: 13),
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: filteredDocs.length,
+                        itemBuilder: (context, index) {
+                          final doc = filteredDocs[index];
+                          final data = doc.data() as Map<String, dynamic>;
+                          final name = data['name'] ?? '';
+                          final group = data['group'] ?? '';
+
+                          return GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                _selectedProducer = name;
+                              });
+                            },
+                            child: Container(
+                              margin: const EdgeInsets.only(bottom: 10),
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(14),
+                                boxShadow: AppShadows.sm,
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 40,
+                                    height: 40,
+                                    decoration: BoxDecoration(
+                                      gradient: AppColors.primaryGradient,
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Center(
+                                      child: Text(
+                                        name.isNotEmpty ? name[0] : 'Ü',
+                                        style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(name, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600)),
+                                        const SizedBox(height: 3),
+                                        Text(group, style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500)),
+                                      ],
+                                    ),
+                                  ),
+                                  const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: AppColors.gray400),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
           );
         },
       ),

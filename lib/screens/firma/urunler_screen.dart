@@ -2136,15 +2136,39 @@ class _UrunlerScreenState extends State<UrunlerScreen> {
 
                     final orderId = data['id'] ?? '';
                     if (orderId.isNotEmpty) {
+                      // Update satislar records to match edited order items
                       final satisQuery = await FirebaseFirestore.instance
                           .collection('satislar')
                           .where('orderId', isEqualTo: orderId)
                           .get();
+                      
+                      // Delete existing satislar records for this order
                       for (var sDoc in satisQuery.docs) {
-                        await sDoc.reference.update({
-                          'tarih': DateFormat('dd MMMM yyyy', 'tr_TR').format(selectedOrderDate),
-                          'timestamp': Timestamp.fromDate(selectedOrderDate),
-                        });
+                        await sDoc.reference.delete();
+                      }
+                      
+                      // If it's a direct sale, recreate satislar records with updated quantities and prices
+                      final isDirectSale = data['isDirectSale'] as bool? ?? false;
+                      if (isDirectSale) {
+                        final currentFirmaName = Provider.of<AuthProvider>(context, listen: false).user?.displayName ?? '';
+                        for (var item in updatedItems) {
+                          final String product = item['urun'];
+                          final double amount = item['miktar'];
+                          final double totalVal = item['toplam'];
+                          final double priceVal = item['birimFiyat'];
+                          
+                          await FirebaseFirestore.instance.collection('satislar').add({
+                            'uretici': uretici,
+                            'urun': product,
+                            'miktar': amount,
+                            'fiyat': priceVal,
+                            'tutar': totalVal,
+                            'tarih': DateFormat('dd.MM.yyyy').format(selectedOrderDate),
+                            'firma': currentFirmaName,
+                            'timestamp': Timestamp.fromDate(selectedOrderDate),
+                            'orderId': orderId,
+                          });
+                        }
                       }
                     }
 

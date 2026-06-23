@@ -1346,24 +1346,28 @@ class FirestoreService {
         .limit(1)
         .get();
 
-    if (sourceQuery.docs.isEmpty || targetQuery.docs.isEmpty) {
-      throw Exception('Kaynak veya hedef tank bulunamadı.');
-    }
-
-    final sourceDoc = sourceQuery.docs.first;
-    final targetDoc = targetQuery.docs.first;
+    final sourceDoc = sourceQuery.docs.isNotEmpty ? sourceQuery.docs.first : null;
+    final targetDoc = targetQuery.docs.isNotEmpty ? targetQuery.docs.first : null;
     final double declared = beyanEdilenMiktar ?? miktar;
 
     // 1. Update source tank stok (vehicle tank loses the ENTIRE declared/requested amount)
-    final double sourceCurrent = (sourceDoc.data()['stok'] as num?)?.toDouble() ?? 0.0;
-    await sourceDoc.reference.update({'stok': (sourceCurrent - declared).clamp(0.0, double.infinity)});
+    if (sourceDoc != null) {
+      final double sourceCurrent = (sourceDoc.data()['stok'] as num?)?.toDouble() ?? 0.0;
+      await sourceDoc.reference.update({'stok': (sourceCurrent - declared).clamp(0.0, double.infinity)});
+    } else {
+      print('Warning: Source tank $sourceTankName not found. Skipping stock subtraction.');
+    }
 
     // 2. Update target tank stok (center tank gets only the accepted amount)
-    final double targetCurrent = (targetDoc.data()['stok'] as num?)?.toDouble() ?? 0.0;
-    await targetDoc.reference.update({'stok': (targetCurrent + miktar).clamp(0.0, double.infinity)});
+    if (targetDoc != null) {
+      final double targetCurrent = (targetDoc.data()['stok'] as num?)?.toDouble() ?? 0.0;
+      await targetDoc.reference.update({'stok': (targetCurrent + miktar).clamp(0.0, double.infinity)});
+    } else {
+      print('Warning: Target tank $targetTankName not found. Skipping stock addition.');
+    }
 
     // 3. Update vehicle tanks if source is vehicle tank
-    if (sourceDoc.data()['tip'] == 'arac' && vehiclePlate.isNotEmpty) {
+    if (sourceDoc != null && sourceDoc.data()['tip'] == 'arac' && vehiclePlate.isNotEmpty) {
       final vehicleQuery = await db.collection('araclar')
           .where('plaka', isEqualTo: vehiclePlate)
           .limit(1)
@@ -1375,14 +1379,17 @@ class FirestoreService {
             .toList();
         for (int i = 0; i < vehicleTanks.length; i++) {
           if (vehicleTanks[i]['ad'] == sourceTankName) {
+            final double sourceCurrent = (sourceDoc.data()['stok'] as num?)?.toDouble() ?? 0.0;
             vehicleTanks[i]['stok'] = (sourceCurrent - declared).clamp(0.0, double.infinity);
             break;
           }
         }
         await vehicleDoc.reference.update({'tanklar': vehicleTanks});
       }
+    }
 
-      // Mark matching collections in 'toplamalar' as bosaltildi: true
+    // Even if sourceDoc is null, if it is a vehicle plate, we should still mark the collection records as bosaltildi: true
+    if (vehiclePlate.isNotEmpty) {
       final collectionsToUpdate = await db.collection('toplamalar')
           .where('km', isEqualTo: vehiclePlate)
           .where('tank', isEqualTo: sourceTankName)
@@ -1407,8 +1414,23 @@ class FirestoreService {
       'fazla': fazla,
     });
 
+    // Resolve company name (firma)
+    String resolvedFirma = '';
+    if (targetDoc != null) {
+      resolvedFirma = targetDoc.data()['firma'] ?? '';
+    }
+    if (resolvedFirma.isEmpty) {
+      try {
+        final kabulDoc = await kabulDocRef.get();
+        if (kabulDoc.exists) {
+          resolvedFirma = (kabulDoc.data() as Map<String, dynamic>?)?['firma'] ?? '';
+        }
+      } catch (e) {
+        print('Error getting fallback firma: $e');
+      }
+    }
+
     // Write a fire document if there is fire
-    final String resolvedFirma = targetDoc.data()['firma'] ?? '';
     if (fire > 0) {
       await db.collection('fireler').add({
         'sutKabulId': sutKabulId,
@@ -1504,18 +1526,16 @@ class FirestoreService {
         .limit(1)
         .get();
 
-    if (targetQuery.docs.isEmpty) {
-      throw Exception('Hedef tank bulunamadı.');
+    final targetDoc = targetQuery.docs.isNotEmpty ? targetQuery.docs.first : null;
+
+    // 1. Update target tank stock if found
+    if (targetDoc != null) {
+      final double targetCurrent = (targetDoc.data()['stok'] as num?)?.toDouble() ?? 0.0;
+      final double newTargetStock = (targetCurrent - oldAcceptedAmount + newAcceptedAmount).clamp(0.0, double.infinity);
+      await targetDoc.reference.update({'stok': newTargetStock});
+    } else {
+      print('Warning: Target tank $hedef not found during stock update.');
     }
-
-    final targetDoc = targetQuery.docs.first;
-    final double targetCurrent = (targetDoc.data()['stok'] as num?)?.toDouble() ?? 0.0;
-
-    // Calculate new target stock
-    final double newTargetStock = (targetCurrent - oldAcceptedAmount + newAcceptedAmount).clamp(0.0, double.infinity);
-
-    // 1. Update target tank stock
-    await targetDoc.reference.update({'stok': newTargetStock});
 
     // 2. Calculate new fire and fazla
     final double newFire = (miktar - newAcceptedAmount).clamp(0.0, double.infinity);
@@ -1547,7 +1567,7 @@ class FirestoreService {
         await fireDoc.reference.delete();
       }
     } else if (newFire > 0) {
-      final String resolvedFirma = targetDoc.data()['firma'] ?? '';
+      final String resolvedFirma = targetDoc != null ? (targetDoc.data()['firma'] ?? '') : (data['firma'] ?? '');
       await db.collection('fireler').add({
         'sutKabulId': sutKabulId,
         'plaka': data['plaka'] ?? '',

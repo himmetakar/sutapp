@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:math';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -1598,12 +1599,32 @@ class _FaturaEkleScreenState extends State<FaturaEkleScreen> {
 class GiderYonetimiScreen extends StatefulWidget {
   const GiderYonetimiScreen({super.key});
 
+  static final ValueNotifier<VoidCallback?> onAddExpense = ValueNotifier<VoidCallback?>(null);
+
   @override
   State<GiderYonetimiScreen> createState() => _GiderYonetimiScreenState();
 }
 
 class _GiderYonetimiScreenState extends State<GiderYonetimiScreen> {
   DateTime _selectedDate = DateTime.now();
+
+  @override
+  void initState() {
+    super.initState();
+    GiderYonetimiScreen.onAddExpense.value = () {
+      if (mounted) {
+        final auth = Provider.of<AuthProvider>(context, listen: false);
+        final currentFirmaName = auth.user?.displayName ?? '';
+        _showAddExpenseDialog(currentFirmaName);
+      }
+    };
+  }
+
+  @override
+  void dispose() {
+    GiderYonetimiScreen.onAddExpense.value = null;
+    super.dispose();
+  }
 
   void _showAddExpenseDialog(String currentFirmaName) async {
     // Üreticileri önceden yükle

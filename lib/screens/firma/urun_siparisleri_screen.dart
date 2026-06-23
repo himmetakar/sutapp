@@ -909,6 +909,12 @@ class _UrunSiparisleriScreenState extends State<UrunSiparisleriScreen> {
       return TextEditingController(text: qty % 1 == 0 ? qty.toInt().toString() : qty.toString());
     }).toList();
 
+    // Create controllers for unit prices to allow editing prices as well
+    final List<TextEditingController> priceControllers = orderItems.map((item) {
+      final price = (item['birimFiyat'] as num?)?.toDouble() ?? 0.0;
+      return TextEditingController(text: price.toStringAsFixed(2));
+    }).toList();
+
     if (!context.mounted) return;
 
     showDialog(
@@ -919,8 +925,9 @@ class _UrunSiparisleriScreenState extends State<UrunSiparisleriScreen> {
             double orderTotal = 0.0;
             for (int i = 0; i < orderItems.length; i++) {
               final double qty = double.tryParse(qtyControllers[i].text) ?? 0.0;
-              final double price = (orderItems[i]['birimFiyat'] as num?)?.toDouble() ?? 0.0;
+              final double price = double.tryParse(priceControllers[i].text) ?? 0.0;
               orderItems[i]['miktar'] = qty;
+              orderItems[i]['birimFiyat'] = price;
               orderItems[i]['toplam'] = qty * price;
               orderTotal += qty * price;
             }
@@ -935,6 +942,9 @@ class _UrunSiparisleriScreenState extends State<UrunSiparisleriScreen> {
                     for (var c in qtyControllers) {
                       c.dispose();
                     }
+                    for (var c in priceControllers) {
+                      c.dispose();
+                    }
                     addQtyCtrl.dispose();
                     Navigator.pop(ctx);
                   }),
@@ -947,7 +957,7 @@ class _UrunSiparisleriScreenState extends State<UrunSiparisleriScreen> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Sipariş kalemlerini ve miktarlarını güncelleyebilirsiniz.', style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray50)),
+                      Text('Sipariş kalemlerini, miktarlarını ve birim fiyatlarını güncelleyebilirsiniz.', style: GoogleFonts.inter(fontSize: 12, color: AppColors.gray500)),
                       const SizedBox(height: 12),
                       const Divider(),
                       const SizedBox(height: 8),
@@ -963,52 +973,94 @@ class _UrunSiparisleriScreenState extends State<UrunSiparisleriScreen> {
                           final item = orderItems[index];
                           final String uAd = item['urun'] ?? '';
                           final String unit = item['birim'] ?? 'Adet';
-                          final double price = (item['birimFiyat'] as num?)?.toDouble() ?? 0.0;
                           final double itemTotal = item['toplam'] ?? 0.0;
 
                           return Padding(
-                            padding: const EdgeInsets.only(bottom: 12.0),
-                            child: Row(
+                            padding: const EdgeInsets.only(bottom: 16.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Expanded(
-                                  flex: 3,
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(uAd, style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.gray800)),
-                                      Text('${price.toStringAsFixed(2)} ₺ / $unit', style: GoogleFonts.inter(fontSize: 11, color: AppColors.gray500)),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  flex: 2,
-                                  child: TextField(
-                                    controller: qtyControllers[index],
-                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                    decoration: InputDecoration(
-                                      contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        uAd,
+                                        style: GoogleFonts.inter(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 13,
+                                          color: AppColors.gray800,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
                                     ),
-                                    onChanged: (val) {
-                                      setStateDialog(() {});
-                                    },
-                                  ),
+                                    IconButton(
+                                      icon: const Icon(Icons.remove_circle_outline, color: Colors.red, size: 20),
+                                      onPressed: () {
+                                        setStateDialog(() {
+                                          orderItems.removeAt(index);
+                                          qtyControllers[index].dispose();
+                                          qtyControllers.removeAt(index);
+                                          priceControllers[index].dispose();
+                                          priceControllers.removeAt(index);
+                                        });
+                                      },
+                                    ),
+                                  ],
                                 ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  '${itemTotal.toStringAsFixed(2)} ₺',
-                                  style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.gray700),
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.remove_circle_outline, color: Colors.red, size: 20),
-                                  onPressed: () {
-                                    setStateDialog(() {
-                                      orderItems.removeAt(index);
-                                      qtyControllers[index].dispose();
-                                      qtyControllers.removeAt(index);
-                                    });
-                                  },
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: TextField(
+                                        controller: qtyControllers[index],
+                                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                        decoration: InputDecoration(
+                                          labelText: 'Miktar ($unit)',
+                                          labelStyle: GoogleFonts.inter(fontSize: 12),
+                                          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                        ),
+                                        onChanged: (_) {
+                                          setStateDialog(() {});
+                                        },
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: TextField(
+                                        controller: priceControllers[index],
+                                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                        decoration: InputDecoration(
+                                          labelText: 'Birim Fiyat (₺)',
+                                          labelStyle: GoogleFonts.inter(fontSize: 12),
+                                          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                        ),
+                                        onChanged: (_) {
+                                          setStateDialog(() {});
+                                        },
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Column(
+                                      crossAxisAlignment: CrossAxisAlignment.end,
+                                      children: [
+                                        Text(
+                                          'Tutar',
+                                          style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray400),
+                                        ),
+                                        Text(
+                                          '${itemTotal.toStringAsFixed(2)} ₺',
+                                          style: GoogleFonts.inter(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                            color: AppColors.gray800,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
@@ -1090,6 +1142,7 @@ class _UrunSiparisleriScreenState extends State<UrunSiparisleriScreen> {
                                     'toplam': qty * price,
                                   });
                                   qtyControllers.add(TextEditingController(text: qty % 1 == 0 ? qty.toInt().toString() : qty.toString()));
+                                  priceControllers.add(TextEditingController(text: price.toStringAsFixed(2)));
                                 }
                                 addQtyCtrl.text = '1';
                               });
@@ -1199,10 +1252,13 @@ class _UrunSiparisleriScreenState extends State<UrunSiparisleriScreen> {
                     for (var c in qtyControllers) {
                       c.dispose();
                     }
+                    for (var c in priceControllers) {
+                      c.dispose();
+                    }
                     addQtyCtrl.dispose();
                     Navigator.pop(ctx);
                   },
-                  child: Text('İptal', style: GoogleFonts.inter(color: AppColors.gray50)),
+                  child: Text('İptal', style: GoogleFonts.inter(color: AppColors.gray500)),
                 ),
                 ElevatedButton(
                   onPressed: orderItems.isEmpty
@@ -1225,19 +1281,46 @@ class _UrunSiparisleriScreenState extends State<UrunSiparisleriScreen> {
 
                           final orderId = data['id'] ?? '';
                           if (orderId.isNotEmpty) {
+                            // Update satislar records to match edited order items
                             final satisQuery = await FirebaseFirestore.instance
                                 .collection('satislar')
                                 .where('orderId', isEqualTo: orderId)
                                 .get();
+                            
+                            // Delete existing satislar records for this order
                             for (var sDoc in satisQuery.docs) {
-                              await sDoc.reference.update({
-                                'tarih': DateFormat('dd MMMM yyyy', 'tr_TR').format(selectedOrderDate),
-                                'timestamp': Timestamp.fromDate(selectedOrderDate),
-                              });
+                              await sDoc.reference.delete();
+                            }
+                            
+                            // If it's a direct sale, recreate satislar records with updated quantities and prices
+                            final isDirectSale = data['isDirectSale'] as bool? ?? false;
+                            if (isDirectSale) {
+                              final uretici = data['uretici'] ?? '';
+                              for (var item in orderItems) {
+                                final String product = item['urun'];
+                                final double amount = item['miktar'];
+                                final double totalVal = item['toplam'];
+                                final double priceVal = item['birimFiyat'];
+                                
+                                await FirebaseFirestore.instance.collection('satislar').add({
+                                  'uretici': uretici,
+                                  'urun': product,
+                                  'miktar': amount,
+                                  'fiyat': priceVal,
+                                  'tutar': totalVal,
+                                  'tarih': DateFormat('dd.MM.yyyy').format(selectedOrderDate),
+                                  'firma': currentFirmaName,
+                                  'timestamp': Timestamp.fromDate(selectedOrderDate),
+                                  'orderId': orderId,
+                                });
+                              }
                             }
                           }
 
                           for (var c in qtyControllers) {
+                            c.dispose();
+                          }
+                          for (var c in priceControllers) {
                             c.dispose();
                           }
                           addQtyCtrl.dispose();
@@ -1255,7 +1338,7 @@ class _UrunSiparisleriScreenState extends State<UrunSiparisleriScreen> {
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                   ),
-                  child: const Text('Kaydet'),
+                  child: const Text('Güncelle'),
                 ),
               ],
             );

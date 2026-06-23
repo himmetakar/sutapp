@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -125,7 +125,7 @@ class _GelirlerScreenState extends State<GelirlerScreen> {
     final currentFirmaName = auth.user?.displayName ?? '';
 
     try {
-      // 1. Fetch Satislar (Milk Sales)
+      // 1. Fetch Satislar (Milk Sales and Product Sales)
       final satisSnap = await FirebaseFirestore.instance
           .collection('satislar')
           .where('firma', isEqualTo: currentFirmaName)
@@ -133,14 +133,26 @@ class _GelirlerScreenState extends State<GelirlerScreen> {
 
       double tempSutSales = 0.0;
       int tempSutSalesCount = 0;
+      double tempYemSales = 0.0;
+      int tempYemSalesCount = 0;
 
       for (var doc in satisSnap.docs) {
         final data = doc.data();
         final date = _getDocDate(data['tarih'] ?? data['timestamp']);
         if (_isWithinFilter(date)) {
-          final double val = (data['toplam'] as num?)?.toDouble() ?? 0.0;
-          tempSutSales += val;
-          tempSutSalesCount++;
+          final double val = (data['toplam'] as num?)?.toDouble() ?? 
+                            (data['tutar'] as num?)?.toDouble() ?? 
+                            (data['toplamTutar'] as num?)?.toDouble() ?? 
+                            0.0;
+          
+          final urun = data['urun'] as String? ?? '';
+          if (urun.isNotEmpty) {
+            tempYemSales += val;
+            tempYemSalesCount++;
+          } else {
+            tempSutSales += val;
+            tempSutSalesCount++;
+          }
         }
       }
 
@@ -150,8 +162,6 @@ class _GelirlerScreenState extends State<GelirlerScreen> {
           .where('firma', isEqualTo: currentFirmaName)
           .get();
 
-      double tempYemSales = 0.0;
-      int tempYemSalesCount = 0;
       double tempOtherRevenues = 0.0;
       int tempOtherRevenuesCount = 0;
 

@@ -250,45 +250,50 @@ class _DijitalSutKartiScreenState extends State<DijitalSutKartiScreen> {
                   ),
                 ),
 
-                // Metrics Grid (2x2)
-                GridView.count(
-                  crossAxisCount: 2,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  childAspectRatio: 1.35,
-                  children: [
-                    _buildStatCard(
-                      icon: Icons.water_drop_rounded,
-                      iconColor: const Color(0xFF2563EB),
-                      bgColor: const Color(0xFFEFF6FF),
-                      value: '${_formatLitres(aylikToplam)} L',
-                      label: 'Aylık Toplam',
-                    ),
-                    _buildStatCard(
-                      icon: Icons.wb_sunny_rounded,
-                      iconColor: const Color(0xFFF59E0B),
-                      bgColor: const Color(0xFFFEF3C7),
-                      value: '${_formatLitres(sabahToplam)} L',
-                      label: 'Sabah Toplam',
-                    ),
-                    _buildStatCard(
-                      icon: Icons.nightlight_round,
-                      iconColor: const Color(0xFF1E293B),
-                      bgColor: const Color(0xFFF1F5F9),
-                      value: '${_formatLitres(aksamToplam)} L',
-                      label: 'Akşam Toplam',
-                    ),
-                    _buildStatCard(
-                      icon: Icons.bar_chart_rounded,
-                      iconColor: const Color(0xFF10B981),
-                      bgColor: const Color(0xFFD1FAE5),
-                      value: '${_formatLitres(gunlukOrt)} L',
-                      label: 'Günlük Ort.',
-                    ),
-                  ],
+                // Metrics Grid (Responsive Layout)
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final bool isWide = constraints.maxWidth >= 640;
+                    return GridView.count(
+                      crossAxisCount: isWide ? 4 : 2,
+                      crossAxisSpacing: 12,
+                      mainAxisSpacing: 12,
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      childAspectRatio: isWide ? 2.5 : 2.0,
+                      children: [
+                        _buildStatCard(
+                          icon: Icons.water_drop_rounded,
+                          iconColor: const Color(0xFF2563EB),
+                          bgColor: const Color(0xFFEFF6FF),
+                          value: '${_formatLitres(aylikToplam)} L',
+                          label: 'Aylık Toplam',
+                        ),
+                        _buildStatCard(
+                          icon: Icons.wb_sunny_rounded,
+                          iconColor: const Color(0xFFF59E0B),
+                          bgColor: const Color(0xFFFEF3C7),
+                          value: '${_formatLitres(sabahToplam)} L',
+                          label: 'Sabah Toplam',
+                        ),
+                        _buildStatCard(
+                          icon: Icons.nightlight_round,
+                          iconColor: const Color(0xFF1E293B),
+                          bgColor: const Color(0xFFF1F5F9),
+                          value: '${_formatLitres(aksamToplam)} L',
+                          label: 'Akşam Toplam',
+                        ),
+                        _buildStatCard(
+                          icon: Icons.bar_chart_rounded,
+                          iconColor: const Color(0xFF10B981),
+                          bgColor: const Color(0xFFD1FAE5),
+                          value: '${_formatLitres(gunlukOrt)} L',
+                          label: 'Günlük Ort.',
+                        ),
+                      ],
+                    );
+                  },
                 ),
 
                 const SizedBox(height: 16),
@@ -405,32 +410,40 @@ class _DijitalSutKartiScreenState extends State<DijitalSutKartiScreen> {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppColors.gray200),
         boxShadow: AppShadows.sm,
       ),
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        mainAxisAlignment: MainAxisAlignment.center,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(6),
+            padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               color: bgColor,
-              shape: BoxShape.circle,
+              borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(icon, color: iconColor, size: 20),
           ),
-          const SizedBox(height: 8),
-          Text(
-            value,
-            style: GoogleFonts.inter(fontWeight: FontWeight.w800, fontSize: 15, color: AppColors.gray800),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            style: GoogleFonts.inter(fontSize: 10, color: AppColors.gray400, fontWeight: FontWeight.w500),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  label,
+                  style: GoogleFonts.inter(fontSize: 10.5, color: AppColors.gray500, fontWeight: FontWeight.w500),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  value,
+                  style: GoogleFonts.inter(fontWeight: FontWeight.w800, fontSize: 15, color: AppColors.gray900),
+                ),
+              ],
+            ),
           ),
         ],
       ),

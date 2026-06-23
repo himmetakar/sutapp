@@ -29,11 +29,56 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   int _currentIndex = 0;
   bool _sidebarExpanded = true;
+  final Map<String, ExpansionTileController> _tileControllers = {};
+
+  void _expandActiveRouteTile() {
+    final loc = widget.state.matchedLocation;
+    for (var item in _drawerItems) {
+      if (item.isExpandable) {
+        final isChildActive = item.children.any((c) => _isItemActive(c.path, loc));
+        if (isChildActive) {
+          // Web
+          final webCtrl = _tileControllers['web_${item.label}'];
+          if (webCtrl != null && !webCtrl.isExpanded) {
+            webCtrl.expand();
+            _tileControllers.forEach((key, otherCtrl) {
+              if (key.startsWith('web_') && key != 'web_${item.label}' && otherCtrl.isExpanded) {
+                otherCtrl.collapse();
+              }
+            });
+          }
+          // Mobile
+          final mobileCtrl = _tileControllers['mobile_${item.label}'];
+          if (mobileCtrl != null && !mobileCtrl.isExpanded) {
+            mobileCtrl.expand();
+            _tileControllers.forEach((key, otherCtrl) {
+              if (key.startsWith('mobile_') && key != 'mobile_${item.label}' && otherCtrl.isExpanded) {
+                otherCtrl.collapse();
+              }
+            });
+          }
+        }
+      }
+    }
+  }
 
   @override
   void initState() {
     super.initState();
     FirmaHomeScreen.currentMenuNotifier.addListener(_onFirmaHomeMenuChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _expandActiveRouteTile();
+    });
+  }
+
+  @override
+  void didUpdateWidget(AppShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.state.matchedLocation != oldWidget.state.matchedLocation) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _expandActiveRouteTile();
+      });
+    }
   }
 
   @override
@@ -516,6 +561,16 @@ class _AppShellState extends State<AppShell> {
                       child: Theme(
                         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
                         child: ExpansionTile(
+                          controller: _tileControllers.putIfAbsent('web_${item.label}', () => ExpansionTileController()),
+                          onExpansionChanged: (expanded) {
+                            if (expanded) {
+                              _tileControllers.forEach((key, ctrl) {
+                                if (key.startsWith('web_') && key != 'web_${item.label}' && ctrl.isExpanded) {
+                                  ctrl.collapse();
+                                }
+                              });
+                            }
+                          },
                           initiallyExpanded: isChildActive,
                           tilePadding: const EdgeInsets.symmetric(horizontal: 12),
                           childrenPadding: const EdgeInsets.only(left: 16),
@@ -935,6 +990,16 @@ class _AppShellState extends State<AppShell> {
                         child: Theme(
                           data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
                           child: ExpansionTile(
+                            controller: _tileControllers.putIfAbsent('mobile_${item.label}', () => ExpansionTileController()),
+                            onExpansionChanged: (expanded) {
+                              if (expanded) {
+                                _tileControllers.forEach((key, ctrl) {
+                                  if (key.startsWith('mobile_') && key != 'mobile_${item.label}' && ctrl.isExpanded) {
+                                    ctrl.collapse();
+                                  }
+                                });
+                              }
+                            },
                             initiallyExpanded: isChildActive,
                             tilePadding: const EdgeInsets.symmetric(horizontal: 12),
                             childrenPadding: const EdgeInsets.only(left: 20),

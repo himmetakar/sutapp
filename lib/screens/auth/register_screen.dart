@@ -317,6 +317,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
                             // User Role Selection Dropdown
                             DropdownButtonFormField<UserRole>(
+                              isExpanded: true,
                               value: _selectedRole,
                               decoration: InputDecoration(
                                 labelText: 'Kullanıcı Rolü *',
@@ -364,6 +365,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
                             // Company Selection Field (Optional)
                             DropdownButtonFormField<Map<String, dynamic>>(
+                              isExpanded: true,
                               value: _selectedCompany,
                               hint: const Text('Bağlı olduğunuz firmayı seçin'),
                               decoration: InputDecoration(
@@ -423,6 +425,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               // Dropdown Mode
                               // İl Dropdown
                               DropdownButtonFormField<Map<String, dynamic>>(
+                                isExpanded: true,
                                 value: _selectedProvince,
                                 hint: const Text('İl Seçiniz'),
                                 decoration: InputDecoration(
@@ -449,6 +452,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
                               // İlçe Dropdown
                               DropdownButtonFormField<Map<String, dynamic>>(
+                                isExpanded: true,
                                 value: _selectedDistrict,
                                 hint: const Text('İlçe Seçiniz'),
                                 decoration: InputDecoration(
@@ -476,6 +480,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               // Mahalle Dropdown or Text input fallback
                               _neighborhoods.isNotEmpty
                                   ? DropdownButtonFormField<Map<String, dynamic>>(
+                                      isExpanded: true,
                                       value: _selectedNeighborhood,
                                       hint: const Text('Mahalle / Köy Seçiniz'),
                                       decoration: InputDecoration(
