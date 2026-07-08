@@ -56,7 +56,7 @@ class AppUser {
 
   factory AppUser.demo(UserRole role) {
     final configs = {
-      UserRole.admin: {'name': 'Admin Kullanıcı', 'email': 'admin@sutapp.com', 'phone': '0532 000 0001'},
+      UserRole.admin: {'name': 'Admin Kullanıcı', 'email': 'sevketozek@gmail.com', 'phone': '0544 760 5359'},
       UserRole.firma: {'name': 'Kayseri Çiftlik', 'email': 'firma@sutapp.com', 'phone': '0532 000 0002'},
       UserRole.surucu: {'name': 'Ahmet Kara', 'email': 'surucu@sutapp.com', 'phone': '0532 000 0003'},
       UserRole.uretici: {'name': 'Mehmet Yılmaz', 'email': 'uretici@sutapp.com', 'phone': '0532 000 0004'},

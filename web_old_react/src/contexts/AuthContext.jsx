@@ -9,7 +9,7 @@ const AuthContext = createContext(null);
 const DEMO_USERS = {
   admin: {
     uid: 'demo-admin-001',
-    email: 'admin@sutapp.com',
+    email: 'sevketozek@gmail.com',
     displayName: 'Sistem Admin',
     role: 'admin',
     firmaId: null
