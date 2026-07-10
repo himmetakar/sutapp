@@ -7,8 +7,8 @@
  * - tanklar: 11 kayıt var, hangi tank hangi firma/araç → suruculer + arac array'den eşleme
  */
 
-const PROJECT_ID = 'sutapp-9d33c';
-const API_KEY = 'AIzaSyCSu9hE1TB5TkHUrltsLXZOssPCtN3zEGg';
+const PROJECT_ID = 'sutapp93';
+const API_KEY = 'AIzaSyDqwXjGuKUdu97Xu8tr0hw6I2d0vlOuKRA';
 const BASE_URL = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents`;
 
 async function listDocs(collection) {

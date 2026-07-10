@@ -3,12 +3,13 @@ import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
 const firebaseConfig = {
-  apiKey: 'AIzaSyC0-FtYShX4AInMnieL5PHVxmAujWvEhGs',
-  authDomain: 'sutapp-9d33c.firebaseapp.com',
-  projectId: 'sutapp-9d33c',
-  storageBucket: 'sutapp-9d33c.firebasestorage.app',
-  messagingSenderId: '216356501452',
-  appId: '1:216356501452:web:a0f72b9c489b63b5dd4f69'
+  apiKey: 'AIzaSyDqwXjGuKUdu97Xu8tr0hw6I2d0vlOuKRA',
+  authDomain: 'sutapp93.firebaseapp.com',
+  projectId: 'sutapp93',
+  storageBucket: 'sutapp93.firebasestorage.app',
+  messagingSenderId: '723710159644',
+  appId: '1:723710159644:web:afb8f29df5a9950778a8d9',
+  measurementId: 'G-M27Q8S3PQQ'
 };
 
 const app = initializeApp(firebaseConfig);

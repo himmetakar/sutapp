@@ -35,7 +35,7 @@ const firebaseApp = initializeApp({
   credential: {
     getAccessToken: () => Promise.resolve({ access_token: accessToken, expires_in: 3600 }),
   },
-  projectId: 'sutapp-9d33c',
+  projectId: 'sutapp93',
 });
 
 const db = getFirestore(firebaseApp);
@@ -92,7 +92,7 @@ async function main() {
   console.log('');
   console.log('🧹 SÜT VERİSİ TEMİZLEME BAŞLIYOR');
   console.log('════════════════════════════════════');
-  console.log('Proje: sutapp-9d33c');
+  console.log('Proje: sutapp93');
   console.log('');
 
   process.stdout.write('  [1/5] toplamalar siliniyor... ');

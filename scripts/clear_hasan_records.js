@@ -1,5 +1,5 @@
-const PROJECT_ID = 'sutapp-9d33c';
-const API_KEY = 'AIzaSyCSu9hE1TB5TkHUrltsLXZOssPCtN3zEGg';
+const PROJECT_ID = 'sutapp93';
+const API_KEY = 'AIzaSyDqwXjGuKUdu97Xu8tr0hw6I2d0vlOuKRA';
 const BASE = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents`;
 
 async function listDocs(col) { const r = await fetch(`${BASE}/${col}?key=${API_KEY}&pageSize=300`); return (await r.json()).documents || []; }

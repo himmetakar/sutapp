@@ -7,7 +7,7 @@
 const { initializeApp, applicationDefault } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
 
-const PROJECT_ID = 'sutapp-9d33c';
+const PROJECT_ID = 'sutapp93';
 
 async function main() {
   const app = initializeApp({

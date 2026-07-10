@@ -9,7 +9,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const PROJECT_ID = 'sutapp-9d33c';
+const PROJECT_ID = 'sutapp93';
 const BASE_URL = `firestore.googleapis.com`;
 
 // Firebase CLI token oku

@@ -10,8 +10,8 @@
 
 const https = require('https');
 
-const API_KEY = 'AIzaSyC0-FtYShX4AInMnieL5PHVxmAujWvEhGs';
-const PROJECT = 'sutapp-9d33c';
+const API_KEY = 'AIzaSyDqwXjGuKUdu97Xu8tr0hw6I2d0vlOuKRA';
+const PROJECT = 'sutapp93';
 const BASE_URL = `https://firestore.googleapis.com/v1/projects/${PROJECT}/databases/(default)/documents`;
 
 function httpsGet(path) {

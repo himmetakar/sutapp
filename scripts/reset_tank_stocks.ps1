@@ -1,8 +1,8 @@
 #!/usr/bin/env pwsh
 # reset_tank_stocks.ps1
 
-$API_KEY = "AIzaSyC0-FtYShX4AInMnieL5PHVxmAujWvEhGs"
-$PROJECT  = "sutapp-9d33c"
+$API_KEY = "AIzaSyDqwXjGuKUdu97Xu8tr0hw6I2d0vlOuKRA"
+$PROJECT  = "sutapp93"
 $BASE     = "https://firestore.googleapis.com/v1/projects/$PROJECT/databases/(default)/documents"
 
 function Coalesce($a, $b) { if ($null -ne $a -and $a -ne "") { $a } else { $b } }

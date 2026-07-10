@@ -8,7 +8,7 @@ const https = require('https');
 const fs = require('fs');
 const os = require('os');
 
-const PROJECT_ID = 'sutapp-9d33c';
+const PROJECT_ID = 'sutapp93';
 const FIREBASE_TOOLS_PATH = path.join(
   process.env.APPDATA, 'npm', 'node_modules', 'firebase-tools'
 );

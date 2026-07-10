@@ -13,7 +13,7 @@
 const { initializeApp, cert, applicationDefault } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
 
-const PROJECT_ID = process.argv[2] || 'sutapp-9d33c';
+const PROJECT_ID = process.argv[2] || 'sutapp93';
 
 // Silinecek koleksiyonlar (işlemsel / sayısal veriler)
 const COLLECTIONS_TO_CLEAR = [

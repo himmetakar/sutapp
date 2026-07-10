@@ -47,28 +47,29 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyC0-FtYShX4AInMnieL5PHVxmAujWvEhGs',
-    appId: '1:216356501452:web:a0f72b9c489b63b5dd4f69',
-    messagingSenderId: '216356501452',
-    projectId: 'sutapp-9d33c',
-    authDomain: 'sutapp-9d33c.firebaseapp.com',
-    storageBucket: 'sutapp-9d33c.firebasestorage.app',
+    apiKey: 'AIzaSyDqwXjGuKUdu97Xu8tr0hw6I2d0vlOuKRA',
+    appId: '1:723710159644:web:afb8f29df5a9950778a8d9',
+    messagingSenderId: '723710159644',
+    projectId: 'sutapp93',
+    authDomain: 'sutapp93.firebaseapp.com',
+    storageBucket: 'sutapp93.firebasestorage.app',
+    measurementId: 'G-M27Q8S3PQQ',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyCSu9hE1TB5TkHUrltsLXZOssPCtN3zEGg',
-    appId: '1:216356501452:android:5052e4dc9a563d7fdd4f69',
-    messagingSenderId: '216356501452',
-    projectId: 'sutapp-9d33c',
-    storageBucket: 'sutapp-9d33c.firebasestorage.app',
+    apiKey: 'AIzaSyCsWBh4iN2d-UZW83j7dILMbuT-uYS9UFw',
+    appId: '1:723710159644:android:e8bf1a4cfea4bc0178a8d9',
+    messagingSenderId: '723710159644',
+    projectId: 'sutapp93',
+    storageBucket: 'sutapp93.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyCJ-IavSLbSnvL5EUubIqI5LlZe46miJTw',
-    appId: '1:216356501452:ios:48fea2d578584fe7dd4f69',
-    messagingSenderId: '216356501452',
-    projectId: 'sutapp-9d33c',
-    storageBucket: 'sutapp-9d33c.firebasestorage.app',
+    apiKey: 'AIzaSyCCNYNu5yusnptnKJG9yc6ANyT2faq2xHk',
+    appId: '1:723710159644:ios:805530949dcdb4ef78a8d9',
+    messagingSenderId: '723710159644',
+    projectId: 'sutapp93',
+    storageBucket: 'sutapp93.firebasestorage.app',
     iosBundleId: 'com.sutapp.sutapp',
   );
 

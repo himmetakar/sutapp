@@ -3,7 +3,7 @@
 # Firestore'daki işlemsel verileri temizler.
 # Kullanıcı, firma, üretici, ürün, fiyat kayıtlarına DOKUNMAZ.
 
-$PROJECT = "sutapp-9d33c"
+$PROJECT = "sutapp93"
 
 $COLLECTIONS = @(
     "toplamalar",
